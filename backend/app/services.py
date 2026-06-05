@@ -1,5 +1,5 @@
 from __future__ import annotations
-import json, re, itertools
+import json, re, itertools, os
 from pathlib import Path
 from datetime import datetime
 from urllib.parse import urlparse
@@ -31,13 +31,17 @@ BLOCKED_AMBIGUOUS_ROOTS = {"booking"}
 
 
 def setting(db: Session, key: str) -> str:
+    env_value = os.environ.get(key)
+    if env_value:
+        return env_value
     row = db.get(models.Setting, key)
     return row.value if row else DEFAULT_SETTINGS.get(key, "")
 
 def init_defaults(db: Session):
     for k,v in DEFAULT_SETTINGS.items():
+        default_value = os.environ.get(k, v)
         if not db.get(models.Setting, k):
-            db.add(models.Setting(key=k, value=v, secret=k.endswith("KEY") or k.endswith("TOKEN")))
+            db.add(models.Setting(key=k, value=default_value, secret=k.endswith("KEY") or k.endswith("TOKEN")))
     for term, cat in DEFAULT_ROOTS:
         if not db.query(models.Root).filter_by(term=term).first():
             db.add(models.Root(term=term, category=cat, weight=1.0))

@@ -1,1 +1,22 @@
-{"scripts":{"dev":"next dev -H 0.0.0.0 -p 3100","build":"next build","lint":"next lint"},"dependencies":{"@types/node":"latest","@types/react":"latest","@types/react-dom":"latest","next":"latest","react":"latest","react-dom":"latest","typescript":"latest"},"devDependencies":{"autoprefixer":"^10.4.20","postcss":"^8.4.49","tailwindcss":"^3.4.17"}}
+{
+  "scripts": {
+    "dev": "next dev -H 0.0.0.0 -p 3100",
+    "build": "next build",
+    "lint": "next lint",
+    "start": "next start -H 0.0.0.0 -p 3100"
+  },
+  "dependencies": {
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "typescript": "latest"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17"
+  }
+}
