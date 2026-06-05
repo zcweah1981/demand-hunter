@@ -1,0 +1,2 @@
+import {api} from '../../lib/api'
+export default async function Page(){const rows=await api<any[]>('/api/roots'); return <div className="space-y-6"><h1 className="text-3xl font-bold">Root Library</h1><div className="card grid grid-cols-3 gap-3">{rows.map(r=><div key={r.id} className="rounded border border-slate-800 p-3"><b>{r.term}</b><p className="text-sm text-slate-400">{r.category} · weight {r.weight} · {r.enabled?'enabled':'disabled'}</p></div>)}</div></div>}

@@ -1,0 +1,2 @@
+import {api} from '../../lib/api'
+export default async function Page(){const rows=await api<any[]>('/api/settings'); return <div className="space-y-6"><h1 className="text-3xl font-bold">Settings</h1><div className="card"><p className="mb-4 text-sm text-slate-400">后台配置 SearXNG / Brave / Tavily / LLM。Secret 会脱敏展示；通过 API 写入真实值。</p>{rows.map(s=><div key={s.key} className="grid grid-cols-3 border-t border-slate-800 py-3"><b>{s.key}</b><span className="text-slate-300">{s.value}</span><span className="text-slate-500">{s.secret?'secret':'plain'}</span></div>)}</div></div>}

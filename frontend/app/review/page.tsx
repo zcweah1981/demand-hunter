@@ -1,0 +1,2 @@
+import {api, Card} from '../../lib/api'; import {Feedback} from '../../components/Actions'
+export default async function Page(){const rows=(await api<Card[]>('/api/cards')).filter(c=>!c.feedback_label); return <div className="space-y-6"><h1 className="text-3xl font-bold">Review Queue</h1>{rows.map(c=><div className="card" key={c.id}><div className="flex justify-between"><b>{c.title}</b><span className="badge">{c.verdict} · {c.score}</span></div><p className="my-3 text-sm text-slate-300">{c.mvp_plan}</p><Feedback id={c.id}/></div>)}</div>}

@@ -1,0 +1,9 @@
+'use client'
+import {useState} from 'react'; import {api} from '../lib/api'
+export function RunDailyButton(){const[loading,setLoading]=useState(false);return <button className="btn" disabled={loading} onClick={async()=>{setLoading(true);await api('/api/runs/daily',{method:'POST',body:JSON.stringify({limit:12})}); location.reload()}}>{loading?'Running real SERP...':'Run Daily MVP'}</button>}
+export function DiscoverButton(){const[loading,setLoading]=useState(false);return <button className="btn" disabled={loading} onClick={async()=>{setLoading(true);await api('/api/keywords/discover',{method:'POST',body:JSON.stringify({limit:24})}); location.reload()}}>Discover Keywords</button>}
+export function SerpButton({id}:{id:number}){const[loading,setLoading]=useState(false);return <button className="btn" disabled={loading} onClick={async()=>{setLoading(true);await api(`/api/keywords/${id}/serp/run`,{method:'POST'}); location.reload()}}>Run SERP</button>}
+export function CardButton({id}:{id:number}){const[loading,setLoading]=useState(false);return <button className="btn" disabled={loading} onClick={async()=>{setLoading(true);await api(`/api/cards/generate/${id}`,{method:'POST'}); location.reload()}}>Generate Card</button>}
+export function Feedback({id}:{id:number}){return <div className="flex gap-2">{['Action','Watch','Reject','Block'].map(x=><button key={x} className="rounded bg-slate-800 px-2 py-1 text-xs hover:bg-slate-700" onClick={async()=>{await api(`/api/cards/${id}/feedback`,{method:'POST',body:JSON.stringify({label:x})}); location.reload()}}>{x}</button>)}</div>}
+
+export function ExportReportButton(){const[loading,setLoading]=useState(false);return <button className="btn" disabled={loading} onClick={async()=>{setLoading(true); const r=await api<any>('/api/reports/export',{method:'POST'}); alert(`Exported: ${r.path}`); setLoading(false)}}>Export Markdown</button>}

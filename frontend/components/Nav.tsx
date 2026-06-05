@@ -1,0 +1,3 @@
+import Link from 'next/link'
+const items=[['/','Dashboard'],['/roots','Root Library'],['/keywords','Keywords'],['/cards','Cards'],['/review','Review Queue'],['/runs','Run History'],['/settings','Settings']]
+export function Nav(){return <aside className="min-h-screen w-64 border-r border-slate-800 bg-slate-950 p-5"><div className="mb-8 text-xl font-bold">Demand Hunter</div><nav className="space-y-2">{items.map(([href,label])=><Link className="block rounded-lg px-3 py-2 text-slate-300 hover:bg-slate-800" href={href} key={href}>{label}</Link>)}</nav><p className="mt-8 text-xs text-slate-500">搜索需求 × SERP 缺口 × 弱竞品 × MVP × 变现</p></aside>}
