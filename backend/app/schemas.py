@@ -26,3 +26,13 @@ class FeedbackIn(BaseModel):
 class DailyRunIn(BaseModel):
     limit: int = 12
     roots: list[str] | None = None
+
+
+class AuthLoginIn(BaseModel):
+    password: str
+
+class AuthLoginOut(BaseModel):
+    token: str
+
+class AutoTickIn(BaseModel):
+    force: bool = False

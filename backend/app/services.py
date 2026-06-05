@@ -15,6 +15,13 @@ DEFAULT_SETTINGS = {
     "TAVILY_API_KEY": "",
     "LLM_PROVIDER": "",
     "LLM_API_KEY": "",
+    "AUTO_RUN_ENABLED": "true",
+    "AUTO_RUN_INTERVAL_MINUTES": "360",
+    "AUTO_RUN_LIMIT": "12",
+    "MIN_ACTION_SCORE": "74",
+    "REQUIRE_SOCIAL_FOR_ACTION": "false",
+    "COLLECT_SOCIAL_EVIDENCE": "false",
+    "BLOCKED_TERMS": "booking,best",
 }
 DEFAULT_ROOTS = [
     ("invoice", "function"), ("calculator", "tool"), ("template", "tool"),
@@ -73,11 +80,13 @@ def discover_keywords(db: Session, limit=24, roots: list[str] | None = None) -> 
     root_rows = q.order_by(models.Root.weight.desc(), models.Root.term).all()
     candidates = []
     seen_queries = set()
-    root_rows = [r for r in root_rows if r.term.lower() not in BLOCKED_AMBIGUOUS_ROOTS]
+    blocked = set(BLOCKED_AMBIGUOUS_ROOTS)
+    blocked.update(t.strip().lower() for t in setting(db, "BLOCKED_TERMS").split(",") if t.strip())
+    root_rows = [r for r in root_rows if r.term.lower() not in blocked]
     for a,b in itertools.combinations(root_rows, 2):
         if compatible(a,b):
             base, terms = ordered_query(a, b)
-            for query in [base, f"best {base}", f"{base} software"]:
+            for query in [base, f"{base} software"]:
                 if query not in seen_queries:
                     seen_queries.add(query)
                     candidates.append((query, terms))
@@ -100,7 +109,7 @@ def searxng_search(db: Session, query: str, categories="general", limit=10) -> l
     if token:
         headers["Authorization"] = f"Bearer {token}"
     try:
-        r = requests.get(f"{base}/search", params={"q": query, "format":"json", "categories":categories, "language":"en"}, headers=headers, timeout=20)
+        r = requests.get(f"{base}/search", params={"q": query, "format":"json", "categories":categories, "language":"en"}, headers=headers, timeout=12)
         r.raise_for_status()
         data = r.json()
         return data.get("results", [])[:limit]
@@ -141,9 +150,11 @@ def run_serp(db: Session, keyword: models.Keyword) -> list[models.SerpResult]:
 
 def collect_social(db: Session, keyword: models.Keyword) -> list[models.SocialEvidence]:
     db.query(models.SocialEvidence).filter_by(keyword_id=keyword.id).delete()
+    if (setting(db, "COLLECT_SOCIAL_EVIDENCE") or "false").lower() not in {"1", "true", "yes", "on"}:
+        db.commit(); return []
     rows=[]
     for suffix, platform in [(" site:reddit.com", "reddit"), (" site:news.ycombinator.com", "hn")]:
-        for item in searxng_search(db, keyword.query + suffix, limit=3):
+        for item in searxng_search(db, keyword.query + suffix, limit=2):
             if not item.get("url"): continue
             row=models.SocialEvidence(keyword_id=keyword.id, platform=platform, url=item.get("url",""), title=item.get("title",""), snippet=item.get("content") or "", pain_tags=json.dumps(["search_mention"]))
             db.add(row); rows.append(row)
@@ -182,11 +193,17 @@ def make_card(db: Session, keyword: models.Keyword) -> models.OpportunityCard:
     mvp = 0.8 if any(w in keyword.query for w in ["calculator","template","generator","tracker"]) else 0.62
     total = round(100*(0.25*demand + 0.25*gap + 0.2*comp + 0.15*mvp + 0.15*mscore), 1)
     has_social = len(socials) > 0
-    verdict = "Action" if total >= 74 and strong_count <= 2 and gap >= .52 and has_social and relevant_count >= 5 else ("Watch" if total >= 55 and relevant_count >= 3 else "Reject")
+    try:
+        min_action_score = float(setting(db, "MIN_ACTION_SCORE") or "74")
+    except Exception:
+        min_action_score = 74.0
+    require_social = (setting(db, "REQUIRE_SOCIAL_FOR_ACTION") or "true").lower() in {"1", "true", "yes", "on"}
+    social_ok = has_social or not require_social
+    verdict = "Action" if total >= min_action_score and strong_count <= 2 and gap >= .52 and social_ok and relevant_count >= 5 else ("Watch" if total >= 55 and relevant_count >= 3 else "Reject")
     evidence = [{"type":"serp","url":s.url,"title":s.title,"tags":json.loads(s.gap_tags or "[]")} for s in serp[:5]] + [{"type":x.platform,"url":x.url,"title":x.title} for x in socials[:4]]
     risks=[]
     if strong_count>3: risks.append("SERP 强品牌过多，切入难度高")
-    if len(socials)==0: risks.append("缺少社媒痛点旁证")
+    if len(socials)==0 and require_social: risks.append("缺少社媒痛点旁证")
     if mismatch_count >= max(2, len(serp)//2): risks.append("SERP 查询意图不匹配，搜索入口不可靠")
     if gap<.5: risks.append("SERP 缺口不明显")
     plan = f"围绕 `{keyword.query}` 做一个单页 MVP：输入关键业务参数，输出可下载结果/模板；首屏解释目标用户、3 个使用场景、FAQ，并用 SearXNG/SERP 证据继续扩展长尾词。"
@@ -194,18 +211,89 @@ def make_card(db: Session, keyword: models.Keyword) -> models.OpportunityCard:
     db.add(card); keyword.score=total; keyword.status=verdict.lower(); db.commit(); db.refresh(card); return card
 
 def daily_run(db: Session, limit=12, roots=None) -> models.RunHistory:
+    # recover stale runs from previous crashes/restarts so dashboard does not stay "running" forever
+    stale = db.query(models.RunHistory).filter(models.RunHistory.status == "running").all()
+    for old in stale:
+        old.status = "failed"
+        old.summary = "stale running run recovered before new run"
+        old.finished_at = datetime.utcnow()
+    db.commit()
     run=models.RunHistory(kind="daily", status="running"); db.add(run); db.commit(); db.refresh(run)
     try:
         kws=discover_keywords(db, limit=limit, roots=roots)
         cards=[]
-        for kw in kws[:limit]:
+        total_kws = len(kws[:limit])
+        for idx, kw in enumerate(kws[:limit], 1):
+            run.summary=json.dumps({"phase":"running", "current": idx, "total": total_kws, "keyword": kw.query, "cards": len(cards)}, ensure_ascii=False)
+            db.commit()
             run_serp(db, kw)
             cards.append(make_card(db, kw))
-        summary={"keywords":len(kws), "cards":len(cards), "action":sum(1 for c in cards if c.verdict=="Action"), "watch":sum(1 for c in cards if c.verdict=="Watch"), "reject":sum(1 for c in cards if c.verdict=="Reject")}
+        summary={"phase":"finished", "keywords":len(kws), "cards":len(cards), "action":sum(1 for c in cards if c.verdict=="Action"), "watch":sum(1 for c in cards if c.verdict=="Watch"), "reject":sum(1 for c in cards if c.verdict=="Reject")}
         run.status="ok"; run.summary=json.dumps(summary, ensure_ascii=False); run.finished_at=datetime.utcnow()
     except Exception as e:
         run.status="failed"; run.summary=str(e); run.finished_at=datetime.utcnow()
     db.commit(); db.refresh(run); return run
+
+
+def test_search_provider(db: Session) -> dict:
+    base = setting(db, "SEARXNG_URL").rstrip("/")
+    started = datetime.utcnow()
+    try:
+        r = requests.get(f"{base}/search", params={"q":"invoice calculator", "format":"json", "language":"en"}, timeout=12)
+        elapsed_ms = int((datetime.utcnow() - started).total_seconds() * 1000)
+        r.raise_for_status()
+        data = r.json()
+        return {"ok": True, "url": base, "elapsed_ms": elapsed_ms, "result_count": len(data.get("results", [])), "sample": (data.get("results") or [{}])[0]}
+    except Exception as e:
+        return {"ok": False, "url": base, "error": str(e)}
+
+def apply_feedback(db: Session, card: models.OpportunityCard, label: str, note: str = "") -> models.OpportunityCard:
+    card.feedback_label = label
+    card.feedback_note = note
+    kw = db.get(models.Keyword, card.keyword_id)
+    roots = []
+    if kw:
+        try: roots = json.loads(kw.root_terms or "[]")
+        except Exception: roots = []
+        kw.status = label.lower()
+    delta = {"Action": 0.2, "Watch": 0.05, "Reject": -0.15, "Block": -0.5}.get(label, 0)
+    for term in roots:
+        root = db.query(models.Root).filter_by(term=term).first()
+        if not root: continue
+        root.weight = max(0.05, min(5.0, (root.weight or 1.0) + delta))
+        if label == "Block":
+            root.enabled = False
+            blocked = [t.strip() for t in setting(db, "BLOCKED_TERMS").split(",") if t.strip()]
+            if term not in blocked:
+                blocked.append(term)
+                row = db.get(models.Setting, "BLOCKED_TERMS") or models.Setting(key="BLOCKED_TERMS")
+                row.value = ",".join(sorted(set(blocked)))
+                row.secret = False
+                db.merge(row)
+    db.commit(); db.refresh(card); return card
+
+def auto_status(db: Session) -> dict:
+    last = db.query(models.RunHistory).order_by(models.RunHistory.started_at.desc()).first()
+    enabled = (setting(db, "AUTO_RUN_ENABLED") or "false").lower() in {"1","true","yes","on"}
+    try: interval = int(setting(db, "AUTO_RUN_INTERVAL_MINUTES") or "360")
+    except Exception: interval = 360
+    return {"enabled": enabled, "interval_minutes": interval, "last_run": None if not last else {"id": last.id, "status": last.status, "summary": json.loads(last.summary or "{}") if last.summary and last.summary.startswith("{") else last.summary, "started_at": last.started_at.isoformat(), "finished_at": last.finished_at.isoformat() if last.finished_at else None}}
+
+def auto_due(db: Session) -> bool:
+    st = auto_status(db)
+    if not st["enabled"]: return False
+    last = db.query(models.RunHistory).order_by(models.RunHistory.started_at.desc()).first()
+    if not last or not last.finished_at: return True
+    return (datetime.utcnow() - last.finished_at).total_seconds() >= st["interval_minutes"] * 60
+
+def auto_tick(db: Session) -> dict:
+    if not auto_due(db):
+        return {"ran": False, "status": auto_status(db)}
+    try: limit = int(setting(db, "AUTO_RUN_LIMIT") or "24")
+    except Exception: limit = 24
+    run = daily_run(db, limit=limit)
+    export_latest_markdown(db)
+    return {"ran": True, "run": {"id": run.id, "status": run.status, "summary": json.loads(run.summary or "{}") if run.summary and run.summary.startswith("{") else run.summary}}
 
 def export_latest_markdown(db: Session) -> str:
     from pathlib import Path
