@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SETTINGS = {
     "SEARXNG_URL": "http://127.0.0.1:8080",
     "SEARXNG_API_TOKEN": "",
+    "SEARXNG_ENGINES": "bing,wikipedia",
     "BRAVE_API_KEY": "",
     "TAVILY_API_KEY": "",
     "LLM_PROVIDER": "",
@@ -109,7 +110,10 @@ def searxng_search(db: Session, query: str, categories="general", limit=10) -> l
     if token:
         headers["Authorization"] = f"Bearer {token}"
     try:
-        r = requests.get(f"{base}/search", params={"q": query, "format":"json", "categories":categories, "language":"en"}, headers=headers, timeout=12)
+        params={"q": query, "format":"json", "categories":categories, "language":"en"}
+        engines = setting(db, "SEARXNG_ENGINES")
+        if engines: params["engines"] = engines
+        r = requests.get(f"{base}/search", params=params, headers=headers, timeout=12)
         r.raise_for_status()
         data = r.json()
         return data.get("results", [])[:limit]
@@ -239,7 +243,8 @@ def test_search_provider(db: Session) -> dict:
     base = setting(db, "SEARXNG_URL").rstrip("/")
     started = datetime.utcnow()
     try:
-        r = requests.get(f"{base}/search", params={"q":"invoice calculator", "format":"json", "language":"en"}, timeout=12)
+        engines = setting(db, "SEARXNG_ENGINES") or "bing,wikipedia"
+        r = requests.get(f"{base}/search", params={"q":"invoice calculator", "format":"json", "language":"en", "engines": engines}, timeout=12)
         elapsed_ms = int((datetime.utcnow() - started).total_seconds() * 1000)
         r.raise_for_status()
         data = r.json()
