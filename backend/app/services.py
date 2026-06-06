@@ -33,6 +33,7 @@ DEFAULT_SETTINGS = {
     "BLOCKED_TERMS": "booking,best",
     "FOUR_FIND_AUTO_ENABLED": "true",
     "FOUR_FIND_AUTO_SEEDS": "invoice calculator,appointment template,compliance tracker",
+    "FOUR_FIND_AUTO_DOMAINS": "",
     "FOUR_FIND_IMPORT_LIMIT": "6",
     "FOUR_FIND_REWRITE_ON_SERP_REJECT": "false",
     "FOUR_FIND_REWRITE_LIMIT": "4",
@@ -124,10 +125,12 @@ def discover_keywords_four_find(db: Session, limit=24, seeds: list[str] | None =
     This keeps discovery as a backend/API capability rather than a shell script.
     """
     from . import four_find
+    raw_domains = setting(db, "FOUR_FIND_AUTO_DOMAINS") or ""
+    domains = [x.strip() for x in re.split(r"[\n,]+", raw_domains) if x.strip()]
     if seeds is None:
         raw = setting(db, "FOUR_FIND_AUTO_SEEDS") or ""
         seeds = [x.strip() for x in raw.split(",") if x.strip()]
-    if not seeds:
+    if not seeds and not domains:
         return []
     try:
         import_limit = int(setting(db, "FOUR_FIND_IMPORT_LIMIT") or str(limit))
@@ -135,6 +138,18 @@ def discover_keywords_four_find(db: Session, limit=24, seeds: list[str] | None =
         import_limit = limit
     out: list[models.Keyword] = []
     seen: set[str] = set()
+    # Site→Keyword and Site→Site loop: learned domains from feedback are now
+    # first-class automatic discovery seeds, not just passive records.
+    for domain in domains[:max(1, limit // 2)]:
+        four_find.find_keywords_from_site(db, domain, searxng_search, limit=8)
+        similar = four_find.find_similar_sites(db, domain, searxng_search, limit=4)
+        for site in similar[:2]:
+            four_find.find_keywords_from_site(db, site.similar_domain, searxng_search, limit=4)
+        for kw in four_find.import_discovered_keywords(db, limit=max(1, min(import_limit, limit))):
+            if kw.query not in seen:
+                seen.add(kw.query); out.append(kw)
+            if len(out) >= limit:
+                return out
     per_seed = max(1, min(import_limit, limit) // max(1, len(seeds)))
     for seed in seeds:
         four_find.run_four_find_and_import(db, seed, searxng_search, depth=2, import_limit=per_seed)
@@ -720,19 +735,33 @@ def apply_feedback(db: Session, card: models.OpportunityCard, label: str, note: 
                 if ck:
                     ck.score = max(0.0, min(1.0, (ck.score or 0.0) + (0.18 if good else -0.25)))
                     ck.status = "imported" if good else "rejected"
+                # Site→Site learning: if the keyword came from a competitor domain,
+                # promote or reject related competitor-site edges as discovery seeds.
+                if "." in seed:
+                    for site in db.query(models.CompetitorSite).filter((models.CompetitorSite.seed_domain == seed) | (models.CompetitorSite.similar_domain == seed)).all():
+                        site.score = max(0.0, min(1.0, (site.score or 0.0) + (0.12 if good else -0.2)))
+                        site.status = "promoted" if good else "rejected"
             # Promote good Four-Find seeds into the auto seed list; bad seeds are
             # removed/blocked so the automatic loop learns from review.
             row = db.get(models.Setting, "FOUR_FIND_AUTO_SEEDS") or models.Setting(key="FOUR_FIND_AUTO_SEEDS", value="")
             seeds = [x.strip() for x in (row.value or "").split(",") if x.strip()]
+            domain_row = db.get(models.Setting, "FOUR_FIND_AUTO_DOMAINS") or models.Setting(key="FOUR_FIND_AUTO_DOMAINS", value="")
+            domains = [x.strip() for x in re.split(r"[\n,]+", (domain_row.value or "")) if x.strip()]
             if good:
                 for seed in roots:
-                    if seed and seed not in seeds:
+                    if seed and "." in seed and seed not in domains:
+                        domains.append(seed)
+                    elif seed and seed not in seeds:
                         seeds.append(seed)
             if bad:
                 seeds = [s for s in seeds if s not in roots]
+                domains = [d for d in domains if d not in roots]
             row.value = ",".join(seeds)
             row.secret = False
             db.merge(row)
+            domain_row.value = "\n".join(domains)
+            domain_row.secret = False
+            db.merge(domain_row)
     delta = {"Action": 0.2, "Watch": 0.05, "Reject": -0.15, "Block": -0.5}.get(label, 0)
     for term in roots:
         root = db.query(models.Root).filter_by(term=term).first()

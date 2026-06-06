@@ -587,6 +587,12 @@ def run_four_find(db: Session, seed_keyword: str, searxng_search_fn, depth=2) ->
     for cd in competitor_domains:
         sims = find_similar_sites(db, cd, searxng_search_fn)
         summary["similar_sites"].extend([{"from": cd, "domain": s.similar_domain, "title": s.title} for s in sims])
+        # Close the Site→Site→Keyword loop: similar sites are not just shown in
+        # the UI; they become reverse-keyword sources automatically.
+        if depth > 1:
+            for sim in sims[:2]:
+                sim_cks = find_keywords_from_site(db, sim.similar_domain, searxng_search_fn, limit=4)
+                summary["competitor_keywords"].extend([{"domain": sim.similar_domain, "keyword": ck.discovered_keyword} for ck in sim_cks])
 
     return summary
 
@@ -762,6 +768,7 @@ def discovery_loop_status(db: Session) -> dict:
         },
         "expansion_status": count_by(expansions, "status"),
         "competitor_keyword_status": count_by(competitor_keywords, "status"),
+        "similar_site_status": count_by(similar_sites, "status"),
         "card_verdicts": verdicts,
         "card_feedback": feedback,
         "keyword_sources": sources,
