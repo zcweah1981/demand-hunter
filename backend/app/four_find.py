@@ -383,8 +383,11 @@ def expand_by_related(db: Session, seed_keyword: str, searxng_search_fn, limit=8
 
 def find_sites_from_keyword(db: Session, keyword: str, searxng_search_fn, limit=10) -> list[dict]:
     """
-    Search a keyword and extract the top domains/sites from SERP.
-    Classify each site by type.
+    Search a keyword and extract viable competitor/tool domains from SERP.
+
+    Four-Find should not turn adjacent consumer brands, travel sites, currency
+    converters, dictionaries, or directories into Site→Keyword seeds. A site is
+    a competitor only if it looks like a tool/SaaS page for the task.
     """
     serp = searxng_search_fn(db, keyword, limit=limit)
     sites = []
@@ -393,21 +396,23 @@ def find_sites_from_keyword(db: Session, keyword: str, searxng_search_fn, limit=
         if (r.get("engine") or "") == "error":
             continue
         d = domain(r.get("url", ""))
-        if not d or d in seen_domains:
+        if not d or d in seen_domains or _is_blocked_domain(d):
             continue
         seen_domains.add(d)
 
-        # Classify site type
-        site_type = _classify_site(d, r.get("title", ""), r.get("content") or r.get("snippet", ""))
+        title = r.get("title", "")
+        snippet = r.get("content") or r.get("snippet", "")
+        site_type = _classify_site(d, title, snippet)
+        commercial_fit = _commercial_site_fit(keyword, d, title, snippet, site_type)
 
         sites.append({
             "domain": d,
             "url": r.get("url", ""),
-            "title": r.get("title", ""),
-            "snippet": (r.get("content") or r.get("snippet", ""))[:200],
+            "title": title,
+            "snippet": snippet[:200],
             "site_type": site_type,
-            "is_competitor": site_type in ("tool", "saas", "marketplace"),
-            "is_weak": any(w in (r.get("title", "") + r.get("url", "")).lower() for w in ("free", "blog", "template", "pdf", "github")),
+            "is_competitor": commercial_fit,
+            "is_weak": any(w in (title + r.get("url", "")).lower() for w in ("free", "blog", "template", "pdf", "github")),
         })
 
     return sites
@@ -428,8 +433,44 @@ GENERIC_DOMAIN_BLOCKLIST = {
     "en.wikipedia.org", "wiktionary.org", "wikihow.com", "britannica.com",
     "reference.com", "icloud.com", "office.com", "outlook.com", "gmail.com",
     "baidu.com", "qq.com", "weibo.com", "taobao.com",
+    "xe.com", "wise.com", "westernunion.com", "bestwestern.com", "marriott.com",
+    "hilton.com", "booking.com", "expedia.com", "hotels.com", "trip.com",
+    "zillow.com", "trulia.com", "apartments.com",
     "support.microsoft.com", "support.google.com", "support.apple.com",
 }
+
+COMMERCIAL_COMPETITOR_TERMS = {
+    "calculator", "template", "generator", "checker", "tracker", "converter",
+    "estimate", "invoice", "notice", "reminder", "checklist", "dashboard",
+    "software", "tool", "app", "pricing", "subscription", "free", "online",
+}
+
+NON_COMPETITOR_VERTICAL_TERMS = {
+    "hotel", "hotels", "flight", "flights", "rental listings", "apartments for rent",
+    "currency exchange", "exchange rate", "bank", "booking", "reservation",
+    "map", "weather", "news", "dictionary", "definition",
+}
+
+def _is_blocked_domain(d: str) -> bool:
+    return bool(d) and (d in GENERIC_DOMAIN_BLOCKLIST or any(d == b or d.endswith("." + b) for b in GENERIC_DOMAIN_BLOCKLIST))
+
+def _commercial_site_fit(seed_keyword: str, d: str, title: str, snippet: str, site_type: str) -> bool:
+    """Gate Keyword→Site candidates before using them as Site→Keyword seeds."""
+    text = f"{d} {title} {snippet}".lower()
+    seed = seed_keyword.lower()
+    if _is_blocked_domain(d):
+        return False
+    if any(t in text for t in NON_COMPETITOR_VERTICAL_TERMS):
+        return False
+    if site_type not in {"tool", "saas"}:
+        return False
+    if not any(t in text for t in COMMERCIAL_COMPETITOR_TERMS):
+        return False
+    seed_terms = {w for w in re.findall(r"[a-z0-9]+", seed) if len(w) >= 4}
+    text_terms = set(re.findall(r"[a-z0-9]+", text))
+    overlap = seed_terms & text_terms
+    obvious_tool = any(t in text for t in ("calculator", "template", "generator", "tracker", "checker"))
+    return obvious_tool or len(overlap) >= 2
 
 def _classify_site(domain: str, title: str, snippet: str) -> str:
     text = (domain + " " + title + " " + snippet).lower()
@@ -679,7 +720,7 @@ def run_four_find(db: Session, seed_keyword: str, searxng_search_fn, depth=2) ->
     summary["sites"] = sites
 
     # Step 3: 站找词 (for top competitor sites)
-    competitor_domains = [s["domain"] for s in sites if s.get("is_competitor") or s.get("site_type") in ("tool", "saas", "content", "directory")][:depth]
+    competitor_domains = [s["domain"] for s in sites if s.get("is_competitor")][:depth]
     for cd in competitor_domains:
         cks = find_keywords_from_site(db, cd, searxng_search_fn)
         summary["competitor_keywords"].extend([{"domain": cd, "keyword": ck.discovered_keyword} for ck in cks])
@@ -755,7 +796,7 @@ def import_discovered_keywords(db: Session, seed_keyword: str | None = None, lim
     imported: list[models.Keyword] = []
     seen: set[str] = set()
 
-    q = db.query(models.DiscoveryExpansion).filter(models.DiscoveryExpansion.status == "new", models.DiscoveryExpansion.score >= 0.62)
+    q = db.query(models.DiscoveryExpansion).filter(models.DiscoveryExpansion.status == "new", models.DiscoveryExpansion.score >= 0.68)
     if seed_keyword:
         q = q.filter(models.DiscoveryExpansion.seed_keyword == seed_keyword)
     expansions = q.order_by(models.DiscoveryExpansion.score.desc(), models.DiscoveryExpansion.created_at.desc()).limit(limit).all()
@@ -773,7 +814,7 @@ def import_discovered_keywords(db: Session, seed_keyword: str | None = None, lim
 
     remaining = max(0, limit - len(imported))
     if remaining:
-        cq = db.query(models.CompetitorKeyword).filter(models.CompetitorKeyword.status == "new", models.CompetitorKeyword.score >= 0.62)
+        cq = db.query(models.CompetitorKeyword).filter(models.CompetitorKeyword.status == "new", models.CompetitorKeyword.score >= 0.68)
         competitor_keywords = cq.order_by(models.CompetitorKeyword.score.desc(), models.CompetitorKeyword.created_at.desc()).limit(remaining).all()
         for ck in competitor_keywords:
             if ck.discovered_keyword in seen or not candidate_is_importable(ck.competitor_domain, ck.discovered_keyword, ck.competitor_domain):
