@@ -1,0 +1,24 @@
+'use client'
+import {useEffect, useState} from 'react'
+
+export type Lang='zh'|'en'
+const dict:Record<string,Record<Lang,string>>={
+ overview:{zh:'概览',en:'Overview'}, discovery:{zh:'四找发现',en:'Discovery'}, dashboard:{zh:'仪表盘',en:'Dashboard'}, review:{zh:'复核队列',en:'Review Queue'}, cards:{zh:'机会卡',en:'Cards'}, keywords:{zh:'关键词',en:'Keywords'}, roots:{zh:'词根库',en:'Root Library'}, runs:{zh:'运行历史',en:'Run History'}, settings:{zh:'设置',en:'Settings'},
+ qualityFormula:{zh:'质量公式',en:'Quality Formula'}, formula:{zh:'需求 × 入口 × 缺口 × MVP × 变现',en:'Demand × Entry × Gap × MVP × Monetization'},
+ configuration:{zh:'配置',en:'Configuration'}, saveGroup:{zh:'保存模块',en:'Save module'}, testProviders:{zh:'测试搜索源',en:'Test Providers'}, testing:{zh:'测试中...',en:'Testing...'},
+ searchProviders:{zh:'搜索源',en:'Search Providers'}, searchDesc:{zh:'SearXNG 多地址、provider fallback、SERP strategy',en:'SearXNG URLs, provider fallback, SERP strategy'},
+ braveDesc:{zh:'Brave 多 Key 轮询',en:'Brave multi-key rotation'}, tavilyDesc:{zh:'Tavily 多 Key 轮询',en:'Tavily multi-key rotation'},
+ llmDesc:{zh:'Primary + fallback 模型配置',en:'Primary + fallback model configuration'}, automation:{zh:'自动化',en:'Automation'}, automationDesc:{zh:'自动运行和 Four-Find 闭环策略',en:'Auto run and Four-Find loop policy'}, quality:{zh:'质量',en:'Quality'}, qualityDesc:{zh:'Action 门槛和噪音控制',en:'Action threshold and noise controls'}, security:{zh:'安全',en:'Security'}, securityDesc:{zh:'登录密码修改',en:'Login password change'},
+ secret:{zh:'密钥',en:'secret'}, rotation:{zh:'轮询',en:'rotation'}, noEntries:{zh:'暂无明细',en:'No entries yet'}, confirmAdd:{zh:'确认新增',en:'Confirm add'}, remove:{zh:'删除',en:'Remove'}, pasteBulk:{zh:'也可直接批量粘贴，每行一条',en:'Bulk paste is also supported, one per line'},
+ rotationHint:{zh:'支持多条，按顺序轮询；某条失败自动尝试下一条。',en:'Supports multiple entries. Rotates in order; failed entries fall through to the next.'},
+ fallbackHint:{zh:'JSON 数组：provider/model/api_key。Primary 失败后按顺序 fallback。',en:'JSON array: provider/model/api_key. Fallbacks run in order after primary fails.'},
+ changePassword:{zh:'修改登录密码',en:'Change login password'}, currentPassword:{zh:'当前密码',en:'Current password'}, newPassword:{zh:'新密码（至少 8 位）',en:'New password (min 8 chars)'}, updatePassword:{zh:'更新密码',en:'Update password'},
+ saved:{zh:'已保存',en:'Saved'}, passwordChanged:{zh:'密码已修改',en:'Password changed'}, searchOk:{zh:'搜索正常',en:'Search OK'},
+}
+export function tr(key:string, lang:Lang){return dict[key]?.[lang] || key}
+export function useLang(){
+ const [lang,setLangState]=useState<Lang>('zh')
+ useEffect(()=>{const v=localStorage.getItem('dh_lang'); if(v==='en'||v==='zh') setLangState(v)},[])
+ function setLang(v:Lang){localStorage.setItem('dh_lang',v); setLangState(v)}
+ return {lang,setLang,t:(key:string)=>tr(key,lang)}
+}
