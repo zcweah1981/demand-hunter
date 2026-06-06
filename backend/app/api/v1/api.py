@@ -1,8 +1,15 @@
 from __future__ import annotations
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, discovery, settings
+from app.api.v1.endpoints import auth, auto, cards, discovery, health, keywords, reports, roots, runs, settings
 
 api_router = APIRouter()
+api_router.include_router(health.router)
 api_router.include_router(auth.router)
 api_router.include_router(settings.router)
 api_router.include_router(discovery.router)
+api_router.include_router(roots.router)
+api_router.include_router(keywords.router)
+api_router.include_router(cards.router)
+api_router.include_router(runs.router)
+api_router.include_router(auto.router)
+api_router.include_router(reports.router)
