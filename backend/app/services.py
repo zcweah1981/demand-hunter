@@ -13,7 +13,7 @@ DEFAULT_SETTINGS = {
     "SEARXNG_URLS": "",
     "SEARXNG_ROTATION_STRATEGY": "round_robin",
     "SEARXNG_API_TOKEN": "",
-    "SEARXNG_ENGINES": "bing,wikipedia",
+    "SEARXNG_ENGINES": "bing",
     "BRAVE_API_KEY": "",
     "BRAVE_API_KEYS": "",
     "TAVILY_API_KEY": "",
@@ -201,9 +201,10 @@ def searxng_search(db: Session, query: str, categories="general", limit=10) -> l
     last_error = ""
     for base in urls:
         try:
-            params={"q": query, "format":"json", "categories":categories, "language":"en"}
             engines = setting(db, "SEARXNG_ENGINES")
+            params={"q": query, "format":"json", "language":"en"}
             if engines: params["engines"] = engines
+            elif categories: params["categories"] = categories
             r = requests.get(f"{base}/search", params=params, headers=headers, timeout=12)
             r.raise_for_status()
             data = r.json()

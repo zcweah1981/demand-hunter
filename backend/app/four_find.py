@@ -425,6 +425,7 @@ GENERIC_DOMAIN_BLOCKLIST = {
     "dictionary.com", "merriam-webster.com", "dictionary.cambridge.org", "thesaurus.com",
     "github.com", "stackoverflow.com", "quora.com", "medium.com", "substack.com",
     "amazon.com", "ebay.com", "walmart.com", "target.com", "etsy.com",
+    "wish.com", "aliexpress.com", "temu.com", "shein.com",
     "microsoft.com", "apple.com", "adobe.com", "zoom.us", "slack.com",
     "netflix.com", "spotify.com", "twitch.tv", "discord.com",
     "yelp.com", "tripadvisor.com", "booking.com",
@@ -436,6 +437,9 @@ GENERIC_DOMAIN_BLOCKLIST = {
     "xe.com", "wise.com", "westernunion.com", "bestwestern.com", "marriott.com",
     "hilton.com", "booking.com", "expedia.com", "hotels.com", "trip.com",
     "zillow.com", "trulia.com", "apartments.com",
+    "geeksforgeeks.org", "tutorialspoint.com", "w3schools.com", "javatpoint.com",
+    "programiz.com", "freecodecamp.org", "khanacademy.org", "coursera.org",
+    "udemy.com", "edx.org", "study.com", "byjus.com", "vedantu.com",
     "support.microsoft.com", "support.google.com", "support.apple.com",
 }
 
@@ -448,7 +452,8 @@ COMMERCIAL_COMPETITOR_TERMS = {
 NON_COMPETITOR_VERTICAL_TERMS = {
     "hotel", "hotels", "flight", "flights", "rental listings", "apartments for rent",
     "currency exchange", "exchange rate", "bank", "booking", "reservation",
-    "map", "weather", "news", "dictionary", "definition",
+    "map", "weather", "news", "dictionary", "definition", "tutorial",
+    "course", "exam", "quiz", "homework", "lesson",
 }
 
 def _is_blocked_domain(d: str) -> bool:
@@ -466,6 +471,11 @@ def _commercial_site_fit(seed_keyword: str, d: str, title: str, snippet: str, si
         return False
     if not any(t in text for t in COMMERCIAL_COMPETITOR_TERMS):
         return False
+    if "." in seed:
+        # Domain-to-domain similarity: after block/content gates, a true tool/SaaS
+        # signal is enough. Requiring lexical overlap with the domain name would
+        # over-penalize legitimate competitors with different brands.
+        return any(t in text for t in ("calculator", "template", "generator", "tracker", "checker", "software", "tool", "app", "pricing"))
     seed_terms = {w for w in re.findall(r"[a-z0-9]+", seed) if len(w) >= 4}
     text_terms = set(re.findall(r"[a-z0-9]+", text))
     overlap = seed_terms & text_terms
@@ -478,14 +488,14 @@ def _classify_site(domain: str, title: str, snippet: str) -> str:
         return "forum"
     if any(d in domain for d in STRONG_DOMAINS_TUPLE):
         return "strong_brand"
+    if any(w in text for w in ("tutorial", "course", "exam", "quiz", "homework", "lesson")):
+        return "content"
     if any(w in text for w in ("calculator", "generator", "converter", "checker", "editor", "tracker")):
         return "tool"
     if any(w in text for w in ("pricing", "subscription", "sign up", "dashboard", "saas")):
         return "saas"
     if any(w in text for w in ("buy", "shop", "store", "marketplace", "product")):
         return "marketplace"
-    if any(w in text for w in ("blog", "guide", "article", "tutorial", "how to")):
-        return "content"
     if any(w in text for w in ("directory", "list", "top 10", "best")):
         return "directory"
     if "youtube.com" in domain or "vimeo.com" in domain:
@@ -505,6 +515,9 @@ def find_keywords_from_site(db: Session, competitor_domain: str, searxng_search_
     existing = set(r.discovered_keyword for r in db.query(models.CompetitorKeyword).filter_by(competitor_domain=competitor_domain).all())
     brand = competitor_domain.split(".")[0]
 
+    if _is_blocked_domain(competitor_domain):
+        return []
+
     # Method 1: domain + intent term search → scrape titles from their own pages
     for intent_term in ["", "calculator", "template", "tool", "free", "online"]:
         if len(results) >= limit:
@@ -518,7 +531,11 @@ def find_keywords_from_site(db: Session, competitor_domain: str, searxng_search_
             if r_domain != competitor_domain:
                 continue
             title = (r.get("title") or "").strip()
+            snippet = r.get("content") or r.get("snippet", "")
             url = r.get("url") or ""
+            site_type = _classify_site(r_domain, title, snippet)
+            if site_type not in {"tool", "saas"} or not _commercial_site_fit(competitor_domain, r_domain, title, snippet, site_type):
+                continue
             if title:
                 kw = _title_to_keyword(title)
                 if kw and kw not in existing:
@@ -605,6 +622,16 @@ def _title_to_keyword(title: str) -> str:
     # Remove common prefixes
     clean = re.sub(r"^(best|top \d+|free)\s+", "", clean, flags=re.IGNORECASE)
     clean = clean.strip().lower()
+    # Drop homepage/brand directory titles like "Calculator.net: Free Online Calculators".
+    if ":" in clean:
+        left, right = [x.strip() for x in clean.split(":", 1)]
+        if "." in left or left.endswith((".com", ".net", ".org")):
+            clean = right
+    clean = re.sub(r"\b(free online calculators?|online calculators?)\b", "calculator", clean).strip()
+    if clean in {"calculator", "calculators", "free calculator", "online calculator"}:
+        return ""
+    if any(bad in clean for bad in ("home page", "homepage", "all calculators", "calculator.net")):
+        return ""
     # Keep only if reasonable length
     if 5 <= len(clean) <= 80:
         return clean
@@ -659,11 +686,13 @@ def find_similar_sites(db: Session, seed_domain: str, searxng_search_fn, limit=1
             if not d or d == seed_domain or d in existing:
                 continue
             # Skip generic / non-tool sites
-            if d in GENERIC_DOMAIN_BLOCKLIST or any(s in d for s in GENERIC_DOMAIN_BLOCKLIST):
+            if _is_blocked_domain(d):
                 continue
-            # Classify and only keep tool/saas/marketplace/content
-            site_type = _classify_site(d, r.get("title", ""), r.get("content") or r.get("snippet", ""))
-            if site_type in ("forum", "strong_brand", "video", "other"):
+            title = r.get("title", "")
+            snippet = r.get("content") or r.get("snippet", "")
+            # Classify and only keep true tool/saas peers.
+            site_type = _classify_site(d, title, snippet)
+            if not _commercial_site_fit(seed_domain, d, title, snippet, site_type):
                 continue
             existing.add(d)
             row = db.query(models.CompetitorSite).filter_by(
@@ -675,8 +704,8 @@ def find_similar_sites(db: Session, seed_domain: str, searxng_search_fn, limit=1
                     similar_domain=d,
                     discovery_method="alternative_to",
                     source_url=r.get("url", ""),
-                    title=r.get("title", ""),
-                    score=0.7 if site_type in ("tool", "saas") else 0.5,
+                    title=title,
+                    score=0.7,
                 )
                 db.add(row)
                 results.append(row)
