@@ -14,9 +14,9 @@ export function AppShell({children}: {children: React.ReactNode}) {
 
   return (
     <AuthGate>
-      <div className="min-h-screen lg:flex">
+      <div className="min-h-screen md:flex">
         <Nav />
-        <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
+        <main className="min-w-0 flex-1 p-4 sm:p-6 md:p-8">{children}</main>
       </div>
     </AuthGate>
   )
