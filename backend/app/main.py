@@ -6,7 +6,9 @@ from sqlalchemy.orm import Session
 from .database import Base, engine, get_db, configure_sqlite
 from . import four_find, models, schemas, services
 from .core.config import config
-from .core.security import AUTH_PASSWORD, AUTH_TOKEN, require_auth
+from .core.security import require_auth
+from .api.v1.api import api_router
+from .api.deps import obj
 
 RUN_LOCK = threading.Lock()
 PUBLIC_PATHS = {"/api/health", "/api/auth/login"}
@@ -44,6 +46,7 @@ configure_sqlite()
 Base.metadata.create_all(bind=engine)
 app = FastAPI(title="Demand Hunter API", version="0.2.0")
 app.add_middleware(CORSMiddleware, allow_origins=config.cors_origin_list, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.include_router(api_router)
 
 def _run_daily_background(force: bool = False):
     from .database import SessionLocal
@@ -84,14 +87,6 @@ def startup():
     db=SessionLocal(); services.init_defaults(db); db.close()
     if config.auto_worker_enabled:
         threading.Thread(target=_auto_loop, daemon=True).start()
-
-def obj(row):
-    d={c.name:getattr(row,c.name) for c in row.__table__.columns}
-    for k in ["root_terms","gap_tags","weakness_tags","pain_tags","evidence_json","risks","summary"]:
-        if k in d and isinstance(d[k], str):
-            try: d[k]=json.loads(d[k])
-            except Exception: pass
-    return d
 
 @app.get("/api/health")
 def health(db: Session=Depends(get_db)):
@@ -204,36 +199,6 @@ def discovery_import_discovered(payload: schemas.DiscoverySeedIn, _: bool=Depend
     return [obj(kw) for kw in rows]
 
 
-@app.post("/api/auth/login")
-def login(payload: schemas.AuthLoginIn):
-    if not AUTH_PASSWORD:
-        return {"token": AUTH_TOKEN, "auth_enabled": False}
-    if not hmac.compare_digest(payload.password, AUTH_PASSWORD):
-        raise HTTPException(status_code=401, detail="invalid password")
-    return {"token": AUTH_TOKEN, "auth_enabled": True}
-
-@app.get("/api/auth/me")
-def me(_: bool=Depends(require_auth)):
-    return {"ok": True, "auth_enabled": bool(AUTH_PASSWORD)}
-
-@app.get("/api/settings")
-def list_settings(_: bool=Depends(require_auth), db: Session=Depends(get_db)):
-    services.init_defaults(db)
-    rows=db.query(models.Setting).order_by(models.Setting.key).all()
-    out=[]
-    for r in rows:
-        d=obj(r)
-        if r.secret and r.value: d["value"]="***" + r.value[-4:]
-        out.append(d)
-    return out
-
-@app.post("/api/settings")
-def upsert_setting(payload: schemas.SettingIn, _: bool=Depends(require_auth), db: Session=Depends(get_db)):
-    row=db.get(models.Setting, payload.key) or models.Setting(key=payload.key)
-    row.value=payload.value; row.secret=payload.secret
-    db.merge(row); db.commit()
-    return obj(row)
-
 @app.get("/api/roots")
 def roots(_: bool=Depends(require_auth), db: Session=Depends(get_db)):
     services.init_defaults(db)
@@ -315,10 +280,6 @@ def run_daily(payload: schemas.DailyRunIn, _: bool=Depends(require_auth), db: Se
 def runs(_: bool=Depends(require_auth), db: Session=Depends(get_db)):
     return [obj(x) for x in db.query(models.RunHistory).order_by(models.RunHistory.started_at.desc()).limit(50).all()]
 
-
-@app.post("/api/settings/test-search")
-def test_search(_: bool=Depends(require_auth), db: Session=Depends(get_db)):
-    return services.test_search_provider(db)
 
 @app.get("/api/auto/status")
 def auto_status(_: bool=Depends(require_auth), db: Session=Depends(get_db)):
