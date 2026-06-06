@@ -30,6 +30,8 @@ DEFAULT_SETTINGS = {
     "FOUR_FIND_REWRITE_LIMIT": "4",
     "FOUR_FIND_SERP_STRATEGY_ENABLED": "true",
     "FOUR_FIND_SERP_VARIANT_LIMIT": "2",
+    "SERP_PROVIDER_ORDER": "searxng,brave,tavily",
+    "SERP_PROVIDER_ATTEMPT_LIMIT": "3",
 }
 DEFAULT_ROOTS = [
     ("invoice", "function"), ("calculator", "tool"), ("template", "tool"),
@@ -156,6 +158,72 @@ def searxng_search(db: Session, query: str, categories="general", limit=10) -> l
     except Exception as e:
         return [{"title":"SearXNG error", "url":"", "content":str(e), "engine":"error"}]
 
+def brave_search(db: Session, query: str, limit=10) -> list[dict]:
+    key = setting(db, "BRAVE_API_KEY")
+    if not key:
+        return []
+    try:
+        r = requests.get(
+            "https://api.search.brave.com/res/v1/web/search",
+            params={"q": query, "count": min(max(limit, 1), 20), "search_lang": "en"},
+            headers={"Accept": "application/json", "X-Subscription-Token": key},
+            timeout=10,
+        )
+        r.raise_for_status()
+        data = r.json()
+        out=[]
+        for item in (data.get("web", {}) or {}).get("results", [])[:limit]:
+            out.append({
+                "title": item.get("title") or "",
+                "url": item.get("url") or "",
+                "content": item.get("description") or "",
+                "engine": "brave",
+            })
+        return out
+    except Exception as e:
+        return [{"title":"Brave error", "url":"", "content":str(e), "engine":"error"}]
+
+def tavily_search(db: Session, query: str, limit=10) -> list[dict]:
+    key = setting(db, "TAVILY_API_KEY")
+    if not key:
+        return []
+    try:
+        r = requests.post(
+            "https://api.tavily.com/search",
+            json={"api_key": key, "query": query, "max_results": min(max(limit, 1), 10), "search_depth": "basic", "include_answer": False},
+            timeout=12,
+        )
+        r.raise_for_status()
+        data = r.json()
+        out=[]
+        for item in data.get("results", [])[:limit]:
+            out.append({
+                "title": item.get("title") or "",
+                "url": item.get("url") or "",
+                "content": item.get("content") or "",
+                "engine": "tavily",
+            })
+        return out
+    except Exception as e:
+        return [{"title":"Tavily error", "url":"", "content":str(e), "engine":"error"}]
+
+def available_serp_providers(db: Session) -> list[str]:
+    order = [x.strip().lower() for x in (setting(db, "SERP_PROVIDER_ORDER") or "searxng").split(",") if x.strip()]
+    out=[]
+    for p in order:
+        if p == "searxng":
+            out.append(p)
+        elif p == "brave" and setting(db, "BRAVE_API_KEY"):
+            out.append(p)
+        elif p == "tavily" and setting(db, "TAVILY_API_KEY"):
+            out.append(p)
+    return out or ["searxng"]
+
+def provider_search(db: Session, provider: str, query: str, limit=10) -> list[dict]:
+    if provider == "brave": return brave_search(db, query, limit)
+    if provider == "tavily": return tavily_search(db, query, limit)
+    return searxng_search(db, query, limit=limit)
+
 def domain(url: str) -> str:
     try: return urlparse(url).netloc.lower().removeprefix("www.")
     except Exception: return ""
@@ -208,7 +276,7 @@ def serp_query_variants(query: str) -> list[str]:
             seen.add(v); out.append(v)
     return out
 
-def _serp_meta_from_items(items: list[dict], original_query: str, search_query: str) -> dict:
+def _serp_meta_from_items(items: list[dict], original_query: str, search_query: str, provider: str = "searxng") -> dict:
     evaluated=[]
     for item in items[:10]:
         tags, weakness = gap_tags_for(item, original_query)
@@ -219,7 +287,7 @@ def _serp_meta_from_items(items: list[dict], original_query: str, search_query: 
     avg_gap = sum(e["weakness"] for e in evaluated) / max(1, len(evaluated))
     # selection_score rewards relevance first, then useful weakness; penalizes strong-brand SERPs.
     selection_score = round((relevant / max(1, len(evaluated))) * 0.65 + avg_gap * 0.35 - strong * 0.03, 3)
-    return {"query": search_query, "results": len(evaluated), "relevant": relevant, "mismatch": mismatch, "strong": strong, "avg_gap": round(avg_gap, 3), "selection_score": selection_score, "evaluated": evaluated}
+    return {"provider": provider, "query": search_query, "results": len(evaluated), "relevant": relevant, "mismatch": mismatch, "strong": strong, "avg_gap": round(avg_gap, 3), "selection_score": selection_score, "evaluated": evaluated}
 
 def choose_best_serp_items(db: Session, original_query: str, limit: int = 10) -> tuple[list[dict], dict]:
     try:
@@ -227,11 +295,24 @@ def choose_best_serp_items(db: Session, original_query: str, limit: int = 10) ->
     except Exception:
         variant_limit = 2
     variants = serp_query_variants(original_query)[:max(1, variant_limit)]
+    providers = available_serp_providers(db)
+    try:
+        attempt_limit = int(setting(db, "SERP_PROVIDER_ATTEMPT_LIMIT") or "3")
+    except Exception:
+        attempt_limit = 3
     metas=[]
+    attempts=0
     for variant in variants:
-        items = searxng_search(db, variant, limit=limit)
-        metas.append(_serp_meta_from_items(items, original_query, variant))
+        for provider in providers:
+            if attempts >= max(1, attempt_limit):
+                break
+            attempts += 1
+            items = provider_search(db, provider, variant, limit=limit)
+            metas.append(_serp_meta_from_items(items, original_query, variant, provider))
+        if attempts >= max(1, attempt_limit):
+            break
     best = sorted(metas, key=lambda m: (m["selection_score"], m["relevant"], m["avg_gap"]), reverse=True)[0] if metas else _serp_meta_from_items([], original_query, original_query)
+    best["attempts"] = [{k:v for k,v in m.items() if k != "evaluated"} for m in metas]
     return [e["item"] for e in best.get("evaluated", [])], {k:v for k,v in best.items() if k != "evaluated"}
 
 def run_serp(db: Session, keyword: models.Keyword) -> list[models.SerpResult]:
@@ -491,15 +572,16 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
 def test_search_provider(db: Session) -> dict:
     base = setting(db, "SEARXNG_URL").rstrip("/")
     started = datetime.utcnow()
+    providers = {"available": available_serp_providers(db), "brave_configured": bool(setting(db, "BRAVE_API_KEY")), "tavily_configured": bool(setting(db, "TAVILY_API_KEY"))}
     try:
         engines = setting(db, "SEARXNG_ENGINES") or "bing,wikipedia"
         r = requests.get(f"{base}/search", params={"q":"invoice calculator", "format":"json", "language":"en", "engines": engines}, timeout=12)
         elapsed_ms = int((datetime.utcnow() - started).total_seconds() * 1000)
         r.raise_for_status()
         data = r.json()
-        return {"ok": True, "url": base, "elapsed_ms": elapsed_ms, "result_count": len(data.get("results", [])), "sample": (data.get("results") or [{}])[0]}
+        return {"ok": True, "url": base, "elapsed_ms": elapsed_ms, "result_count": len(data.get("results", [])), "sample": (data.get("results") or [{}])[0], "providers": providers}
     except Exception as e:
-        return {"ok": False, "url": base, "error": str(e)}
+        return {"ok": False, "url": base, "error": str(e), "providers": providers}
 
 def apply_feedback(db: Session, card: models.OpportunityCard, label: str, note: str = "") -> models.OpportunityCard:
     card.feedback_label = label
