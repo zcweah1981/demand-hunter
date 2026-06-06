@@ -519,6 +519,46 @@ def monetization(query: str, intent: str) -> tuple[str, float]:
     if "compliance" in q: return "leadgen + paid report", 0.65
     return "content/tool affiliate", 0.5
 
+def business_profile(query: str, intent: str, monetization_type: str) -> dict:
+    """Business-layer interpretation for opportunity cards.
+
+    This turns SERP/search evidence into a decision-oriented business brief:
+    who cares, what triggers payment, the wedge, and the first validation step.
+    """
+    q = query.lower()
+    icp = "SEO traffic operator / niche tool builder"
+    pain = "User wants a faster self-serve answer than generic search results."
+    pay_trigger = "Pays when the output saves time, avoids mistakes, or can be reused in workflow."
+    wedge = "Single-purpose tool with clearer UX and better long-tail coverage than generic content pages."
+    validation = [
+        "Publish a focused landing page for the exact keyword.",
+        "Add one interactive output or downloadable artifact.",
+        "Measure impressions, CTR, and completion events before building a larger product.",
+    ]
+    business_type = "content/tool affiliate"
+    if any(w in q for w in ["appointment", "patient", "clinic", "dental", "salon"]):
+        icp = "Small clinic / appointment-heavy local service operator"
+        pain = "They need repeatable appointment templates, reminders, cancellation/reschedule flows, or intake forms."
+        pay_trigger = "Pays when no-shows, admin time, or inconsistent communication create visible cost."
+        wedge = "Template + workflow pack for a narrow vertical, not a generic scheduling blog post."
+        business_type = "template pack → leadgen → lightweight SaaS"
+        validation = ["Ship 3 vertical templates", "Collect email before download", "Offer setup/service upsell to validate willingness to pay"]
+    elif any(w in q for w in ["invoice", "late fee", "payment", "estimate", "tax", "calculator"]):
+        icp = "Freelancer / contractor / small business finance operator"
+        pain = "They need quick, defensible calculations for invoices, fees, estimates, or payment reminders."
+        pay_trigger = "Pays when calculation accuracy or professional output directly affects cash collection."
+        wedge = "Calculator plus printable/exportable invoice/payment artifact, not just a generic calculator."
+        business_type = "SEO calculator → affiliate/lead magnet → paid templates"
+        validation = ["Launch calculator with export", "Track calculate/export events", "Test paid template bundle or accounting affiliate CTA"]
+    elif any(w in q for w in ["compliance", "audit", "vendor", "training", "permit", "renewal"]):
+        icp = "Operations / compliance owner in a small regulated business"
+        pain = "They need to avoid missed deadlines, audits, renewals, or vendor compliance gaps."
+        pay_trigger = "Pays when missed compliance creates financial, legal, or operational risk."
+        wedge = "Deadline/checklist tracker for one narrow regulation or workflow, not a broad compliance platform."
+        business_type = "leadgen + paid report/template → vertical micro-SaaS"
+        validation = ["Create one compliance checklist/tracker", "Gate export behind email", "Interview users who export or return"]
+    return {"type":"business", "business_type": business_type, "icp": icp, "pain": pain, "pay_trigger": pay_trigger, "wedge": wedge, "validation_steps": validation, "monetization": monetization_type}
+
 def make_card(db: Session, keyword: models.Keyword) -> models.OpportunityCard:
     serp = db.query(models.SerpResult).filter_by(keyword_id=keyword.id).all() or run_serp(db, keyword)
     comps = analyze_competitors(db, keyword)
@@ -531,6 +571,7 @@ def make_card(db: Session, keyword: models.Keyword) -> models.OpportunityCard:
     demand = min(1.0, 0.30 + 0.06*relevant_count + 0.08*len(socials))
     comp = min(1.0, 0.35 + 0.1*len(comps) + 0.08*forum_count - 0.06*strong_count)
     mtype, mscore = monetization(keyword.query, keyword.intent)
+    biz = business_profile(keyword.query, keyword.intent, mtype)
     mvp = 0.8 if any(w in keyword.query for w in ["calculator","template","generator","tracker"]) else 0.62
     total = round(100*(0.25*demand + 0.25*gap + 0.2*comp + 0.15*mvp + 0.15*mscore), 1)
     has_social = len(socials) > 0
@@ -541,13 +582,13 @@ def make_card(db: Session, keyword: models.Keyword) -> models.OpportunityCard:
     require_social = (setting(db, "REQUIRE_SOCIAL_FOR_ACTION") or "true").lower() in {"1", "true", "yes", "on"}
     social_ok = has_social or not require_social
     verdict = "Action" if total >= min_action_score and strong_count <= 2 and gap >= .52 and social_ok and relevant_count >= 5 else ("Watch" if total >= 55 and relevant_count >= 3 else "Reject")
-    evidence = [{"type":"serp","url":s.url,"title":s.title,"tags":json.loads(s.gap_tags or "[]")} for s in serp[:5]] + [{"type":x.platform,"url":x.url,"title":x.title} for x in socials[:4]]
+    evidence = [biz] + [{"type":"serp","url":s.url,"title":s.title,"tags":json.loads(s.gap_tags or "[]")} for s in serp[:5]] + [{"type":x.platform,"url":x.url,"title":x.title} for x in socials[:4]]
     risks=[]
     if strong_count>3: risks.append("SERP 强品牌过多，切入难度高")
     if len(socials)==0 and require_social: risks.append("缺少社媒痛点旁证")
     if mismatch_count >= max(2, len(serp)//2): risks.append("SERP 查询意图不匹配，搜索入口不可靠")
     if gap<.5: risks.append("SERP 缺口不明显")
-    plan = f"围绕 `{keyword.query}` 做一个单页 MVP：输入关键业务参数，输出可下载结果/模板；首屏解释目标用户、3 个使用场景、FAQ，并用 SearXNG/SERP 证据继续扩展长尾词。"
+    plan = f"业务切入：{biz['business_type']}。ICP：{biz['icp']}。MVP：围绕 `{keyword.query}` 做一个单页工具/模板，输出可下载结果；首屏解释目标用户、3 个使用场景、FAQ，并先用导出/留资/点击事件验证付费触发。"
     card=models.OpportunityCard(keyword_id=keyword.id,title=f"{keyword.query} opportunity", verdict=verdict, score=total, demand_score=round(demand,2), serp_gap_score=round(gap,2), competitor_weakness_score=round(comp,2), mvp_score=mvp, monetization_score=mscore, monetization_type=mtype, mvp_plan=plan, evidence_json=json.dumps(evidence,ensure_ascii=False), risks=json.dumps(risks,ensure_ascii=False))
     db.add(card); keyword.score=total; keyword.status=verdict.lower(); db.commit(); db.refresh(card); return card
 
