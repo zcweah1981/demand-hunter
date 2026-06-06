@@ -50,3 +50,10 @@ class DiscoveryDomainIn(BaseModel):
 class AuthPasswordChangeIn(BaseModel):
     current_password: str
     new_password: str
+
+class SettingKeyAppendIn(BaseModel):
+    key: str
+    value: str
+
+class SettingKeyClearIn(BaseModel):
+    key: str
