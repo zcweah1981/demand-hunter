@@ -530,11 +530,15 @@ def business_profile(query: str, intent: str, monetization_type: str) -> dict:
     pain = "User wants a faster self-serve answer than generic search results."
     pay_trigger = "Pays when the output saves time, avoids mistakes, or can be reused in workflow."
     wedge = "Single-purpose tool with clearer UX and better long-tail coverage than generic content pages."
-    validation = [
-        "Publish a focused landing page for the exact keyword.",
-        "Add one interactive output or downloadable artifact.",
-        "Measure impressions, CTR, and completion events before building a larger product.",
+    revenue_path = "SEO entry → free utility → email capture → paid template/tool bundle."
+    pricing = "$9-$29 one-time template/tool pack, or affiliate/leadgen if purchase intent is weak."
+    first_sale_test = [
+        "Publish the exact commercial offer on the landing page.",
+        "Add a checkout/waitlist button before building extra product depth.",
+        "Measure purchase intent: checkout clicks, email capture, reply rate, or paid preorders.",
     ]
+    gtm = "Long-tail SEO + comparison pages + template/tool directories."
+    commercial_score = 0.55
     business_type = "content/tool affiliate"
     if any(w in q for w in ["appointment", "patient", "clinic", "dental", "salon"]):
         icp = "Small clinic / appointment-heavy local service operator"
@@ -542,22 +546,36 @@ def business_profile(query: str, intent: str, monetization_type: str) -> dict:
         pay_trigger = "Pays when no-shows, admin time, or inconsistent communication create visible cost."
         wedge = "Template + workflow pack for a narrow vertical, not a generic scheduling blog post."
         business_type = "template pack → leadgen → lightweight SaaS"
-        validation = ["Ship 3 vertical templates", "Collect email before download", "Offer setup/service upsell to validate willingness to pay"]
+        revenue_path = "Free template → email capture → paid workflow pack → setup/service upsell."
+        pricing = "$19-$79 template/workflow pack; $199-$499 setup service if vertical pain is strong."
+        first_sale_test = ["Sell a 3-template vertical pack", "Add setup call CTA", "Ask downloaders to pay for customization before building SaaS"]
+        gtm = "Vertical SEO pages + local service communities + cold outreach to small clinics/services."
+        commercial_score = 0.68
     elif any(w in q for w in ["invoice", "late fee", "payment", "estimate", "tax", "calculator"]):
         icp = "Freelancer / contractor / small business finance operator"
         pain = "They need quick, defensible calculations for invoices, fees, estimates, or payment reminders."
         pay_trigger = "Pays when calculation accuracy or professional output directly affects cash collection."
         wedge = "Calculator plus printable/exportable invoice/payment artifact, not just a generic calculator."
         business_type = "SEO calculator → affiliate/lead magnet → paid templates"
-        validation = ["Launch calculator with export", "Track calculate/export events", "Test paid template bundle or accounting affiliate CTA"]
+        revenue_path = "Calculator traffic → export/paywall CTA → paid bundle or accounting affiliate."
+        pricing = "$9-$29 one-time bundle; affiliate CPA if accounting/payment intent appears."
+        first_sale_test = ["Add paid export/template CTA", "Track calculate→export→checkout clicks", "Test affiliate CTA vs paid bundle CTA"]
+        gtm = "SEO calculator pages + long-tail fee/tax/payment queries + finance template directories."
+        commercial_score = 0.62
     elif any(w in q for w in ["compliance", "audit", "vendor", "training", "permit", "renewal"]):
         icp = "Operations / compliance owner in a small regulated business"
         pain = "They need to avoid missed deadlines, audits, renewals, or vendor compliance gaps."
         pay_trigger = "Pays when missed compliance creates financial, legal, or operational risk."
         wedge = "Deadline/checklist tracker for one narrow regulation or workflow, not a broad compliance platform."
         business_type = "leadgen + paid report/template → vertical micro-SaaS"
-        validation = ["Create one compliance checklist/tracker", "Gate export behind email", "Interview users who export or return"]
-    return {"type":"business", "business_type": business_type, "icp": icp, "pain": pain, "pay_trigger": pay_trigger, "wedge": wedge, "validation_steps": validation, "monetization": monetization_type}
+        revenue_path = "Free checklist/tracker → paid compliance packet/report → leadgen or subscription workflow."
+        pricing = "$49-$199 paid packet/report; $29-$99/mo tracker if recurring deadline pain is validated."
+        first_sale_test = ["Sell one compliance checklist/report", "Gate export behind work email", "Interview users before building recurring software"]
+        gtm = "Narrow compliance SEO + professional communities + partnerships with consultants."
+        commercial_score = 0.72
+    go_no_go = "Go" if commercial_score >= 0.68 else ("Watch" if commercial_score >= 0.58 else "No-Go")
+    key_assumption = "Users will pay for a more specific, workflow-ready output rather than consuming generic free content."
+    return {"type":"business", "business_type": business_type, "icp": icp, "pain": pain, "pay_trigger": pay_trigger, "wedge": wedge, "revenue_path": revenue_path, "pricing": pricing, "gtm": gtm, "first_sale_test": first_sale_test, "commercial_score": commercial_score, "go_no_go": go_no_go, "key_assumption": key_assumption, "monetization": monetization_type}
 
 def make_card(db: Session, keyword: models.Keyword) -> models.OpportunityCard:
     serp = db.query(models.SerpResult).filter_by(keyword_id=keyword.id).all() or run_serp(db, keyword)
@@ -572,8 +590,8 @@ def make_card(db: Session, keyword: models.Keyword) -> models.OpportunityCard:
     comp = min(1.0, 0.35 + 0.1*len(comps) + 0.08*forum_count - 0.06*strong_count)
     mtype, mscore = monetization(keyword.query, keyword.intent)
     biz = business_profile(keyword.query, keyword.intent, mtype)
-    mvp = 0.8 if any(w in keyword.query for w in ["calculator","template","generator","tracker"]) else 0.62
-    total = round(100*(0.25*demand + 0.25*gap + 0.2*comp + 0.15*mvp + 0.15*mscore), 1)
+    commercial = float(biz.get("commercial_score", 0.55))
+    total = round(100*(0.23*demand + 0.23*gap + 0.18*comp + 0.21*commercial + 0.15*mscore), 1)
     has_social = len(socials) > 0
     try:
         min_action_score = float(setting(db, "MIN_ACTION_SCORE") or "74")
@@ -588,8 +606,8 @@ def make_card(db: Session, keyword: models.Keyword) -> models.OpportunityCard:
     if len(socials)==0 and require_social: risks.append("缺少社媒痛点旁证")
     if mismatch_count >= max(2, len(serp)//2): risks.append("SERP 查询意图不匹配，搜索入口不可靠")
     if gap<.5: risks.append("SERP 缺口不明显")
-    plan = f"业务切入：{biz['business_type']}。ICP：{biz['icp']}。MVP：围绕 `{keyword.query}` 做一个单页工具/模板，输出可下载结果；首屏解释目标用户、3 个使用场景、FAQ，并先用导出/留资/点击事件验证付费触发。"
-    card=models.OpportunityCard(keyword_id=keyword.id,title=f"{keyword.query} opportunity", verdict=verdict, score=total, demand_score=round(demand,2), serp_gap_score=round(gap,2), competitor_weakness_score=round(comp,2), mvp_score=mvp, monetization_score=mscore, monetization_type=mtype, mvp_plan=plan, evidence_json=json.dumps(evidence,ensure_ascii=False), risks=json.dumps(risks,ensure_ascii=False))
+    plan = f"商业化路径：{biz['revenue_path']} 定价：{biz['pricing']} 获客：{biz['gtm']} 第一笔钱测试：{' / '.join(biz['first_sale_test'])}。关键假设：{biz['key_assumption']}"
+    card=models.OpportunityCard(keyword_id=keyword.id,title=f"{keyword.query} opportunity", verdict=verdict, score=total, demand_score=round(demand,2), serp_gap_score=round(gap,2), competitor_weakness_score=round(comp,2), mvp_score=commercial, monetization_score=mscore, monetization_type=mtype, mvp_plan=plan, evidence_json=json.dumps(evidence,ensure_ascii=False), risks=json.dumps(risks,ensure_ascii=False))
     db.add(card); keyword.score=total; keyword.status=verdict.lower(); db.commit(); db.refresh(card); return card
 
 def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = None, seeds: list[str] | None = None) -> models.RunHistory:
@@ -768,7 +786,7 @@ def export_latest_markdown(db: Session) -> str:
     lines = ["# Demand Hunter Latest Cards", "", f"Generated: {datetime.utcnow().isoformat()}Z", ""]
     for c in cards:
         kw = db.get(models.Keyword, c.keyword_id)
-        lines += [f"## {c.verdict} · {c.score} · {kw.query if kw else c.title}", "", f"- Monetization: {c.monetization_type}", f"- Demand: {c.demand_score}", f"- SERP Gap: {c.serp_gap_score}", f"- Competitor Weakness: {c.competitor_weakness_score}", f"- MVP: {c.mvp_score}", "", "MVP:", c.mvp_plan, ""]
+        lines += [f"## {c.verdict} · {c.score} · {kw.query if kw else c.title}", "", f"- Monetization: {c.monetization_type}", f"- Demand: {c.demand_score}", f"- SERP Gap: {c.serp_gap_score}", f"- Competitor Weakness: {c.competitor_weakness_score}", f"- Commercial: {c.mvp_score}", "", "Commercialization:", c.mvp_plan, ""]
         risks = json.loads(c.risks or "[]")
         if risks:
             lines += ["Risks:"] + [f"- {r}" for r in risks] + [""]
