@@ -481,3 +481,52 @@ def run_four_find_and_import(db: Session, seed_keyword: str, searxng_search_fn, 
     imported = import_discovered_keywords(db, seed_keyword=seed_keyword, limit=import_limit)
     summary["imported_keywords"] = [{"id": kw.id, "query": kw.query, "source": kw.source} for kw in imported]
     return summary
+
+def discovery_loop_status(db: Session) -> dict:
+    """Summarize the Four-Find closed loop: discovery -> import -> card -> feedback."""
+    expansions = db.query(models.DiscoveryExpansion).all()
+    competitor_keywords = db.query(models.CompetitorKeyword).all()
+    similar_sites = db.query(models.CompetitorSite).all()
+    keywords = db.query(models.Keyword).filter(models.Keyword.source.like("four_find:%")).all()
+    keyword_ids = [k.id for k in keywords]
+    cards = db.query(models.OpportunityCard).filter(models.OpportunityCard.keyword_id.in_(keyword_ids)).all() if keyword_ids else []
+
+    def count_by(rows, attr):
+        out: dict[str, int] = {}
+        for row in rows:
+            key = getattr(row, attr, "") or "unknown"
+            out[key] = out.get(key, 0) + 1
+        return out
+
+    seed_scores: dict[str, dict] = {}
+    for e in expansions:
+        s = seed_scores.setdefault(e.seed_keyword, {"seed": e.seed_keyword, "expanded": 0, "imported": 0, "rejected": 0, "avg_score": 0.0})
+        s["expanded"] += 1
+        s["avg_score"] += e.score or 0
+        if e.status == "imported": s["imported"] += 1
+        if e.status == "rejected": s["rejected"] += 1
+    for s in seed_scores.values():
+        s["avg_score"] = round(s["avg_score"] / max(1, s["expanded"]), 3)
+
+    verdicts = count_by(cards, "verdict")
+    feedback = count_by(cards, "feedback_label")
+    sources = count_by(keywords, "source")
+    domains = count_by(competitor_keywords, "competitor_domain")
+
+    return {
+        "funnel": {
+            "expansions": len(expansions),
+            "competitor_keywords": len(competitor_keywords),
+            "similar_sites": len(similar_sites),
+            "imported_keywords": len(keywords),
+            "cards": len(cards),
+            "reviewed_cards": sum(1 for c in cards if c.feedback_label),
+        },
+        "expansion_status": count_by(expansions, "status"),
+        "competitor_keyword_status": count_by(competitor_keywords, "status"),
+        "card_verdicts": verdicts,
+        "card_feedback": feedback,
+        "keyword_sources": sources,
+        "seed_scores": sorted(seed_scores.values(), key=lambda x: (x["imported"], x["avg_score"]), reverse=True)[:20],
+        "top_competitor_domains": sorted(({"domain": k, "keywords": v} for k, v in domains.items()), key=lambda x: x["keywords"], reverse=True)[:20],
+    }

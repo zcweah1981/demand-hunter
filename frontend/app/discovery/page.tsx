@@ -11,6 +11,7 @@ export default async function Discovery(){
     api<any[]>('/api/discovery/competitor-keywords').catch(()=>[]),
     api<any[]>('/api/discovery/similar-sites').catch(()=>[]),
   ])
+  const loop = await api<any>('/api/discovery/loop-status').catch(()=>null)
 
   return (
     <div className="space-y-8">
@@ -46,6 +47,34 @@ export default async function Discovery(){
         <StatCard label="Competitor Keywords" value={competitorKws.length} tone="blue"/>
         <StatCard label="Similar Sites" value={similarSites.length} tone="cyan"/>
       </section>
+
+      {loop&&<section className="panel">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold">四找闭环状态</h2>
+            <p className="mt-1 text-sm text-slate-400">Discovery → Import → SERP/Card → Review Feedback → 下一轮 seeds/domains。</p>
+          </div>
+          <span className="badge badge-action">API closed loop</span>
+        </div>
+        <div className="grid gap-4 md:grid-cols-6">
+          <StatCard label="Discovered" value={loop.funnel?.expansions||0} tone="violet"/>
+          <StatCard label="Imported" value={loop.funnel?.imported_keywords||0} tone="green"/>
+          <StatCard label="Cards" value={loop.funnel?.cards||0} />
+          <StatCard label="Reviewed" value={loop.funnel?.reviewed_cards||0} tone="blue"/>
+          <StatCard label="Action" value={loop.card_verdicts?.Action||0} tone="green"/>
+          <StatCard label="Reject" value={loop.card_verdicts?.Reject||0} tone="rose"/>
+        </div>
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+            <h3 className="font-semibold text-slate-200">Top Seeds</h3>
+            <div className="mt-3 space-y-2 text-sm">{(loop.seed_scores||[]).slice(0,6).map((s:any)=><div key={s.seed} className="flex justify-between gap-4"><span className="text-slate-300">{s.seed}</span><span className="text-slate-500">expanded {s.expanded} · imported {s.imported}</span></div>)}</div>
+          </div>
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+            <h3 className="font-semibold text-slate-200">Top Competitor Domains</h3>
+            <div className="mt-3 space-y-2 text-sm">{(loop.top_competitor_domains||[]).slice(0,6).map((d:any)=><div key={d.domain} className="flex justify-between gap-4"><span className="text-slate-300">{d.domain}</span><span className="text-slate-500">{d.keywords} keywords</span></div>)}</div>
+          </div>
+        </div>
+      </section>}
 
       <section className="grid gap-6 xl:grid-cols-2">
         <div className="panel overflow-x-auto">

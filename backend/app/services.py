@@ -277,7 +277,17 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
             db.commit()
             run_serp(db, kw)
             cards.append(make_card(db, kw))
-        summary={"phase":"finished", "keywords":len(kws), "cards":len(cards), "action":sum(1 for c in cards if c.verdict=="Action"), "watch":sum(1 for c in cards if c.verdict=="Watch"), "reject":sum(1 for c in cards if c.verdict=="Reject")}
+        summary={
+            "phase":"finished",
+            "keywords":len(kws),
+            "cards":len(cards),
+            "action":sum(1 for c in cards if c.verdict=="Action"),
+            "watch":sum(1 for c in cards if c.verdict=="Watch"),
+            "reject":sum(1 for c in cards if c.verdict=="Reject"),
+            "use_four_find": bool(use_four_find),
+            "four_find_keywords": sum(1 for k in kws if k.source.startswith("four_find:")),
+            "root_combo_keywords": sum(1 for k in kws if k.source == "root_combo"),
+        }
         run.status="ok"; run.summary=json.dumps(summary, ensure_ascii=False); run.finished_at=datetime.utcnow()
     except Exception as e:
         run.status="failed"; run.summary=str(e); run.finished_at=datetime.utcnow()
@@ -306,6 +316,33 @@ def apply_feedback(db: Session, card: models.OpportunityCard, label: str, note: 
         try: roots = json.loads(kw.root_terms or "[]")
         except Exception: roots = []
         kw.status = label.lower()
+        # Four-Find closed loop: feedback on generated cards should change the
+        # next discovery cycle, not just the card label.
+        if kw.source.startswith("four_find:"):
+            good = label in {"Action", "Watch"}
+            bad = label in {"Reject", "Block"}
+            for seed in roots:
+                exp = db.query(models.DiscoveryExpansion).filter_by(seed_keyword=seed, expanded_keyword=kw.query).first()
+                if exp:
+                    exp.score = max(0.0, min(1.0, (exp.score or 0.0) + (0.18 if good else -0.25)))
+                    exp.status = "imported" if good else "rejected"
+                ck = db.query(models.CompetitorKeyword).filter_by(competitor_domain=seed, discovered_keyword=kw.query).first()
+                if ck:
+                    ck.score = max(0.0, min(1.0, (ck.score or 0.0) + (0.18 if good else -0.25)))
+                    ck.status = "imported" if good else "rejected"
+            # Promote good Four-Find seeds into the auto seed list; bad seeds are
+            # removed/blocked so the automatic loop learns from review.
+            row = db.get(models.Setting, "FOUR_FIND_AUTO_SEEDS") or models.Setting(key="FOUR_FIND_AUTO_SEEDS", value="")
+            seeds = [x.strip() for x in (row.value or "").split(",") if x.strip()]
+            if good:
+                for seed in roots:
+                    if seed and seed not in seeds:
+                        seeds.append(seed)
+            if bad:
+                seeds = [s for s in seeds if s not in roots]
+            row.value = ",".join(seeds)
+            row.secret = False
+            db.merge(row)
     delta = {"Action": 0.2, "Watch": 0.05, "Reject": -0.15, "Block": -0.5}.get(label, 0)
     for term in roots:
         root = db.query(models.Root).filter_by(term=term).first()
@@ -320,6 +357,16 @@ def apply_feedback(db: Session, card: models.OpportunityCard, label: str, note: 
                 row.value = ",".join(sorted(set(blocked)))
                 row.secret = False
                 db.merge(row)
+    if kw and kw.source.startswith("four_find:") and label == "Block":
+        blocked = [t.strip() for t in setting(db, "BLOCKED_TERMS").split(",") if t.strip()]
+        blocked.append(kw.query)
+        for term in roots:
+            if term:
+                blocked.append(term)
+        row = db.get(models.Setting, "BLOCKED_TERMS") or models.Setting(key="BLOCKED_TERMS")
+        row.value = ",".join(sorted(set(blocked)))
+        row.secret = False
+        db.merge(row)
     db.commit(); db.refresh(card); return card
 
 def auto_status(db: Session) -> dict:

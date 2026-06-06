@@ -166,6 +166,11 @@ def discovery_job_status(job_id: str, _: bool=Depends(require_auth)):
         raise HTTPException(404, "job not found")
     return job
 
+@app.get("/api/discovery/loop-status")
+def discovery_loop_status(_: bool=Depends(require_auth), db: Session=Depends(get_db)):
+    """Four-Find closed-loop dashboard data."""
+    return four_find.discovery_loop_status(db)
+
 @app.get("/api/discovery/expansions")
 def discovery_list_expansions(_: bool=Depends(require_auth), db: Session=Depends(get_db)):
     return [obj(e) for e in db.query(models.DiscoveryExpansion).order_by(models.DiscoveryExpansion.created_at.desc()).limit(200).all()]
@@ -239,6 +244,8 @@ def add_root(payload: schemas.RootIn, _: bool=Depends(require_auth), db: Session
 
 @app.post("/api/keywords/discover")
 def discover(payload: schemas.DailyRunIn, _: bool=Depends(require_auth), db: Session=Depends(get_db)):
+    if payload.use_four_find:
+        return [obj(k) for k in services.discover_keywords_four_find(db, payload.limit, payload.seeds)]
     return [obj(k) for k in services.discover_keywords(db, payload.limit, payload.roots)]
 
 @app.get("/api/keywords")
