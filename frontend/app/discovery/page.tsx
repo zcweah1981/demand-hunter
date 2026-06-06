@@ -73,11 +73,11 @@ export default async function Discovery(){
         <div className="mt-5 grid gap-4 lg:grid-cols-2">
           <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
             <h3 className="font-semibold text-slate-200"><I18nText zh='Top Seeds' en='Top Seeds'/></h3>
-            <div className="mt-3 space-y-2 text-sm">{(loop.seed_scores||[]).slice(0,6).map((s:any)=><div key={s.seed} className="flex justify-between gap-4"><span className="text-slate-300">{s.seed}</span><span className="text-slate-500">expanded {s.expanded} · imported {s.imported}</span></div>)}</div>
+            <div className="mt-3 space-y-2 text-sm">{(loop.seed_scores||[]).slice(0,6).map((s:any)=><div key={s.seed} className="flex justify-between gap-4"><span className="text-slate-300">{s.seed}</span><span className="text-slate-500"><I18nText zh='扩展' en='expanded'/> {s.expanded} · <I18nText zh='导入' en='imported'/> {s.imported}</span></div>)}</div>
           </div>
           <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
             <h3 className="font-semibold text-slate-200"><I18nText zh='Top Competitor Domains' en='Top Competitor Domains'/></h3>
-            <div className="mt-3 space-y-2 text-sm">{(loop.top_competitor_domains||[]).slice(0,6).map((d:any)=><div key={d.domain} className="flex justify-between gap-4"><span className="text-slate-300">{d.domain}</span><span className="text-slate-500">{d.keywords} keywords</span></div>)}</div>
+            <div className="mt-3 space-y-2 text-sm">{(loop.top_competitor_domains||[]).slice(0,6).map((d:any)=><div key={d.domain} className="flex justify-between gap-4"><span className="text-slate-300">{d.domain}</span><span className="text-slate-500">{d.keywords} <I18nText zh='关键词' en='keywords'/></span></div>)}</div>
           </div>
         </div>
       </section>}
@@ -87,7 +87,7 @@ export default async function Discovery(){
           <h2 className="mb-4 text-xl font-bold"><I18nText zh='词找词结果' en='Keyword Expansion Results'/></h2>
           {expansions.length ? (
             <table className="w-full text-sm">
-              <thead><tr className="text-left text-slate-500"><th className="pb-2">Seed</th><th className="pb-2">Expanded</th><th className="pb-2">Type</th><th className="pb-2">Action</th></tr></thead>
+              <thead><tr className="text-left text-slate-500"><th className="pb-2"><I18nText zh='Seed' en='Seed'/></th><th className="pb-2"><I18nText zh='扩展词' en='Expanded'/></th><th className="pb-2"><I18nText zh='类型' en='Type'/></th><th className="pb-2"><I18nText zh='操作' en='Action'/></th></tr></thead>
               <tbody>
               {expansions.slice(0,30).map((e:any)=>(
                 <tr key={e.id} className="border-t border-slate-800">
@@ -108,7 +108,7 @@ export default async function Discovery(){
           <h2 className="mb-4 text-xl font-bold"><I18nText zh='站找词结果' en='Site-to-Keyword Results'/></h2>
           {competitorKws.length ? (
             <table className="w-full text-sm">
-              <thead><tr className="text-left text-slate-500"><th className="pb-2">Domain</th><th className="pb-2">Keyword</th><th className="pb-2">Source</th><th className="pb-2">Action</th></tr></thead>
+              <thead><tr className="text-left text-slate-500"><th className="pb-2"><I18nText zh='域名' en='Domain'/></th><th className="pb-2"><I18nText zh='关键词' en='Keyword'/></th><th className="pb-2"><I18nText zh='来源' en='Source'/></th><th className="pb-2"><I18nText zh='操作' en='Action'/></th></tr></thead>
               <tbody>
               {competitorKws.slice(0,30).map((e:any)=>(
                 <tr key={e.id} className="border-t border-slate-800">
@@ -130,7 +130,7 @@ export default async function Discovery(){
         <h2 className="mb-4 text-xl font-bold"><I18nText zh='站找站结果' en='Similar Site Results'/></h2>
         {similarSites.length ? (
           <table className="w-full text-sm">
-            <thead><tr className="text-left text-slate-500"><th className="pb-2">From</th><th className="pb-2">Similar Domain</th><th className="pb-2">Title</th></tr></thead>
+            <thead><tr className="text-left text-slate-500"><th className="pb-2"><I18nText zh='来源站' en='From'/></th><th className="pb-2"><I18nText zh='相似域名' en='Similar Domain'/></th><th className="pb-2"><I18nText zh='标题' en='Title'/></th></tr></thead>
             <tbody>
             {similarSites.slice(0,30).map((e:any)=>(
               <tr key={e.id} className="border-t border-slate-800">
