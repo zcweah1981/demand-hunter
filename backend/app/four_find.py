@@ -748,6 +748,10 @@ def import_expansion_to_keywords(db: Session, expansion_id: int) -> models.Keywo
 
     existing = db.query(models.Keyword).filter_by(query=expansion.expanded_keyword).first()
     if existing:
+        if existing.status in {"rejected", "serp_reject", "rewrite_exhausted"}:
+            expansion.status = "rejected"
+            db.commit()
+            return None
         expansion.status = "imported"
         db.commit()
         return existing
@@ -772,6 +776,10 @@ def import_competitor_keyword(db: Session, ck_id: int) -> models.Keyword | None:
 
     existing = db.query(models.Keyword).filter_by(query=ck.discovered_keyword).first()
     if existing:
+        if existing.status in {"rejected", "serp_reject", "rewrite_exhausted"}:
+            ck.status = "rejected"
+            db.commit()
+            return None
         ck.status = "imported"
         db.commit()
         return existing

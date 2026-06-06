@@ -499,10 +499,69 @@ def serp_admissibility(serp: list[models.SerpResult]) -> tuple[bool, dict]:
     top = serp[:10]
     mismatch = sum(1 for s in top if "query_mismatch" in (s.gap_tags or ""))
     strong = sum(1 for s in top if "strong_brand" in (s.gap_tags or ""))
+    commercial = sum(1 for s in top if _commercial_serp_signal(s))
+    informational = sum(1 for s in top if _informational_serp_signal(s))
     relevant = len(top) - mismatch
     avg_gap = sum(s.weakness_score for s in top) / max(1, len(top))
-    ok = relevant >= 5 and mismatch <= max(3, len(top)//2) and avg_gap >= 0.32
-    return ok, {"relevant": relevant, "mismatch": mismatch, "strong": strong, "avg_gap": round(avg_gap, 3), "reason": "ok" if ok else "weak_or_mismatched_serp"}
+    commercial_required = max(2, min(4, len(top)//3))
+    ok = (
+        relevant >= 5
+        and mismatch <= max(3, len(top)//2)
+        and avg_gap >= 0.32
+        and commercial >= commercial_required
+        and informational <= max(2, len(top)//3)
+    )
+    reason = "ok" if ok else "weak_or_mismatched_serp"
+    if not ok and commercial < commercial_required:
+        reason = "no_commercial_serp_signal"
+    elif not ok and informational > max(2, len(top)//3):
+        reason = "informational_or_dictionary_serp"
+    return ok, {"relevant": relevant, "mismatch": mismatch, "strong": strong, "commercial": commercial, "informational": informational, "avg_gap": round(avg_gap, 3), "reason": reason}
+
+def mark_four_find_serp_reject(db: Session, keyword: models.Keyword, gate: dict) -> None:
+    """Feed SERP-gate failures back into Four-Find discovery memory.
+
+    A keyword that looks commercially plausible but produces non-commercial or
+    mismatched SERP should not be retried/imported every daily run.
+    """
+    if not keyword.source.startswith("four_find:"):
+        return
+    try:
+        roots = json.loads(keyword.root_terms or "[]")
+    except Exception:
+        roots = []
+    reason = gate.get("reason") or "serp_reject"
+    for seed in roots:
+        exp = db.query(models.DiscoveryExpansion).filter_by(seed_keyword=seed, expanded_keyword=keyword.query).first()
+        if exp:
+            exp.score = max(0.0, min(1.0, (exp.score or 0.0) - 0.35))
+            exp.status = "rejected"
+        ck = db.query(models.CompetitorKeyword).filter_by(competitor_domain=seed, discovered_keyword=keyword.query).first()
+        if ck:
+            ck.score = max(0.0, min(1.0, (ck.score or 0.0) - 0.35))
+            ck.status = "rejected"
+    keyword.status = "serp_reject"
+    keyword.score = 0.0
+    keyword.intent = f"serp_reject:{reason}"[:80]
+    db.commit()
+
+def _commercial_serp_signal(s: models.SerpResult) -> bool:
+    text = f"{s.domain} {s.title} {s.url} {s.snippet}".lower()
+    return any(t in text for t in (
+        "calculator", "template", "generator", "tool", "software", "app",
+        "dashboard", "tracker", "checklist", "form", "spreadsheet", "excel",
+        "download", "pricing", "free", "online", "invoice", "notice",
+        "reminder", "estimate", "converter", "builder",
+    ))
+
+def _informational_serp_signal(s: models.SerpResult) -> bool:
+    text = f"{s.domain} {s.title} {s.url} {s.snippet}".lower()
+    return any(d in s.domain for d in (
+        "dictionary.com", "merriam-webster.com", "dictionary.cambridge.org",
+        "collinsdictionary.com", "wikipedia.org", "britannica.com", "wiktionary.org",
+    )) or any(t in text for t in (
+        "definition", "meaning", "dictionary", "encyclopedia", "what is", "overview",
+    ))
 
 def collect_social(db: Session, keyword: models.Keyword) -> list[models.SocialEvidence]:
     db.query(models.SocialEvidence).filter_by(keyword_id=keyword.id).delete()
@@ -663,9 +722,8 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
             serp, strategy_meta = run_serp_with_strategy(db, kw)
             admissible, gate = serp_admissibility(serp)
             if not admissible:
-                kw.status = "serp_reject"
+                mark_four_find_serp_reject(db, kw, gate)
                 skipped.append({"keyword": kw.query, "serp_strategy": strategy_meta, **gate})
-                db.commit()
                 continue
             cards.append(make_card(db, kw))
         rewrite_summary = None
@@ -715,6 +773,8 @@ def test_search_provider(db: Session) -> dict:
 def apply_feedback(db: Session, card: models.OpportunityCard, label: str, note: str = "") -> models.OpportunityCard:
     card.feedback_label = label
     card.feedback_note = note
+    if label not in {"Action", "Watch", "Reject", "Block"}:
+        db.commit(); db.refresh(card); return card
     kw = db.get(models.Keyword, card.keyword_id)
     roots = []
     if kw:
