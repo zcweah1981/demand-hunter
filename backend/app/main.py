@@ -1,13 +1,13 @@
 from __future__ import annotations
-import json, os, hmac, secrets, threading, time
-from fastapi import FastAPI, Depends, HTTPException, Header
+import json, secrets, threading, time
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from .database import Base, engine, get_db, configure_sqlite
 from . import four_find, models, schemas, services
+from .core.config import config
+from .core.security import AUTH_PASSWORD, AUTH_TOKEN, require_auth
 
-AUTH_TOKEN = os.environ.get("DEMAND_HUNTER_AUTH_TOKEN", "") or secrets.token_urlsafe(32)
-AUTH_PASSWORD = os.environ.get("DEMAND_HUNTER_PASSWORD", "")
 RUN_LOCK = threading.Lock()
 PUBLIC_PATHS = {"/api/health", "/api/auth/login"}
 
@@ -40,20 +40,10 @@ def _start_discovery_job(fn, *args, **kwargs) -> str:
     threading.Thread(target=_run_discovery_background, args=(job_id, fn, *args), kwargs=kwargs, daemon=True).start()
     return job_id
 
-def require_auth(authorization: str | None = Header(default=None)):
-    if not AUTH_PASSWORD:
-        return True
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="unauthorized")
-    token = authorization.split(" ", 1)[1]
-    if not hmac.compare_digest(token, AUTH_TOKEN):
-        raise HTTPException(status_code=401, detail="unauthorized")
-    return True
-
 configure_sqlite()
 Base.metadata.create_all(bind=engine)
 app = FastAPI(title="Demand Hunter API", version="0.2.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(CORSMiddleware, allow_origins=config.cors_origin_list, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 def _run_daily_background(force: bool = False):
     from .database import SessionLocal
@@ -92,7 +82,7 @@ def _auto_loop():
 def startup():
     from .database import SessionLocal
     db=SessionLocal(); services.init_defaults(db); db.close()
-    if (os.environ.get("DEMAND_HUNTER_AUTO_WORKER", "true").lower() in {"1","true","yes","on"}):
+    if config.auto_worker_enabled:
         threading.Thread(target=_auto_loop, daemon=True).start()
 
 def obj(row):
