@@ -532,6 +532,7 @@ def business_profile(query: str, intent: str, monetization_type: str) -> dict:
     wedge = "Single-purpose tool with clearer UX and better long-tail coverage than generic content pages."
     revenue_path = "SEO entry → free utility → email capture → paid template/tool bundle."
     pricing = "$9-$29 one-time template/tool pack, or affiliate/leadgen if purchase intent is weak."
+    commercial_mvp = "A focused landing page with one paid/exportable output that tests purchase intent before product depth."
     first_sale_test = [
         "Publish the exact commercial offer on the landing page.",
         "Add a checkout/waitlist button before building extra product depth.",
@@ -546,6 +547,7 @@ def business_profile(query: str, intent: str, monetization_type: str) -> dict:
         pay_trigger = "Pays when no-shows, admin time, or inconsistent communication create visible cost."
         wedge = "Template + workflow pack for a narrow vertical, not a generic scheduling blog post."
         business_type = "template pack → leadgen → lightweight SaaS"
+        commercial_mvp = "A vertical template/workflow pack with download gate and paid customization CTA."
         revenue_path = "Free template → email capture → paid workflow pack → setup/service upsell."
         pricing = "$19-$79 template/workflow pack; $199-$499 setup service if vertical pain is strong."
         first_sale_test = ["Sell a 3-template vertical pack", "Add setup call CTA", "Ask downloaders to pay for customization before building SaaS"]
@@ -557,6 +559,7 @@ def business_profile(query: str, intent: str, monetization_type: str) -> dict:
         pay_trigger = "Pays when calculation accuracy or professional output directly affects cash collection."
         wedge = "Calculator plus printable/exportable invoice/payment artifact, not just a generic calculator."
         business_type = "SEO calculator → affiliate/lead magnet → paid templates"
+        commercial_mvp = "A calculator with export/print output and a paid bundle or affiliate CTA at the result step."
         revenue_path = "Calculator traffic → export/paywall CTA → paid bundle or accounting affiliate."
         pricing = "$9-$29 one-time bundle; affiliate CPA if accounting/payment intent appears."
         first_sale_test = ["Add paid export/template CTA", "Track calculate→export→checkout clicks", "Test affiliate CTA vs paid bundle CTA"]
@@ -568,6 +571,7 @@ def business_profile(query: str, intent: str, monetization_type: str) -> dict:
         pay_trigger = "Pays when missed compliance creates financial, legal, or operational risk."
         wedge = "Deadline/checklist tracker for one narrow regulation or workflow, not a broad compliance platform."
         business_type = "leadgen + paid report/template → vertical micro-SaaS"
+        commercial_mvp = "A checklist/tracker that produces an exportable compliance artifact and tests paid report/subscription intent."
         revenue_path = "Free checklist/tracker → paid compliance packet/report → leadgen or subscription workflow."
         pricing = "$49-$199 paid packet/report; $29-$99/mo tracker if recurring deadline pain is validated."
         first_sale_test = ["Sell one compliance checklist/report", "Gate export behind work email", "Interview users before building recurring software"]
@@ -575,7 +579,7 @@ def business_profile(query: str, intent: str, monetization_type: str) -> dict:
         commercial_score = 0.72
     go_no_go = "Go" if commercial_score >= 0.68 else ("Watch" if commercial_score >= 0.58 else "No-Go")
     key_assumption = "Users will pay for a more specific, workflow-ready output rather than consuming generic free content."
-    return {"type":"business", "business_type": business_type, "icp": icp, "pain": pain, "pay_trigger": pay_trigger, "wedge": wedge, "revenue_path": revenue_path, "pricing": pricing, "gtm": gtm, "first_sale_test": first_sale_test, "commercial_score": commercial_score, "go_no_go": go_no_go, "key_assumption": key_assumption, "monetization": monetization_type}
+    return {"type":"business", "business_type": business_type, "icp": icp, "pain": pain, "pay_trigger": pay_trigger, "wedge": wedge, "commercial_mvp": commercial_mvp, "revenue_path": revenue_path, "pricing": pricing, "gtm": gtm, "first_sale_test": first_sale_test, "commercial_score": commercial_score, "go_no_go": go_no_go, "key_assumption": key_assumption, "monetization": monetization_type}
 
 def make_card(db: Session, keyword: models.Keyword) -> models.OpportunityCard:
     serp = db.query(models.SerpResult).filter_by(keyword_id=keyword.id).all() or run_serp(db, keyword)
@@ -606,7 +610,7 @@ def make_card(db: Session, keyword: models.Keyword) -> models.OpportunityCard:
     if len(socials)==0 and require_social: risks.append("缺少社媒痛点旁证")
     if mismatch_count >= max(2, len(serp)//2): risks.append("SERP 查询意图不匹配，搜索入口不可靠")
     if gap<.5: risks.append("SERP 缺口不明显")
-    plan = f"商业化路径：{biz['revenue_path']} 定价：{biz['pricing']} 获客：{biz['gtm']} 第一笔钱测试：{' / '.join(biz['first_sale_test'])}。关键假设：{biz['key_assumption']}"
+    plan = f"商业目标：{biz['business_type']}。快速商业 MVP：{biz['commercial_mvp']} 商业化路径：{biz['revenue_path']} 定价：{biz['pricing']} 获客：{biz['gtm']} 第一笔钱测试：{' / '.join(biz['first_sale_test'])}。关键假设：{biz['key_assumption']}"
     card=models.OpportunityCard(keyword_id=keyword.id,title=f"{keyword.query} opportunity", verdict=verdict, score=total, demand_score=round(demand,2), serp_gap_score=round(gap,2), competitor_weakness_score=round(comp,2), mvp_score=commercial, monetization_score=mscore, monetization_type=mtype, mvp_plan=plan, evidence_json=json.dumps(evidence,ensure_ascii=False), risks=json.dumps(risks,ensure_ascii=False))
     db.add(card); keyword.score=total; keyword.status=verdict.lower(); db.commit(); db.refresh(card); return card
 
