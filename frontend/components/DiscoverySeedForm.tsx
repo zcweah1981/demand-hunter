@@ -3,6 +3,7 @@
 import {useState, useTransition} from 'react'
 import {useRouter} from 'next/navigation'
 import {api} from '../lib/api'
+import {pollJob} from '../lib/jobPoll'
 
 export function DiscoverySeedForm(){
   const router = useRouter()
@@ -18,8 +19,8 @@ export function DiscoverySeedForm(){
     startTransition(async()=>{
       try{
         const [expansions,sites] = await Promise.all([
-          api<any[]>('/api/discovery/expand',{method:'POST',body:JSON.stringify({seed})}),
-          api<any[]>('/api/discovery/find-sites',{method:'POST',body:JSON.stringify({seed})}),
+          pollJob(api, '/api/discovery/expand', {seed}, {maxWait:90000}),
+          pollJob(api, '/api/discovery/find-sites', {seed}, {maxWait:90000}),
         ])
         setResults({expansions,sites})
         router.refresh()
@@ -30,7 +31,7 @@ export function DiscoverySeedForm(){
   return <form onSubmit={submit} className="mt-5 space-y-4">
     <div className="flex flex-col gap-3 sm:flex-row">
       <input className="input flex-1" value={seed} onChange={e=>setSeed(e.target.value)} placeholder="invoice late fee calculator" />
-      <button className="btn" disabled={pending || !seed.trim()}>{pending?'Running...':'Run keyword discovery'}</button>
+      <button className="btn" disabled={pending || !seed.trim()}>{pending?'Running API...':'Run keyword discovery'}</button>
     </div>
     {error&&<p className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</p>}
     {results&&<div className="grid gap-3 text-sm md:grid-cols-2">

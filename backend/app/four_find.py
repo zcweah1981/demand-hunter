@@ -437,3 +437,47 @@ def import_competitor_keyword(db: Session, ck_id: int) -> models.Keyword | None:
     db.commit()
     db.refresh(kw)
     return kw
+
+def import_discovered_keywords(db: Session, seed_keyword: str | None = None, limit: int = 12) -> list[models.Keyword]:
+    """Import high-scoring Four-Find keyword discoveries into the main Keyword table.
+
+    This is intentionally an API/service capability, not a script step. It lets the
+    web UI, daily runner, and auto worker all use the same persisted discovery path.
+    """
+    imported: list[models.Keyword] = []
+    seen: set[str] = set()
+
+    q = db.query(models.DiscoveryExpansion).filter(models.DiscoveryExpansion.status == "new")
+    if seed_keyword:
+        q = q.filter(models.DiscoveryExpansion.seed_keyword == seed_keyword)
+    expansions = q.order_by(models.DiscoveryExpansion.score.desc(), models.DiscoveryExpansion.created_at.desc()).limit(limit).all()
+    for expansion in expansions:
+        if expansion.expanded_keyword in seen:
+            continue
+        kw = import_expansion_to_keywords(db, expansion.id)
+        if kw:
+            seen.add(kw.query)
+            imported.append(kw)
+        if len(imported) >= limit:
+            return imported
+
+    remaining = max(0, limit - len(imported))
+    if remaining:
+        cq = db.query(models.CompetitorKeyword).filter(models.CompetitorKeyword.status == "new")
+        competitor_keywords = cq.order_by(models.CompetitorKeyword.score.desc(), models.CompetitorKeyword.created_at.desc()).limit(remaining).all()
+        for ck in competitor_keywords:
+            if ck.discovered_keyword in seen:
+                continue
+            kw = import_competitor_keyword(db, ck.id)
+            if kw:
+                seen.add(kw.query)
+                imported.append(kw)
+
+    return imported
+
+def run_four_find_and_import(db: Session, seed_keyword: str, searxng_search_fn, depth=2, import_limit=12) -> dict:
+    """Run the complete Four-Find pipeline and import discovered keywords via service/API logic."""
+    summary = run_four_find(db, seed_keyword, searxng_search_fn, depth=depth)
+    imported = import_discovered_keywords(db, seed_keyword=seed_keyword, limit=import_limit)
+    summary["imported_keywords"] = [{"id": kw.id, "query": kw.query, "source": kw.source} for kw in imported]
+    return summary

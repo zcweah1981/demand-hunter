@@ -26,6 +26,8 @@ class FeedbackIn(BaseModel):
 class DailyRunIn(BaseModel):
     limit: int = 12
     roots: list[str] | None = None
+    use_four_find: bool | None = None
+    seeds: list[str] | None = None
 
 
 class AuthLoginIn(BaseModel):
@@ -40,6 +42,7 @@ class AutoTickIn(BaseModel):
 class DiscoverySeedIn(BaseModel):
     seed: str
     depth: int | None = 2
+    import_limit: int | None = 12
 
 class DiscoveryDomainIn(BaseModel):
     domain: str

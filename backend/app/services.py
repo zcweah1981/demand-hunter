@@ -23,6 +23,9 @@ DEFAULT_SETTINGS = {
     "REQUIRE_SOCIAL_FOR_ACTION": "false",
     "COLLECT_SOCIAL_EVIDENCE": "false",
     "BLOCKED_TERMS": "booking,best",
+    "FOUR_FIND_AUTO_ENABLED": "true",
+    "FOUR_FIND_AUTO_SEEDS": "invoice calculator,appointment template,compliance tracker",
+    "FOUR_FIND_IMPORT_LIMIT": "12",
 }
 DEFAULT_ROOTS = [
     ("invoice", "function"), ("calculator", "tool"), ("template", "tool"),
@@ -99,6 +102,35 @@ def discover_keywords(db: Session, limit=24, roots: list[str] | None = None) -> 
             db.add(row); db.flush()
         out.append(row)
     db.commit()
+    return out
+
+def discover_keywords_four_find(db: Session, limit=24, seeds: list[str] | None = None) -> list[models.Keyword]:
+    """Discover/import keywords through the Four-Find service path.
+
+    This keeps discovery as a backend/API capability rather than a shell script.
+    """
+    from . import four_find
+    if seeds is None:
+        raw = setting(db, "FOUR_FIND_AUTO_SEEDS") or ""
+        seeds = [x.strip() for x in raw.split(",") if x.strip()]
+    if not seeds:
+        return []
+    try:
+        import_limit = int(setting(db, "FOUR_FIND_IMPORT_LIMIT") or str(limit))
+    except Exception:
+        import_limit = limit
+    out: list[models.Keyword] = []
+    seen: set[str] = set()
+    per_seed = max(1, min(import_limit, limit) // max(1, len(seeds)))
+    for seed in seeds:
+        four_find.run_four_find_and_import(db, seed, searxng_search, depth=2, import_limit=per_seed)
+        rows = db.query(models.Keyword).filter(models.Keyword.source.like("four_find:%")).order_by(models.Keyword.created_at.desc()).limit(limit).all()
+        for row in rows:
+            if row.query not in seen:
+                seen.add(row.query)
+                out.append(row)
+            if len(out) >= limit:
+                return out
     return out
 
 def searxng_search(db: Session, query: str, categories="general", limit=10) -> list[dict]:
@@ -214,7 +246,7 @@ def make_card(db: Session, keyword: models.Keyword) -> models.OpportunityCard:
     card=models.OpportunityCard(keyword_id=keyword.id,title=f"{keyword.query} opportunity", verdict=verdict, score=total, demand_score=round(demand,2), serp_gap_score=round(gap,2), competitor_weakness_score=round(comp,2), mvp_score=mvp, monetization_score=mscore, monetization_type=mtype, mvp_plan=plan, evidence_json=json.dumps(evidence,ensure_ascii=False), risks=json.dumps(risks,ensure_ascii=False))
     db.add(card); keyword.score=total; keyword.status=verdict.lower(); db.commit(); db.refresh(card); return card
 
-def daily_run(db: Session, limit=12, roots=None) -> models.RunHistory:
+def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = None, seeds: list[str] | None = None) -> models.RunHistory:
     # recover stale runs from previous crashes/restarts so dashboard does not stay "running" forever
     stale = db.query(models.RunHistory).filter(models.RunHistory.status == "running").all()
     for old in stale:
@@ -224,7 +256,20 @@ def daily_run(db: Session, limit=12, roots=None) -> models.RunHistory:
     db.commit()
     run=models.RunHistory(kind="daily", status="running"); db.add(run); db.commit(); db.refresh(run)
     try:
-        kws=discover_keywords(db, limit=limit, roots=roots)
+        if use_four_find is None:
+            use_four_find = (setting(db, "FOUR_FIND_AUTO_ENABLED") or "false").lower() in {"1", "true", "yes", "on"}
+        if use_four_find:
+            kws = discover_keywords_four_find(db, limit=limit, seeds=seeds)
+            if len(kws) < limit:
+                existing = {kw.query for kw in kws}
+                for kw in discover_keywords(db, limit=limit, roots=roots):
+                    if kw.query not in existing:
+                        kws.append(kw)
+                        existing.add(kw.query)
+                    if len(kws) >= limit:
+                        break
+        else:
+            kws=discover_keywords(db, limit=limit, roots=roots)
         cards=[]
         total_kws = len(kws[:limit])
         for idx, kw in enumerate(kws[:limit], 1):
