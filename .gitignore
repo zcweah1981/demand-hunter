@@ -8,3 +8,6 @@ backend/.venv/
 *.pyc
 data/*.sqlite
 output/*.md
+# runtime data / secrets
+data/
+backend/data/auth.json

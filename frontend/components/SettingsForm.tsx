@@ -1,5 +1,6 @@
 'use client'
 import {useMemo, useState} from 'react'
+import Link from 'next/link'
 import {api} from '../lib/api'
 
 const GROUPS:any[]=[
@@ -21,9 +22,9 @@ function splitList(v:string){return (v||'').split(/[\n,]+/).map(x=>x.trim()).fil
 function joinList(xs:string[]){return xs.map(x=>x.trim()).filter(Boolean).join('\n')}
 function masked(v:string){return v&&v.startsWith('***')}
 
-export function SettingsForm({rows}:{rows:any[]}){
+export function SettingsForm({rows, initialGroup='search'}:{rows:any[]; initialGroup?:string}){
  const [items,setItems]=useState<Setting[]>(rows)
- const [active,setActive]=useState('search')
+ const [active,setActive]=useState(initialGroup)
  const [msg,setMsg]=useState('')
  const [testing,setTesting]=useState(false)
  const [currentPassword,setCurrentPassword]=useState('')
@@ -37,12 +38,12 @@ export function SettingsForm({rows}:{rows:any[]}){
  async function test(){setTesting(true);setMsg('Testing search providers...'); try{const r=await api<any>('/api/settings/test-search',{method:'POST'}); const p=r.providers||{}; setMsg(r.ok?`✅ Search OK: ${r.result_count} results, ${r.elapsed_ms}ms · providers=${(p.available||[]).join(',')||'none'} · searxng=${p.searxng_urls||0} · braveKeys=${p.brave_keys||0} · tavilyKeys=${p.tavily_keys||0}`:`❌ Search failed: ${r.error}`)}catch(e:any){setMsg(`❌ ${e.message}`)} finally{setTesting(false)}}
  async function changePassword(){setMsg('Changing password...'); try{await api('/api/auth/password',{method:'POST',body:JSON.stringify({current_password:currentPassword,new_password:newPassword})}); setCurrentPassword(''); setNewPassword(''); setMsg('✅ Password changed')}catch(e:any){setMsg(`❌ ${e.message}`)}}
  function setListItem(key:string, idx:number, value:string){const xs=splitList(settingFor(key).value); xs[idx]=value; update(key,{value:joinList(xs)})}
- function addListItem(key:string){const xs=splitList(settingFor(key).value); xs.push(''); update(key,{value:joinList(xs.concat(['']).filter((_,i)=>i<xs.length+1))})}
+ function addListItem(key:string){const cur=settingFor(key).value||''; update(key,{value:cur+(cur.trim()?'\n':'')})}
  function removeListItem(key:string, idx:number){const xs=splitList(settingFor(key).value); xs.splice(idx,1); update(key,{value:joinList(xs)})}
  return <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
   <aside className="panel h-fit space-y-2 lg:sticky lg:top-6">
    <div className="mb-3 px-2 text-xs font-bold uppercase tracking-[0.25em] text-slate-500">Settings</div>
-   {GROUPS.map(g=><button key={g.id} onClick={()=>setActive(g.id)} className={`w-full rounded-2xl px-4 py-3 text-left transition ${active===g.id?'bg-blue-600/20 text-blue-100 ring-1 ring-blue-500/50':'bg-slate-950/50 text-slate-300 hover:bg-slate-900'}`}><div className="font-bold">{g.title}</div><div className="mt-1 text-xs text-slate-500">{g.desc}</div></button>)}
+   {GROUPS.map(g=><Link href={`/settings/${g.id}`} key={g.id} onClick={()=>setActive(g.id)} className={`w-full rounded-2xl px-4 py-3 text-left transition ${active===g.id?'bg-blue-600/20 text-blue-100 ring-1 ring-blue-500/50':'bg-slate-950/50 text-slate-300 hover:bg-slate-900'}`}><div className="font-bold">{g.title}</div><div className="mt-1 text-xs text-slate-500">{g.desc}</div></Link>)}
   </aside>
   <main className="space-y-5">
    <section className="rounded-3xl border border-blue-500/20 bg-gradient-to-br from-slate-950 to-blue-950/40 p-6 shadow-2xl">
