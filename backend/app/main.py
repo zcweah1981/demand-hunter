@@ -171,6 +171,13 @@ def discovery_loop_status(_: bool=Depends(require_auth), db: Session=Depends(get
     """Four-Find closed-loop dashboard data."""
     return four_find.discovery_loop_status(db)
 
+@app.post("/api/discovery/prune")
+def discovery_prune(_: bool=Depends(require_auth), db: Session=Depends(get_db)):
+    """Re-score and reject low-quality Four-Find discoveries before they burn SERP/card budget."""
+    result = four_find.prune_low_quality_discoveries(db)
+    result["loop_status"] = four_find.discovery_loop_status(db)
+    return result
+
 @app.get("/api/discovery/expansions")
 def discovery_list_expansions(_: bool=Depends(require_auth), db: Session=Depends(get_db)):
     return [obj(e) for e in db.query(models.DiscoveryExpansion).order_by(models.DiscoveryExpansion.created_at.desc()).limit(200).all()]

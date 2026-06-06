@@ -4,6 +4,7 @@ import {DiscoverySeedForm} from '../../components/DiscoverySeedForm'
 import {DiscoveryDomainForm} from '../../components/DiscoveryDomainForm'
 import {FullPipelineForm} from '../../components/FullPipelineForm'
 import {DiscoveryImportButton} from '../../components/DiscoveryImportButton'
+import {DiscoveryPruneButton} from '../../components/DiscoveryPruneButton'
 
 export default async function Discovery(){
   const [expansions, competitorKws, similarSites] = await Promise.all([
@@ -54,7 +55,10 @@ export default async function Discovery(){
             <h2 className="text-xl font-bold">四找闭环状态</h2>
             <p className="mt-1 text-sm text-slate-400">Discovery → Import → SERP/Card → Review Feedback → 下一轮 seeds/domains。</p>
           </div>
-          <span className="badge badge-action">API closed loop</span>
+          <div className="flex flex-col items-end gap-2">
+            <span className="badge badge-action">API closed loop</span>
+            <DiscoveryPruneButton />
+          </div>
         </div>
         <div className="grid gap-4 md:grid-cols-6">
           <StatCard label="Discovered" value={loop.funnel?.expansions||0} tone="violet"/>

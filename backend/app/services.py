@@ -184,6 +184,23 @@ def run_serp(db: Session, keyword: models.Keyword) -> list[models.SerpResult]:
     db.commit()
     return rows
 
+def serp_admissibility(serp: list[models.SerpResult]) -> tuple[bool, dict]:
+    """Gate keywords before card generation.
+
+    Four-Find can produce useful long tails, but SearXNG/SERP may still interpret them
+    as government pages, brand pages, or unrelated local appointment flows. Those
+    should not become opportunity cards; they should remain candidates for review.
+    """
+    if not serp:
+        return False, {"reason": "no_serp"}
+    top = serp[:10]
+    mismatch = sum(1 for s in top if "query_mismatch" in (s.gap_tags or ""))
+    strong = sum(1 for s in top if "strong_brand" in (s.gap_tags or ""))
+    relevant = len(top) - mismatch
+    avg_gap = sum(s.weakness_score for s in top) / max(1, len(top))
+    ok = relevant >= 5 and mismatch <= max(3, len(top)//2) and avg_gap >= 0.32
+    return ok, {"relevant": relevant, "mismatch": mismatch, "strong": strong, "avg_gap": round(avg_gap, 3), "reason": "ok" if ok else "weak_or_mismatched_serp"}
+
 def collect_social(db: Session, keyword: models.Keyword) -> list[models.SocialEvidence]:
     db.query(models.SocialEvidence).filter_by(keyword_id=keyword.id).delete()
     if (setting(db, "COLLECT_SOCIAL_EVIDENCE") or "false").lower() not in {"1", "true", "yes", "on"}:
@@ -271,11 +288,19 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
         else:
             kws=discover_keywords(db, limit=limit, roots=roots)
         cards=[]
+        skipped=[]
+        kws = [kw for kw in kws if kw.status != "rejected"]
         total_kws = len(kws[:limit])
         for idx, kw in enumerate(kws[:limit], 1):
             run.summary=json.dumps({"phase":"running", "current": idx, "total": total_kws, "keyword": kw.query, "cards": len(cards)}, ensure_ascii=False)
             db.commit()
-            run_serp(db, kw)
+            serp = run_serp(db, kw)
+            admissible, gate = serp_admissibility(serp)
+            if not admissible:
+                kw.status = "serp_reject"
+                skipped.append({"keyword": kw.query, **gate})
+                db.commit()
+                continue
             cards.append(make_card(db, kw))
         summary={
             "phase":"finished",
@@ -287,6 +312,8 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
             "use_four_find": bool(use_four_find),
             "four_find_keywords": sum(1 for k in kws if k.source.startswith("four_find:")),
             "root_combo_keywords": sum(1 for k in kws if k.source == "root_combo"),
+            "skipped_low_quality_serp": len(skipped),
+            "skipped_examples": skipped[:5],
         }
         run.status="ok"; run.summary=json.dumps(summary, ensure_ascii=False); run.finished_at=datetime.utcnow()
     except Exception as e:

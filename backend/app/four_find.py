@@ -4,6 +4,86 @@ from urllib.parse import urlparse
 from sqlalchemy.orm import Session
 from . import models
 
+BAD_KEYWORD_TERMS = {
+    "login", "sign in", "signup", "get started", "our map", "contact", "support", "pricing",
+    "city", "county", "california", "bernardino", "near me", "home", "official", "portal",
+    "capterra", "g2", "trustradius", "spectrum", "facebook", "linkedin", "youtube",
+    "dmv", "gov", "myuscis", "lavote", "apply", "make", "agency", "available", "office",
+}
+BAD_SINGLE_MODIFIERS = {
+    "for", "and", "with", "from", "your", "their", "this", "that", "login", "city", "home",
+    "page", "about", "contact", "support", "license", "portal", "map", "started",
+}
+GOOD_INTENT_TERMS = {
+    "calculator", "template", "generator", "tracker", "dashboard", "checklist", "software",
+    "tool", "automation", "workflow", "compliance", "invoice", "appointment", "schedule",
+    "deadline", "clinic", "contractor", "rental", "small business", "management", "report",
+}
+GOOD_MODIFIERS = {
+    "clinic", "dental", "salon", "doctor", "patient", "client", "contractor", "rental",
+    "reminder", "cancellation", "reschedule", "intake", "form", "sms", "calendar",
+    "workflow", "dashboard", "tracker", "checklist", "calculator", "software", "management",
+    "deadline", "compliance", "invoice", "booking", "schedule", "scheduling", "policy", "report",
+    "audit", "vendor", "employee", "training", "risk", "inspection", "renewal", "permit",
+    "late", "fee", "payment", "tax", "estimate", "overdue", "receipt", "penalty", "cost",
+}
+
+BUSINESS_MODIFIER_SETS = {
+    "appointment": [
+        "clinic", "dental", "patient", "reminder", "cancellation", "reschedule",
+        "intake", "sms", "calendar", "doctor", "salon", "client",
+    ],
+    "template": [
+        "clinic", "patient", "reminder", "cancellation", "reschedule", "intake",
+        "email", "sms", "form", "policy",
+    ],
+    "compliance": [
+        "deadline", "audit", "vendor", "employee", "training", "policy", "risk",
+        "inspection", "renewal", "permit", "report", "dashboard",
+    ],
+    "tracker": [
+        "deadline", "dashboard", "workflow", "report", "management", "checklist",
+        "audit", "vendor", "employee", "renewal",
+    ],
+    "invoice": [
+        "late fee", "payment", "contractor", "rental", "small business", "reminder",
+        "receipt", "tax", "estimate", "overdue",
+    ],
+    "calculator": [
+        "late fee", "tax", "margin", "payment", "contractor", "rental", "estimate",
+        "deadline", "penalty", "cost",
+    ],
+}
+
+def business_modifier_variants(seed_keyword: str, limit: int = 12) -> list[str]:
+    """Generate task/vertical long-tail candidates from seed semantics.
+
+    This supplements SERP-title extraction. SERP titles are noisy; business modifiers
+    keep Four-Find anchored in real user tasks.
+    """
+    seed = re.sub(r"\s+", " ", seed_keyword.lower()).strip()
+    seed_words = set(re.findall(r"[a-z0-9]+", seed))
+    modifiers: list[str] = []
+    for key, values in BUSINESS_MODIFIER_SETS.items():
+        if key in seed_words:
+            modifiers.extend(values)
+    out: list[str] = []
+    seen: set[str] = set()
+    for modifier in modifiers:
+        candidates = [f"{modifier} {seed}"]
+        if "template" in seed_words and modifier not in seed:
+            candidates.append(f"{modifier} template")
+        if "tracker" in seed_words and modifier not in seed:
+            candidates.append(f"{modifier} tracker")
+        for candidate in candidates:
+            candidate = re.sub(r"\s+", " ", candidate).strip()
+            if candidate != seed and candidate not in seen:
+                seen.add(candidate)
+                out.append(candidate)
+            if len(out) >= limit:
+                return out
+    return out
+
 # --- helpers ---
 
 def _hash_text(text: str) -> str:
@@ -15,6 +95,51 @@ def domain(url: str) -> str:
     except Exception:
         return ""
 
+def keyword_quality_score(seed: str, keyword: str, source_domain: str = "") -> tuple[float, list[str]]:
+    """Heuristic pre-import quality score for Four-Find candidates.
+
+    The goal is not to predict opportunity score; it only blocks obvious SERP noise
+    before it wastes SERP/card budget.
+    """
+    kw = re.sub(r"\s+", " ", (keyword or "").lower()).strip()
+    seed_l = (seed or "").lower().strip()
+    reasons: list[str] = []
+    score = 0.55
+
+    if len(kw) < 8 or len(kw) > 90:
+        score -= 0.25; reasons.append("bad_length")
+    if kw == seed_l:
+        score -= 0.2; reasons.append("same_as_seed")
+    if seed_l and seed_l.replace(" ", "") in kw.replace(" ", "") and kw.replace(" ", "").count(seed_l.replace(" ", "")) > 1:
+        score -= 0.45; reasons.append("seed_repeated_or_brand_echo")
+    if any(term in kw for term in BAD_KEYWORD_TERMS):
+        score -= 0.45; reasons.append("blocked_noise_term")
+    words = re.findall(r"[a-z0-9]+", kw)
+    if len(words) < 2:
+        score -= 0.3; reasons.append("too_short_phrase")
+    if words and words[-1] in BAD_SINGLE_MODIFIERS:
+        score -= 0.25; reasons.append("bad_modifier")
+    seed_words = set(re.findall(r"[a-z0-9]+", seed_l))
+    keyword_words = set(words)
+    added_words = keyword_words - seed_words
+
+    if any(term in kw for term in GOOD_INTENT_TERMS):
+        score += 0.18; reasons.append("good_intent_term")
+    if seed_l and len(set(seed_l.split()) & set(words)) >= max(1, min(2, len(seed_l.split()))):
+        score += 0.08; reasons.append("seed_overlap")
+    if seed_words and added_words and not (added_words & GOOD_MODIFIERS):
+        score -= 0.38; reasons.append("weak_added_modifier")
+    if seed_words and len(added_words) == 1 and not (added_words & GOOD_MODIFIERS):
+        score -= 0.22; reasons.append("single_noise_modifier")
+    if source_domain and any(d in source_domain for d in ("capterra.com", "g2.com", "spectrum.com", "facebook.com", "linkedin.com")):
+        score -= 0.25; reasons.append("weak_source_domain")
+
+    return max(0.0, min(1.0, round(score, 3))), reasons
+
+def candidate_is_importable(seed: str, keyword: str, source_domain: str = "") -> bool:
+    score, reasons = keyword_quality_score(seed, keyword, source_domain)
+    return score >= 0.62 and "blocked_noise_term" not in reasons and "seed_repeated_or_brand_echo" not in reasons and "weak_added_modifier" not in reasons
+
 # --- 1. 词找词 (Keyword → Keyword) ---
 
 def expand_by_suggest(db: Session, seed_keyword: str, searxng_search_fn, limit=10) -> list[models.DiscoveryExpansion]:
@@ -23,6 +148,26 @@ def expand_by_suggest(db: Session, seed_keyword: str, searxng_search_fn, limit=1
     Also extract modifiers from SERP results.
     """
     results = []
+
+    # Method 0: business/task modifiers. This prevents Four-Find from depending
+    # entirely on noisy SERP titles such as DMV/gov/login pages.
+    existing = set()
+    for expanded in business_modifier_variants(seed_keyword, limit=limit):
+        existing.add(expanded)
+        row = db.query(models.DiscoveryExpansion).filter_by(
+            seed_keyword=seed_keyword, expanded_keyword=expanded
+        ).first()
+        if not row:
+            qscore, qreasons = keyword_quality_score(seed_keyword, expanded)
+            row = models.DiscoveryExpansion(
+                seed_keyword=seed_keyword,
+                expanded_keyword=expanded,
+                expansion_type="business_modifier",
+                score=qscore,
+                status="new" if candidate_is_importable(seed_keyword, expanded) else "rejected",
+            )
+            db.add(row)
+            results.append(row)
 
     # Method 1: Search the seed keyword and extract modifier patterns from titles
     serp_results = searxng_search_fn(db, seed_keyword, limit=10)
@@ -37,7 +182,6 @@ def expand_by_suggest(db: Session, seed_keyword: str, searxng_search_fn, limit=1
                 title_words.add(w)
 
     # Create expanded keywords by appending modifiers
-    existing = set()
     for word in sorted(title_words)[:limit]:
         expanded = f"{seed_keyword} {word}"
         if expanded not in existing:
@@ -46,11 +190,13 @@ def expand_by_suggest(db: Session, seed_keyword: str, searxng_search_fn, limit=1
                 seed_keyword=seed_keyword, expanded_keyword=expanded
             ).first()
             if not row:
+                qscore, qreasons = keyword_quality_score(seed_keyword, expanded)
                 row = models.DiscoveryExpansion(
                     seed_keyword=seed_keyword,
                     expanded_keyword=expanded,
                     expansion_type="modifier",
-                    score=0.5,
+                    score=qscore,
+                    status="new" if candidate_is_importable(seed_keyword, expanded) else "rejected",
                 )
                 db.add(row)
                 results.append(row)
@@ -74,12 +220,15 @@ def expand_by_suggest(db: Session, seed_keyword: str, searxng_search_fn, limit=1
                         seed_keyword=seed_keyword, expanded_keyword=expanded
                     ).first()
                     if not row:
+                        source = domain(r.get("url", ""))
+                        qscore, qreasons = keyword_quality_score(seed_keyword, expanded, source)
                         row = models.DiscoveryExpansion(
                             seed_keyword=seed_keyword,
                             expanded_keyword=expanded,
                             expansion_type="related",
-                            source_domain=domain(r.get("url", "")),
-                            score=0.6,
+                            source_domain=source,
+                            score=qscore,
+                            status="new" if candidate_is_importable(seed_keyword, expanded, source) else "rejected",
                         )
                         db.add(row)
                         results.append(row)
@@ -111,12 +260,15 @@ def expand_by_related(db: Session, seed_keyword: str, searxng_search_fn, limit=8
                         seed_keyword=seed_keyword, expanded_keyword=kw
                     ).first()
                     if not row:
+                        source = domain(r.get("url", ""))
+                        qscore, qreasons = keyword_quality_score(seed_keyword, kw, source)
                         row = models.DiscoveryExpansion(
                             seed_keyword=seed_keyword,
                             expanded_keyword=kw,
                             expansion_type="related",
-                            source_domain=domain(r.get("url", "")),
-                            score=0.7,
+                            source_domain=source,
+                            score=qscore,
+                            status="new" if candidate_is_importable(seed_keyword, kw, source) else "rejected",
                         )
                         db.add(row)
                         results.append(row)
@@ -209,12 +361,14 @@ def find_keywords_from_site(db: Session, competitor_domain: str, searxng_search_
         kw = _title_to_keyword(title)
         if kw and kw not in existing:
             existing.add(kw)
+            qscore, qreasons = keyword_quality_score(competitor_domain, kw, competitor_domain)
             row = models.CompetitorKeyword(
                 competitor_domain=competitor_domain,
                 discovered_keyword=kw,
                 source="title",
                 source_url=url,
-                score=0.6,
+                score=qscore,
+                status="new" if candidate_is_importable(competitor_domain, kw, competitor_domain) else "rejected",
             )
             db.add(row)
             results.append(row)
@@ -223,12 +377,14 @@ def find_keywords_from_site(db: Session, competitor_domain: str, searxng_search_
         path_kw = _url_to_keyword(url, competitor_domain)
         if path_kw and path_kw not in existing:
             existing.add(path_kw)
+            qscore, qreasons = keyword_quality_score(competitor_domain, path_kw, competitor_domain)
             row = models.CompetitorKeyword(
                 competitor_domain=competitor_domain,
                 discovered_keyword=path_kw,
                 source="url_path",
                 source_url=url,
-                score=0.5,
+                score=qscore,
+                status="new" if candidate_is_importable(competitor_domain, path_kw, competitor_domain) else "rejected",
             )
             db.add(row)
             results.append(row)
@@ -246,12 +402,14 @@ def find_keywords_from_site(db: Session, competitor_domain: str, searxng_search_
             kw = p.strip()
             if kw and kw not in existing and len(kw) > 5:
                 existing.add(kw)
+                qscore, qreasons = keyword_quality_score(competitor_domain, kw, competitor_domain)
                 row = models.CompetitorKeyword(
                     competitor_domain=competitor_domain,
                     discovered_keyword=kw,
                     source="brand_search",
                     source_url=r.get("url", ""),
-                    score=0.4,
+                    score=qscore,
+                    status="new" if candidate_is_importable(competitor_domain, kw, competitor_domain) else "rejected",
                 )
                 db.add(row)
                 results.append(row)
@@ -447,12 +605,14 @@ def import_discovered_keywords(db: Session, seed_keyword: str | None = None, lim
     imported: list[models.Keyword] = []
     seen: set[str] = set()
 
-    q = db.query(models.DiscoveryExpansion).filter(models.DiscoveryExpansion.status == "new")
+    q = db.query(models.DiscoveryExpansion).filter(models.DiscoveryExpansion.status == "new", models.DiscoveryExpansion.score >= 0.62)
     if seed_keyword:
         q = q.filter(models.DiscoveryExpansion.seed_keyword == seed_keyword)
     expansions = q.order_by(models.DiscoveryExpansion.score.desc(), models.DiscoveryExpansion.created_at.desc()).limit(limit).all()
     for expansion in expansions:
-        if expansion.expanded_keyword in seen:
+        if expansion.expanded_keyword in seen or not candidate_is_importable(expansion.seed_keyword, expansion.expanded_keyword, expansion.source_domain):
+            expansion.status = "rejected"
+            db.commit()
             continue
         kw = import_expansion_to_keywords(db, expansion.id)
         if kw:
@@ -463,10 +623,12 @@ def import_discovered_keywords(db: Session, seed_keyword: str | None = None, lim
 
     remaining = max(0, limit - len(imported))
     if remaining:
-        cq = db.query(models.CompetitorKeyword).filter(models.CompetitorKeyword.status == "new")
+        cq = db.query(models.CompetitorKeyword).filter(models.CompetitorKeyword.status == "new", models.CompetitorKeyword.score >= 0.62)
         competitor_keywords = cq.order_by(models.CompetitorKeyword.score.desc(), models.CompetitorKeyword.created_at.desc()).limit(remaining).all()
         for ck in competitor_keywords:
-            if ck.discovered_keyword in seen:
+            if ck.discovered_keyword in seen or not candidate_is_importable(ck.competitor_domain, ck.discovered_keyword, ck.competitor_domain):
+                ck.status = "rejected"
+                db.commit()
                 continue
             kw = import_competitor_keyword(db, ck.id)
             if kw:
@@ -474,6 +636,39 @@ def import_discovered_keywords(db: Session, seed_keyword: str | None = None, lim
                 imported.append(kw)
 
     return imported
+
+def prune_low_quality_discoveries(db: Session) -> dict:
+    """Re-score existing discoveries and reject obvious noise before import/card generation."""
+    pruned_expansions = 0
+    pruned_competitor_keywords = 0
+    updated_keywords = 0
+
+    for e in db.query(models.DiscoveryExpansion).all():
+        qscore, reasons = keyword_quality_score(e.seed_keyword, e.expanded_keyword, e.source_domain)
+        e.score = qscore
+        if not candidate_is_importable(e.seed_keyword, e.expanded_keyword, e.source_domain):
+            if e.status != "rejected":
+                pruned_expansions += 1
+            e.status = "rejected"
+            kw = db.query(models.Keyword).filter_by(query=e.expanded_keyword).first()
+            if kw and kw.source.startswith("four_find:") and kw.status not in {"watch", "action"}:
+                kw.status = "rejected"
+                updated_keywords += 1
+
+    for ck in db.query(models.CompetitorKeyword).all():
+        qscore, reasons = keyword_quality_score(ck.competitor_domain, ck.discovered_keyword, ck.competitor_domain)
+        ck.score = qscore
+        if not candidate_is_importable(ck.competitor_domain, ck.discovered_keyword, ck.competitor_domain):
+            if ck.status != "rejected":
+                pruned_competitor_keywords += 1
+            ck.status = "rejected"
+            kw = db.query(models.Keyword).filter_by(query=ck.discovered_keyword).first()
+            if kw and kw.source.startswith("four_find:") and kw.status not in {"watch", "action"}:
+                kw.status = "rejected"
+                updated_keywords += 1
+
+    db.commit()
+    return {"pruned_expansions": pruned_expansions, "pruned_competitor_keywords": pruned_competitor_keywords, "updated_keywords": updated_keywords}
 
 def run_four_find_and_import(db: Session, seed_keyword: str, searxng_search_fn, depth=2, import_limit=12) -> dict:
     """Run the complete Four-Find pipeline and import discovered keywords via service/API logic."""
