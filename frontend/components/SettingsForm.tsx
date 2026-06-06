@@ -32,11 +32,12 @@ function SecretListManager({settingKey}:{settingKey:string}){
  async function load(){setStatus(await api(`/api/settings/secret-list/${settingKey}`))}
  useEffect(()=>{load().catch(()=>{})},[settingKey])
  async function add(){if(!value.trim()) return; setBusy(true); try{setStatus(await api('/api/settings/secret-list/append',{method:'POST',body:JSON.stringify({key:settingKey,value})})); setValue('')} finally{setBusy(false)}}
+ async function remove(index:number){setBusy(true); try{setStatus(await api('/api/settings/secret-list/remove',{method:'POST',body:JSON.stringify({key:settingKey,index})}))} finally{setBusy(false)}}
  async function clear(){if(!confirm('Clear all configured keys?')) return; setBusy(true); try{setStatus(await api('/api/settings/secret-list/clear',{method:'POST',body:JSON.stringify({key:settingKey})}))} finally{setBusy(false)}}
  return <div className="space-y-3">
   <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
    <div className="mb-3 flex items-center justify-between"><div><b>{status?.count||0} configured</b><p className="text-xs text-slate-500">{t('rotationHint')}</p></div><button className="btn-secondary" disabled={busy||!(status?.count)} onClick={clear}>Clear all</button></div>
-   <div className="space-y-2">{status?.items?.length?status.items.map((it:any)=><div className="flex items-center justify-between rounded-xl bg-slate-950 px-3 py-2 text-sm" key={it.index}><span>#{it.index+1}</span><code>{it.masked}</code></div>):<div className="text-sm text-slate-500">{t('noEntries')}</div>}</div>
+   <div className="space-y-2">{status?.items?.length?status.items.map((it:any)=><div className="flex items-center justify-between rounded-xl bg-slate-950 px-3 py-2 text-sm" key={it.index}><span>#{it.index+1}</span><code>{it.masked}</code><button className="btn-secondary" disabled={busy} onClick={()=>remove(it.index)}>{t('remove')}</button></div>):<div className="text-sm text-slate-500">{t('noEntries')}</div>}</div>
   </div>
   <div className="flex gap-2"><input className="input flex-1 font-mono text-sm" type="password" value={value} placeholder={t('pasteNewApiKey')} onChange={e=>setValue(e.target.value)}/><button className="btn" disabled={busy||!value.trim()} onClick={add}>{t('confirmAdd')}</button></div>
  </div>
@@ -69,6 +70,8 @@ export function SettingsForm({rows, initialGroup='search'}:{rows:any[]; initialG
  const [items,setItems]=useState<Setting[]>(rows)
  const [active,setActive]=useState(initialGroup)
  const [msg,setMsg]=useState('')
+ const [dirty,setDirty]=useState(false)
+ const [saving,setSaving]=useState(false)
  const [testing,setTesting]=useState(false)
  const [currentPassword,setCurrentPassword]=useState('')
  const [newPassword,setNewPassword]=useState('')
@@ -76,8 +79,8 @@ export function SettingsForm({rows, initialGroup='search'}:{rows:any[]; initialG
  const byKey=useMemo(()=>Object.fromEntries(items.map((x:any)=>[x.key,x])),[items])
  const group=GROUPS.find(g=>g.id===active)||GROUPS[0]
  function settingFor(key:string):Setting{return byKey[key]||{key,value:'',secret:SECRET_KEYS.includes(key)}}
- function update(key:string, patch:Partial<Setting>){setItems(items.map((x:any)=>x.key===key?{...x,...patch}:x).concat(byKey[key]?[]:[{key,value:'',secret:SECRET_KEYS.includes(key),...patch} as Setting]))}
- async function saveGroup(keys:string[]){for(const k of keys){const s=settingFor(k); if(s.secret&&masked(s.value)) continue; await api('/api/settings',{method:'POST',body:JSON.stringify(s)})} setMsg(`${t('saved')} ${group.title||t(group.titleKey)}`)}
+ function update(key:string, patch:Partial<Setting>){setDirty(true); setItems(items.map((x:any)=>x.key===key?{...x,...patch}:x).concat(byKey[key]?[]:[{key,value:'',secret:SECRET_KEYS.includes(key),...patch} as Setting]))}
+ async function saveGroup(keys:string[]){setSaving(true); try{for(const k of keys){const s=settingFor(k); if(s.secret&&masked(s.value)) continue; await api('/api/settings',{method:'POST',body:JSON.stringify(s)})} setDirty(false); setMsg(`${t('saved')} ${group.title||t(group.titleKey)}`)} finally{setSaving(false)}}
  async function test(){setTesting(true);setMsg(t('testing')); try{const r=await api<any>('/api/settings/test-search',{method:'POST'}); const p=r.providers||{}; setMsg(r.ok?`✅ ${t('searchOk')}: ${r.result_count} results, ${r.elapsed_ms}ms · providers=${(p.available||[]).join(',')||'none'} · searxng=${p.searxng_urls||0} · braveKeys=${p.brave_keys||0} · tavilyKeys=${p.tavily_keys||0}`:`❌ ${t('searchFailed')}: ${r.error}`)}catch(e:any){setMsg(`❌ ${e.message}`)} finally{setTesting(false)}}
  async function changePassword(){setMsg(t('changingPassword')); try{await api('/api/auth/password',{method:'POST',body:JSON.stringify({current_password:currentPassword,new_password:newPassword})}); setCurrentPassword(''); setNewPassword(''); setMsg(`✅ ${t('passwordChanged')}`)}catch(e:any){setMsg(`❌ ${e.message}`)}}
  function setListItem(key:string, idx:number, value:string){const xs=splitList(settingFor(key).value); xs[idx]=value; update(key,{value:joinList(xs)})}
@@ -90,7 +93,7 @@ export function SettingsForm({rows, initialGroup='search'}:{rows:any[]; initialG
   </aside>
   <main className="space-y-5">
    <section className="rounded-3xl border border-blue-500/20 bg-gradient-to-br from-slate-950 to-blue-950/40 p-6 shadow-2xl">
-    <div className="flex flex-wrap items-center justify-between gap-3"><div><div className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-300">{t('configuration')}</div><h2 className="mt-2 text-3xl font-black">{group.title||t(group.titleKey)}</h2><p className="mt-1 text-sm text-slate-400">{group.desc||t(group.descKey)}</p></div><div className="flex gap-2">{active==='search'&&<button className="btn-secondary" disabled={testing} onClick={test}>{testing?t('testing'):t('testProviders')}</button>}{group.keys.length>0&&<button className="btn" onClick={()=>saveGroup(group.keys)}>{t('saveGroup')}</button>}</div></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><div><div className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-300">{t('configuration')}</div><h2 className="mt-2 text-3xl font-black">{group.title||t(group.titleKey)}</h2><p className="mt-1 text-sm text-slate-400">{group.desc||t(group.descKey)}</p></div><div className="flex gap-2">{active==='search'&&<button className="btn-secondary" disabled={testing} onClick={test}>{testing?t('testing'):t('testProviders')}</button>}{group.keys.length>0&&<><span className={`badge ${dirty?'badge-watch':'badge-action'}`}>{saving?t('saving'):(dirty?t('unsaved'):t('savedState'))}</span><button className="btn" disabled={saving||!dirty} onClick={()=>saveGroup(group.keys)}>{t('saveGroup')}</button></>}</div></div>
     {msg&&<div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-200">{msg}</div>}
    </section>
    {active==='security'?<section className="panel space-y-4"><h3 className="text-xl font-bold">{t('changePassword')}</h3><div className="grid gap-3 md:grid-cols-2"><input className="input" type="password" placeholder={t('currentPassword')} value={currentPassword} onChange={e=>setCurrentPassword(e.target.value)}/><input className="input" type="password" placeholder={t('newPassword')} value={newPassword} onChange={e=>setNewPassword(e.target.value)}/></div><button className="btn" disabled={!newPassword||newPassword.length<8} onClick={changePassword}>{t('updatePassword')}</button></section>:<section className="space-y-4">{group.keys.map((key:string)=>renderSetting(key))}</section>}

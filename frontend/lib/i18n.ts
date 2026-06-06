@@ -17,7 +17,7 @@ const dict:Record<string,Record<Lang,string>>={
 
  settingsTitle:{zh:'设置',en:'Settings'}, settingsSubtitle:{zh:'分组配置中心：搜索源、模型、自动任务、质量门槛和安全设置。',en:'Grouped configuration center: search providers, models, automation, quality gates, and security.'},
  settingsMenu:{zh:'设置',en:'Settings'}, notSaved:{zh:'尚未保存',en:'Not saved yet'}, plain:{zh:'普通',en:'plain'},
- changingPassword:{zh:'正在修改密码...',en:'Changing password...'}, searchFailed:{zh:'搜索失败',en:'Search failed'}, pasteNewApiKey:{zh:'粘贴新的 API Key',en:'Paste new API key'}, provider:{zh:'提供商',en:'Provider'}, model:{zh:'模型',en:'Model'}, addFallback:{zh:'新增 fallback',en:'Add fallback'}, clearAll:{zh:'清空全部',en:'Clear all'}, configured:{zh:'已配置',en:'configured'},
+ changingPassword:{zh:'正在修改密码...',en:'Changing password...'}, searchFailed:{zh:'搜索失败',en:'Search failed'}, pasteNewApiKey:{zh:'粘贴新的 API Key',en:'Paste new API key'}, provider:{zh:'提供商',en:'Provider'}, model:{zh:'模型',en:'Model'}, addFallback:{zh:'新增 fallback',en:'Add fallback'}, clearAll:{zh:'清空全部',en:'Clear all'}, configured:{zh:'已配置',en:'configured'}, unsaved:{zh:'有未保存修改',en:'Unsaved changes'}, saving:{zh:'保存中...',en:'Saving...'}, savedState:{zh:'已保存',en:'Saved'},
  loginTitle:{zh:'Demand Hunter 登录',en:'Demand Hunter Login'}, loginSubtitle:{zh:'上线系统已启用访问保护。',en:'Access protection is enabled for this system.'}, loginButton:{zh:'登录',en:'Login'}, loggingIn:{zh:'登录中...',en:'Logging in...'}, password:{zh:'密码',en:'Password'},
 }
 

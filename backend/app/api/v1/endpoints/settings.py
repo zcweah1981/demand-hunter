@@ -61,6 +61,18 @@ def secret_list_append(payload: schemas.SettingKeyAppendIn, _: bool = Depends(re
     db.commit()
     return {"key": payload.key, "count": len(values), "items": [{"index": i, "masked": _mask_entry(v)} for i, v in enumerate(values)]}
 
+@router.post("/secret-list/remove")
+def secret_list_remove(payload: schemas.SettingKeyRemoveIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    row = db.get(models.Setting, payload.key) or models.Setting(key=payload.key, value="", secret=True)
+    values = _split_secret_values(row.value)
+    if 0 <= payload.index < len(values):
+        values.pop(payload.index)
+    row.value = "\n".join(values)
+    row.secret = True
+    db.merge(row)
+    db.commit()
+    return {"key": payload.key, "count": len(values), "items": [{"index": i, "masked": _mask_entry(v)} for i, v in enumerate(values)]}
+
 @router.post("/secret-list/clear")
 def secret_list_clear(payload: schemas.SettingKeyClearIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     row = db.get(models.Setting, payload.key) or models.Setting(key=payload.key, value="", secret=True)

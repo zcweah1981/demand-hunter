@@ -65,3 +65,7 @@ class LLMFallbackAppendIn(BaseModel):
 
 class LLMFallbackRemoveIn(BaseModel):
     index: int
+
+class SettingKeyRemoveIn(BaseModel):
+    key: str
+    index: int
