@@ -1,10 +1,10 @@
 from __future__ import annotations
-import json, secrets, threading, time
+import json, threading, time
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from .database import Base, engine, get_db, configure_sqlite
-from . import four_find, models, schemas, services
+from . import models, schemas, services
 from .core.config import config
 from .core.security import require_auth
 from .api.v1.api import api_router
@@ -12,35 +12,6 @@ from .api.deps import obj
 
 RUN_LOCK = threading.Lock()
 PUBLIC_PATHS = {"/api/health", "/api/auth/login"}
-
-# ---- Discovery job registry (in-memory, API-first async pattern) ----
-_discovery_jobs: dict[str, dict] = {}
-_discovery_lock = threading.Lock()
-
-def _set_job(job_id: str, **kwargs):
-    with _discovery_lock:
-        job = _discovery_jobs.get(job_id, {"id": job_id, "status": "pending", "result": None, "error": None})
-        job.update(kwargs)
-        _discovery_jobs[job_id] = job
-
-def _run_discovery_background(job_id: str, fn, *args, **kwargs):
-    from .database import SessionLocal
-    _set_job(job_id, status="running")
-    try:
-        db = SessionLocal()
-        try:
-            result = fn(db, *args, **kwargs)
-        finally:
-            db.close()
-        _set_job(job_id, status="ok", result=result)
-    except Exception as e:
-        _set_job(job_id, status="failed", error=str(e))
-
-def _start_discovery_job(fn, *args, **kwargs) -> str:
-    job_id = secrets.token_urlsafe(12)
-    _set_job(job_id, status="pending")
-    threading.Thread(target=_run_discovery_background, args=(job_id, fn, *args), kwargs=kwargs, daemon=True).start()
-    return job_id
 
 configure_sqlite()
 Base.metadata.create_all(bind=engine)
@@ -91,113 +62,6 @@ def startup():
 @app.get("/api/health")
 def health(db: Session=Depends(get_db)):
     return {"ok": True, "settings": len(db.query(models.Setting).all()), "keywords": db.query(models.Keyword).count(), "cards": db.query(models.OpportunityCard).count()}
-
-# ---- Four-Find Discovery ----
-
-@app.post("/api/discovery/expand")
-def discovery_expand(payload: schemas.DiscoverySeedIn, _: bool=Depends(require_auth)):
-    """词找词: expand a seed keyword"""
-    job_id = _start_discovery_job(
-        lambda db: [obj(e) for e in four_find.expand_by_suggest(db, payload.seed, services.searxng_search) + four_find.expand_by_related(db, payload.seed, services.searxng_search)]
-    )
-    return {"job_id": job_id, "status": "pending", "poll": f"/api/discovery/job/{job_id}"}
-
-@app.post("/api/discovery/find-sites")
-def discovery_find_sites(payload: schemas.DiscoverySeedIn, _: bool=Depends(require_auth)):
-    """词找站: find sites from a keyword"""
-    job_id = _start_discovery_job(
-        lambda db: four_find.find_sites_from_keyword(db, payload.seed, services.searxng_search)
-    )
-    return {"job_id": job_id, "status": "pending", "poll": f"/api/discovery/job/{job_id}"}
-
-@app.post("/api/discovery/site-keywords")
-def discovery_site_keywords(payload: schemas.DiscoveryDomainIn, _: bool=Depends(require_auth)):
-    """站找词: reverse discover keywords from a competitor domain"""
-    job_id = _start_discovery_job(
-        lambda db: [obj(e) for e in four_find.find_keywords_from_site(db, payload.domain, services.searxng_search)]
-    )
-    return {"job_id": job_id, "status": "pending", "poll": f"/api/discovery/job/{job_id}"}
-
-@app.post("/api/discovery/similar-sites")
-def discovery_similar_sites(payload: schemas.DiscoveryDomainIn, _: bool=Depends(require_auth)):
-    """站找站: find similar sites"""
-    job_id = _start_discovery_job(
-        lambda db: [obj(e) for e in four_find.find_similar_sites(db, payload.domain, services.searxng_search)]
-    )
-    return {"job_id": job_id, "status": "pending", "poll": f"/api/discovery/job/{job_id}"}
-
-@app.post("/api/discovery/run")
-def discovery_run(payload: schemas.DiscoverySeedIn, _: bool=Depends(require_auth)):
-    """Run full four-find pipeline"""
-    job_id = _start_discovery_job(
-        lambda db: four_find.run_four_find(db, payload.seed, services.searxng_search, depth=payload.depth or 2)
-    )
-    return {"job_id": job_id, "status": "pending", "poll": f"/api/discovery/job/{job_id}"}
-
-@app.post("/api/discovery/run-and-import")
-def discovery_run_and_import(payload: schemas.DiscoverySeedIn, _: bool=Depends(require_auth)):
-    """Run full Four-Find pipeline and import discoveries into the main keyword flow."""
-    job_id = _start_discovery_job(
-        lambda db: four_find.run_four_find_and_import(db, payload.seed, services.searxng_search, depth=payload.depth or 2, import_limit=payload.import_limit or 12)
-    )
-    return {"job_id": job_id, "status": "pending", "poll": f"/api/discovery/job/{job_id}"}
-
-@app.get("/api/discovery/job/{job_id}")
-def discovery_job_status(job_id: str, _: bool=Depends(require_auth)):
-    """Poll discovery job status."""
-    with _discovery_lock:
-        job = _discovery_jobs.get(job_id)
-    if not job:
-        raise HTTPException(404, "job not found")
-    return job
-
-@app.get("/api/discovery/loop-status")
-def discovery_loop_status(_: bool=Depends(require_auth), db: Session=Depends(get_db)):
-    """Four-Find closed-loop dashboard data."""
-    return four_find.discovery_loop_status(db)
-
-@app.post("/api/discovery/prune")
-def discovery_prune(_: bool=Depends(require_auth), db: Session=Depends(get_db)):
-    """Re-score and reject low-quality Four-Find discoveries before they burn SERP/card budget."""
-    result = four_find.prune_low_quality_discoveries(db)
-    result["loop_status"] = four_find.discovery_loop_status(db)
-    return result
-
-@app.post("/api/discovery/recover-serp-rejects")
-def discovery_recover_serp_rejects(payload: schemas.DailyRunIn, _: bool=Depends(require_auth)):
-    """Rewrite SERP-rejected Four-Find keywords and generate cards only for admissible SERPs."""
-    job_id = _start_discovery_job(lambda db: services.recover_serp_rejects(db, limit=payload.limit or 8))
-    return {"job_id": job_id, "status": "pending", "poll": f"/api/discovery/job/{job_id}"}
-
-@app.get("/api/discovery/expansions")
-def discovery_list_expansions(_: bool=Depends(require_auth), db: Session=Depends(get_db)):
-    return [obj(e) for e in db.query(models.DiscoveryExpansion).order_by(models.DiscoveryExpansion.created_at.desc()).limit(200).all()]
-
-@app.get("/api/discovery/competitor-keywords")
-def discovery_list_ck(_: bool=Depends(require_auth), db: Session=Depends(get_db)):
-    return [obj(e) for e in db.query(models.CompetitorKeyword).order_by(models.CompetitorKeyword.created_at.desc()).limit(200).all()]
-
-@app.get("/api/discovery/similar-sites")
-def discovery_list_similar(_: bool=Depends(require_auth), db: Session=Depends(get_db)):
-    return [obj(e) for e in db.query(models.CompetitorSite).order_by(models.CompetitorSite.created_at.desc()).limit(200).all()]
-
-@app.post("/api/discovery/import-expansion/{expansion_id}")
-def discovery_import_expansion(expansion_id: int, _: bool=Depends(require_auth), db: Session=Depends(get_db)):
-    kw = four_find.import_expansion_to_keywords(db, expansion_id)
-    if not kw: raise HTTPException(404, "not found or already imported")
-    return obj(kw)
-
-@app.post("/api/discovery/import-competitor-keyword/{ck_id}")
-def discovery_import_ck(ck_id: int, _: bool=Depends(require_auth), db: Session=Depends(get_db)):
-    kw = four_find.import_competitor_keyword(db, ck_id)
-    if not kw: raise HTTPException(404, "not found or already imported")
-    return obj(kw)
-
-@app.post("/api/discovery/import-discovered")
-def discovery_import_discovered(payload: schemas.DiscoverySeedIn, _: bool=Depends(require_auth), db: Session=Depends(get_db)):
-    rows = four_find.import_discovered_keywords(db, seed_keyword=payload.seed or None, limit=payload.import_limit or 12)
-    return [obj(kw) for kw in rows]
-
 
 @app.get("/api/roots")
 def roots(_: bool=Depends(require_auth), db: Session=Depends(get_db)):
