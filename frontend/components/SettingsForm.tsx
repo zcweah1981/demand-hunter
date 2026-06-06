@@ -87,10 +87,12 @@ export function SettingsForm({rows, initialGroup='search'}:{rows:any[]; initialG
  function setListItem(key:string, idx:number, value:string){const xs=splitList(settingFor(key).value); xs[idx]=value; update(key,{value:joinList(xs)})}
  function addListItem(key:string){const cur=settingFor(key).value||''; update(key,{value:cur+(cur.trim()?'\n':'')})}
  function removeListItem(key:string, idx:number){const xs=splitList(settingFor(key).value); xs.splice(idx,1); update(key,{value:joinList(xs)})}
- return <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
-  <aside className="panel h-fit space-y-2 lg:sticky lg:top-6">
+ return <div className="grid gap-6 xl:grid-cols-[300px_1fr]">
+  <aside className="panel h-fit xl:sticky xl:top-6">
    <div className="mb-3 px-2 text-xs font-bold uppercase tracking-[0.25em] text-slate-500">{t('settingsMenu')}</div>
-   {GROUPS.map(g=><Link href={`/settings/${g.id}`} key={g.id} onClick={()=>setActive(g.id)} className={`w-full rounded-2xl px-4 py-3 text-left transition ${active===g.id?'bg-blue-600/20 text-blue-100 ring-1 ring-blue-500/50':'bg-slate-950/50 text-slate-300 hover:bg-slate-900'}`}><div className="font-bold">{g.title||t(g.titleKey)}</div><div className="mt-1 text-xs text-slate-500">{g.desc||t(g.descKey)}</div></Link>)}
+   <nav className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:block xl:space-y-2">
+   {GROUPS.map(g=><Link href={`/settings/${g.id}`} key={g.id} onClick={()=>setActive(g.id)} className={`block w-full rounded-2xl px-4 py-3 text-left no-underline transition ${active===g.id?'bg-blue-600/20 text-blue-100 ring-1 ring-blue-500/50':'bg-slate-950/50 text-slate-300 hover:bg-slate-900'}`}><div className="font-bold">{g.title||t(g.titleKey)}</div><div className="mt-1 text-xs leading-5 text-slate-500">{g.desc||t(g.descKey)}</div></Link>)}
+   </nav>
   </aside>
   <main className="space-y-5">
    <section className="rounded-3xl border border-blue-500/20 bg-gradient-to-br from-slate-950 to-blue-950/40 p-6 shadow-2xl">
