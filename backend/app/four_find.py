@@ -42,6 +42,22 @@ GOOD_MODIFIERS = {
 }
 
 BUSINESS_MODIFIER_SETS = {
+    "notice": [
+        "late fee", "overdue", "rental", "eviction", "warning", "lease violation",
+        "payment", "tenant", "landlord", "reminder", "policy violation", "deadline",
+    ],
+    "fee": [
+        "late", "overdue", "penalty", "rental", "invoice", "payment", "calculate",
+        "estimate", "contractor", "small business", "waive", "reduce",
+    ],
+    "rental": [
+        "late fee", "notice", "lease", "tenant", "landlord", "eviction", "inspection",
+        "move in", "move out", "cleaning", "deposit", "renewal", "reminder",
+    ],
+    "late": [
+        "fee", "notice", "rental", "invoice", "payment", "penalty", "overdue",
+        "reminder", "calculator", "small business", "contractor",
+    ],
     "appointment": [
         "clinic", "dental", "patient", "reminder", "cancellation", "reschedule",
         "intake", "sms", "calendar", "doctor", "salon", "client",
@@ -69,6 +85,23 @@ BUSINESS_MODIFIER_SETS = {
 }
 
 COMMERCIAL_QUERY_PATTERNS = {
+    "notice": [
+        "rental late fee notice template", "overdue rent notice template",
+        "lease violation notice template", "eviction warning notice template",
+        "payment overdue notice for landlord",
+    ],
+    "fee": [
+        "late fee calculator for small business", "rental late fee calculator",
+        "invoice overdue fee calculator", "penalty fee calculator",
+    ],
+    "rental": [
+        "rental late fee notice template", "rental lease renewal reminder",
+        "tenant move out cleaning checklist", "rental inspection checklist template",
+    ],
+    "late": [
+        "late fee invoice calculator", "overdue payment reminder template",
+        "rental late fee notice template", "invoice late fee calculator for small business",
+    ],
     "appointment": [
         "appointment reminder template for clinic", "patient no show policy template",
         "appointment cancellation fee template", "dental appointment reminder sms template",
@@ -94,6 +127,13 @@ def business_modifier_variants(seed_keyword: str, limit: int = 12) -> list[str]:
     modifiers: list[str] = []
     out: list[str] = []
     seen: set[str] = set()
+
+    # General commercial inference: if no specific key matches but the seed
+    # contains commercial-intent terms, generate patterns from those terms.
+    commercial_seed_terms = {"template", "calculator", "notice", "fee", "late", "rental",
+                             "tracker", "checklist", "reminder", "invoice", "compliance"}
+    matched_commercial = seed_words & commercial_seed_terms
+
     for key, values in BUSINESS_MODIFIER_SETS.items():
         if key in seed_words:
             modifiers.extend(values)
@@ -103,7 +143,24 @@ def business_modifier_variants(seed_keyword: str, limit: int = 12) -> list[str]:
                     out.append(pattern)
                     if len(out) >= limit:
                         return out
+    # If no specific key matched, generate cross-product modifiers from any
+    # commercial terms found in the seed.
+    if not modifiers and matched_commercial:
+        for term in matched_commercial:
+            modifiers.extend(BUSINESS_MODIFIER_SETS.get(term, []))
+        for term in matched_commercial:
+            for pattern in COMMERCIAL_QUERY_PATTERNS.get(term, []):
+                if pattern not in seen:
+                    seen.add(pattern)
+                    out.append(pattern)
+                    if len(out) >= limit:
+                        return out
+    seed_terms_set = set(seed.split())
     for modifier in modifiers:
+        mod_words = modifier.split()
+        # Skip if modifier word already in seed (avoid "late late fee")
+        if all(w in seed_terms_set for w in mod_words):
+            continue
         candidates = [f"{modifier} {seed}"]
         if "template" in seed_words and modifier not in seed:
             candidates.append(f"{modifier} template")
@@ -357,6 +414,22 @@ def find_sites_from_keyword(db: Session, keyword: str, searxng_search_fn, limit=
 
 FORUM_DOMAINS_TUPLE = ("reddit.com", "news.ycombinator.com", "stackoverflow.com", "quora.com")
 STRONG_DOMAINS_TUPLE = ("google.com", "microsoft.com", "adobe.com", "shopify.com", "intuit.com", "hubspot.com", "salesforce.com", "wikipedia.org", "amazon.com")
+GENERIC_DOMAIN_BLOCKLIST = {
+    "google.com", "facebook.com", "twitter.com", "x.com", "youtube.com", "wikipedia.org",
+    "reddit.com", "linkedin.com", "instagram.com", "tiktok.com", "pinterest.com",
+    "dictionary.com", "merriam-webster.com", "dictionary.cambridge.org", "thesaurus.com",
+    "github.com", "stackoverflow.com", "quora.com", "medium.com", "substack.com",
+    "amazon.com", "ebay.com", "walmart.com", "target.com", "etsy.com",
+    "microsoft.com", "apple.com", "adobe.com", "zoom.us", "slack.com",
+    "netflix.com", "spotify.com", "twitch.tv", "discord.com",
+    "yelp.com", "tripadvisor.com", "booking.com",
+    "bestbuy.com", "homedepot.com", "websterwords.com", "roboform.com",
+    "imgur.com", "flickr.com", "patreon.com", "gofundme.com",
+    "en.wikipedia.org", "wiktionary.org", "wikihow.com", "britannica.com",
+    "reference.com", "icloud.com", "office.com", "outlook.com", "gmail.com",
+    "baidu.com", "qq.com", "weibo.com", "taobao.com",
+    "support.microsoft.com", "support.google.com", "support.apple.com",
+}
 
 def _classify_site(domain: str, title: str, snippet: str) -> str:
     text = (domain + " " + title + " " + snippet).lower()
@@ -383,73 +456,74 @@ def _classify_site(domain: str, title: str, snippet: str) -> str:
 def find_keywords_from_site(db: Session, competitor_domain: str, searxng_search_fn, limit=15) -> list[models.CompetitorKeyword]:
     """
     Reverse-discover keywords from a competitor domain.
-    Methods:
-    1. site:domain search → extract page titles → convert to keywords
-    2. "domain" keyword search → find what keywords they rank for
+    Strategy: search the domain name with commercial intent terms,
+    scrape results that land on the same domain, and extract keywords
+    from their page titles and URL paths.
     """
     results = []
     existing = set(r.discovered_keyword for r in db.query(models.CompetitorKeyword).filter_by(competitor_domain=competitor_domain).all())
+    brand = competitor_domain.split(".")[0]
 
-    # Method 1: site:domain search
-    site_query = f"site:{competitor_domain}"
-    serp = searxng_search_fn(db, site_query, limit=limit)
-    for r in serp:
+    # Method 1: domain + intent term search → scrape titles from their own pages
+    for intent_term in ["", "calculator", "template", "tool", "free", "online"]:
+        if len(results) >= limit:
+            break
+        q = f"{competitor_domain} {intent_term}".strip()
+        serp = searxng_search_fn(db, q, limit=5)
+        for r in serp:
+            if (r.get("engine") or "") == "error":
+                continue
+            r_domain = domain(r.get("url", ""))
+            if r_domain != competitor_domain:
+                continue
+            title = (r.get("title") or "").strip()
+            url = r.get("url") or ""
+            if title:
+                kw = _title_to_keyword(title)
+                if kw and kw not in existing:
+                    existing.add(kw)
+                    qscore, _ = keyword_quality_score(competitor_domain, kw, competitor_domain)
+                    row = models.CompetitorKeyword(
+                        competitor_domain=competitor_domain,
+                        discovered_keyword=kw,
+                        source="title",
+                        source_url=url,
+                        score=qscore,
+                        status="new" if candidate_is_importable(competitor_domain, kw, competitor_domain) else "rejected",
+                    )
+                    db.add(row)
+                    results.append(row)
+            path_kw = _url_to_keyword(url, competitor_domain)
+            if path_kw and path_kw not in existing:
+                existing.add(path_kw)
+                qscore, _ = keyword_quality_score(competitor_domain, path_kw, competitor_domain)
+                row = models.CompetitorKeyword(
+                    competitor_domain=competitor_domain,
+                    discovered_keyword=path_kw,
+                    source="url_path",
+                    source_url=url,
+                    score=qscore,
+                    status="new" if candidate_is_importable(competitor_domain, path_kw, competitor_domain) else "rejected",
+                )
+                db.add(row)
+                results.append(row)
+
+    # Method 2: "brand vs" → extract competitor product names as keywords
+    vs_serp = searxng_search_fn(db, f"{brand} vs", limit=4)
+    for r in vs_serp:
         if (r.get("engine") or "") == "error":
             continue
         title = (r.get("title") or "").strip()
-        url = r.get("url") or ""
-        if not title:
-            continue
-        # Convert page title to keyword
-        kw = _title_to_keyword(title)
-        if kw and kw not in existing:
-            existing.add(kw)
-            qscore, qreasons = keyword_quality_score(competitor_domain, kw, competitor_domain)
-            row = models.CompetitorKeyword(
-                competitor_domain=competitor_domain,
-                discovered_keyword=kw,
-                source="title",
-                source_url=url,
-                score=qscore,
-                status="new" if candidate_is_importable(competitor_domain, kw, competitor_domain) else "rejected",
-            )
-            db.add(row)
-            results.append(row)
-
-        # Also extract URL path keywords
-        path_kw = _url_to_keyword(url, competitor_domain)
-        if path_kw and path_kw not in existing:
-            existing.add(path_kw)
-            qscore, qreasons = keyword_quality_score(competitor_domain, path_kw, competitor_domain)
-            row = models.CompetitorKeyword(
-                competitor_domain=competitor_domain,
-                discovered_keyword=path_kw,
-                source="url_path",
-                source_url=url,
-                score=qscore,
-                status="new" if candidate_is_importable(competitor_domain, path_kw, competitor_domain) else "rejected",
-            )
-            db.add(row)
-            results.append(row)
-
-    # Method 2: search the domain name itself to find what they're known for
-    brand_query = competitor_domain.split(".")[0]
-    brand_serp = searxng_search_fn(db, f'"{brand_query}"', limit=5)
-    for r in brand_serp:
-        if (r.get("engine") or "") == "error":
-            continue
-        title = (r.get("title") or "").lower()
-        # Extract descriptor phrases
-        parts = re.findall(r"(?:is a|with|for|to)\s+([a-z][a-z\s]{3,40})", title)
-        for p in parts:
-            kw = p.strip()
-            if kw and kw not in existing and len(kw) > 5:
+        vs_match = re.search(r"\bvs\.?\s+(.+?)(?:\s*[|\-\u2013]|$)", title, re.IGNORECASE)
+        if vs_match:
+            kw = vs_match.group(1).strip().lower()
+            if kw and kw not in existing and 5 <= len(kw) <= 60:
                 existing.add(kw)
-                qscore, qreasons = keyword_quality_score(competitor_domain, kw, competitor_domain)
+                qscore, _ = keyword_quality_score(competitor_domain, kw, competitor_domain)
                 row = models.CompetitorKeyword(
                     competitor_domain=competitor_domain,
                     discovered_keyword=kw,
-                    source="brand_search",
+                    source="vs_search",
                     source_url=r.get("url", ""),
                     score=qscore,
                     status="new" if candidate_is_importable(competitor_domain, kw, competitor_domain) else "rejected",
@@ -457,8 +531,31 @@ def find_keywords_from_site(db: Session, competitor_domain: str, searxng_search_
                 db.add(row)
                 results.append(row)
 
+    # Method 3: brand search → only keep commercial-quality results
+    brand_serp = searxng_search_fn(db, f'"{brand}"', limit=5)
+    for r in brand_serp:
+        if (r.get("engine") or "") == "error":
+            continue
+        title = (r.get("title") or "").lower()
+        parts = re.findall(r"(?:is a|with|for|to)\s+([a-z][a-z\s]{3,40})", title)
+        for p in parts:
+            kw = p.strip()
+            if kw and kw not in existing and len(kw) > 5 and candidate_is_importable(competitor_domain, kw, competitor_domain):
+                existing.add(kw)
+                qscore, _ = keyword_quality_score(competitor_domain, kw, competitor_domain)
+                row = models.CompetitorKeyword(
+                    competitor_domain=competitor_domain,
+                    discovered_keyword=kw,
+                    source="brand_search",
+                    source_url=r.get("url", ""),
+                    score=qscore,
+                    status="new",
+                )
+                db.add(row)
+                results.append(row)
+
     db.commit()
-    return results
+    return results[:limit]
 
 def _title_to_keyword(title: str) -> str:
     """Convert a page title to a search keyword."""
@@ -520,8 +617,12 @@ def find_similar_sites(db: Session, seed_domain: str, searxng_search_fn, limit=1
             d = domain(r.get("url", ""))
             if not d or d == seed_domain or d in existing:
                 continue
-            # Skip generic sites
-            if any(s in d for s in ("google.com", "facebook.com", "twitter.com", "x.com", "youtube.com", "wikipedia.org", "reddit.com", "linkedin.com")):
+            # Skip generic / non-tool sites
+            if d in GENERIC_DOMAIN_BLOCKLIST or any(s in d for s in GENERIC_DOMAIN_BLOCKLIST):
+                continue
+            # Classify and only keep tool/saas/marketplace/content
+            site_type = _classify_site(d, r.get("title", ""), r.get("content") or r.get("snippet", ""))
+            if site_type in ("forum", "strong_brand", "video", "other"):
                 continue
             existing.add(d)
             row = db.query(models.CompetitorSite).filter_by(
@@ -534,7 +635,7 @@ def find_similar_sites(db: Session, seed_domain: str, searxng_search_fn, limit=1
                     discovery_method="alternative_to",
                     source_url=r.get("url", ""),
                     title=r.get("title", ""),
-                    score=0.6,
+                    score=0.7 if site_type in ("tool", "saas") else 0.5,
                 )
                 db.add(row)
                 results.append(row)
