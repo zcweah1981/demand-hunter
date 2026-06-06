@@ -33,7 +33,7 @@ function SecretListManager({settingKey}:{settingKey:string}){
  useEffect(()=>{load().catch(()=>{})},[settingKey])
  async function add(){if(!value.trim()) return; setBusy(true); try{setStatus(await api('/api/settings/secret-list/append',{method:'POST',body:JSON.stringify({key:settingKey,value})})); setValue('')} finally{setBusy(false)}}
  async function remove(index:number){setBusy(true); try{setStatus(await api('/api/settings/secret-list/remove',{method:'POST',body:JSON.stringify({key:settingKey,index})}))} finally{setBusy(false)}}
- async function clear(){if(!confirm('Clear all configured keys?')) return; setBusy(true); try{setStatus(await api('/api/settings/secret-list/clear',{method:'POST',body:JSON.stringify({key:settingKey})}))} finally{setBusy(false)}}
+ async function clear(){if(!confirm(t('clearAllConfirm'))) return; setBusy(true); try{setStatus(await api('/api/settings/secret-list/clear',{method:'POST',body:JSON.stringify({key:settingKey})}))} finally{setBusy(false)}}
  return <div className="space-y-3">
   <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
    <div className="mb-3 flex items-center justify-between"><div><b>{status?.count||0} configured</b><p className="text-xs text-slate-500">{t('rotationHint')}</p></div><button className="btn-secondary" disabled={busy||!(status?.count)} onClick={clear}>Clear all</button></div>
@@ -55,7 +55,7 @@ function LLMFallbackManager(){
  useEffect(()=>{load().catch(()=>{})},[])
  async function add(){if(!provider.trim()||!model.trim()) return; setBusy(true); try{setStatus(await api('/api/settings/llm/fallbacks/append',{method:'POST',body:JSON.stringify({provider,model,api_key:apiKey})})); setProvider(''); setModel(''); setApiKey('')} finally{setBusy(false)}}
  async function remove(index:number){setBusy(true); try{setStatus(await api('/api/settings/llm/fallbacks/remove',{method:'POST',body:JSON.stringify({index})}))} finally{setBusy(false)}}
- async function clear(){if(!confirm('Clear all fallback models?')) return; setBusy(true); try{setStatus(await api('/api/settings/llm/fallbacks/clear',{method:'POST'}))} finally{setBusy(false)}}
+ async function clear(){if(!confirm(t('clearFallbackConfirm'))) return; setBusy(true); try{setStatus(await api('/api/settings/llm/fallbacks/clear',{method:'POST'}))} finally{setBusy(false)}}
  return <div className="space-y-3">
   <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
    <div className="mb-3 flex items-center justify-between"><div><b>{status?.count||0} {t('configured')}</b><p className="text-xs text-slate-500">{t('fallbackHint')}</p></div><button className="btn-secondary" disabled={busy||!(status?.count)} onClick={clear}>{t('clearAll')}</button></div>
