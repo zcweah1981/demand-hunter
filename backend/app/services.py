@@ -18,16 +18,18 @@ DEFAULT_SETTINGS = {
     "LLM_API_KEY": "",
     "AUTO_RUN_ENABLED": "true",
     "AUTO_RUN_INTERVAL_MINUTES": "360",
-    "AUTO_RUN_LIMIT": "12",
+    "AUTO_RUN_LIMIT": "6",
     "MIN_ACTION_SCORE": "74",
     "REQUIRE_SOCIAL_FOR_ACTION": "false",
     "COLLECT_SOCIAL_EVIDENCE": "false",
     "BLOCKED_TERMS": "booking,best",
     "FOUR_FIND_AUTO_ENABLED": "true",
     "FOUR_FIND_AUTO_SEEDS": "invoice calculator,appointment template,compliance tracker",
-    "FOUR_FIND_IMPORT_LIMIT": "12",
-    "FOUR_FIND_REWRITE_ON_SERP_REJECT": "true",
+    "FOUR_FIND_IMPORT_LIMIT": "6",
+    "FOUR_FIND_REWRITE_ON_SERP_REJECT": "false",
     "FOUR_FIND_REWRITE_LIMIT": "4",
+    "FOUR_FIND_SERP_STRATEGY_ENABLED": "true",
+    "FOUR_FIND_SERP_VARIANT_LIMIT": "2",
 }
 DEFAULT_ROOTS = [
     ("invoice", "function"), ("calculator", "tool"), ("template", "tool"),
@@ -175,16 +177,81 @@ def gap_tags_for(result: dict, query: str = "") -> tuple[list[str], float]:
     if re.search(r"\b(best|top|free)\b", title): tags.append("listicle_or_free_intent"); score += 0.1
     return sorted(set(tags)), max(0.0, min(1.0, 0.45 + score))
 
+def serp_query_variants(query: str) -> list[str]:
+    """Generate provider-specific search query variants for long-tail demand terms."""
+    q = re.sub(r"\s+", " ", query.lower()).strip()
+    variants = [q]
+    # Exclude obvious sources of SERP drift for appointment/compliance/local terms.
+    exclude_gov = f'{q} -site:.gov -site:*.gov'
+    variants.append(exclude_gov)
+    if any(w in q for w in ["template", "form", "policy"]):
+        variants += [
+            f'"{q}" template OR form',
+            f'{q} examples template form -site:.gov',
+        ]
+    elif any(w in q for w in ["calculator", "invoice", "fee", "tax"]):
+        variants += [
+            f'"{q}" calculator tool',
+            f'{q} tool calculator -site:.gov',
+        ]
+    elif any(w in q for w in ["tracker", "compliance", "dashboard"]):
+        variants += [
+            f'"{q}" software dashboard',
+            f'{q} template spreadsheet software -site:.gov',
+        ]
+    else:
+        variants.append(f'"{q}"')
+    out=[]; seen=set()
+    for v in variants:
+        v = re.sub(r"\s+", " ", v).strip()
+        if v and v not in seen:
+            seen.add(v); out.append(v)
+    return out
+
+def _serp_meta_from_items(items: list[dict], original_query: str, search_query: str) -> dict:
+    evaluated=[]
+    for item in items[:10]:
+        tags, weakness = gap_tags_for(item, original_query)
+        evaluated.append({"item": item, "tags": tags, "weakness": weakness})
+    mismatch = sum(1 for e in evaluated if "query_mismatch" in e["tags"])
+    strong = sum(1 for e in evaluated if "strong_brand" in e["tags"])
+    relevant = len(evaluated) - mismatch
+    avg_gap = sum(e["weakness"] for e in evaluated) / max(1, len(evaluated))
+    # selection_score rewards relevance first, then useful weakness; penalizes strong-brand SERPs.
+    selection_score = round((relevant / max(1, len(evaluated))) * 0.65 + avg_gap * 0.35 - strong * 0.03, 3)
+    return {"query": search_query, "results": len(evaluated), "relevant": relevant, "mismatch": mismatch, "strong": strong, "avg_gap": round(avg_gap, 3), "selection_score": selection_score, "evaluated": evaluated}
+
+def choose_best_serp_items(db: Session, original_query: str, limit: int = 10) -> tuple[list[dict], dict]:
+    try:
+        variant_limit = int(setting(db, "FOUR_FIND_SERP_VARIANT_LIMIT") or "2")
+    except Exception:
+        variant_limit = 2
+    variants = serp_query_variants(original_query)[:max(1, variant_limit)]
+    metas=[]
+    for variant in variants:
+        items = searxng_search(db, variant, limit=limit)
+        metas.append(_serp_meta_from_items(items, original_query, variant))
+    best = sorted(metas, key=lambda m: (m["selection_score"], m["relevant"], m["avg_gap"]), reverse=True)[0] if metas else _serp_meta_from_items([], original_query, original_query)
+    return [e["item"] for e in best.get("evaluated", [])], {k:v for k,v in best.items() if k != "evaluated"}
+
 def run_serp(db: Session, keyword: models.Keyword) -> list[models.SerpResult]:
+    rows, meta = run_serp_with_strategy(db, keyword)
+    return rows
+
+def run_serp_with_strategy(db: Session, keyword: models.Keyword) -> tuple[list[models.SerpResult], dict]:
     db.query(models.SerpResult).filter_by(keyword_id=keyword.id).delete()
-    results = searxng_search(db, keyword.query, limit=10)
+    if (setting(db, "FOUR_FIND_SERP_STRATEGY_ENABLED") or "false").lower() in {"1", "true", "yes", "on"}:
+        results, strategy_meta = choose_best_serp_items(db, keyword.query, limit=10)
+    else:
+        results = searxng_search(db, keyword.query, limit=10)
+        strategy_meta = {"query": keyword.query, "strategy": "disabled"}
     rows = []
     for i, item in enumerate(results, 1):
         tags, weakness = gap_tags_for(item, keyword.query)
         row = models.SerpResult(keyword_id=keyword.id, rank=i, title=item.get("title") or "", url=item.get("url") or "", snippet=item.get("content") or item.get("snippet") or "", domain=domain(item.get("url") or ""), gap_tags=json.dumps(tags), weakness_score=weakness)
         db.add(row); rows.append(row)
     db.commit()
-    return rows
+    return rows, strategy_meta
 
 def rewrite_query_candidates(query: str) -> list[str]:
     """Generate API/service-level query rewrites for SERP-rejected Four-Find keywords.
@@ -254,12 +321,12 @@ def recover_serp_rejects(db: Session, limit: int = 8) -> dict:
                 created.append(rq)
             if kw.status in {"action", "watch"}:
                 continue
-            serp = run_serp(db, kw)
+            serp, strategy_meta = run_serp_with_strategy(db, kw)
             ok, gate = serp_admissibility(serp)
             if not ok:
                 kw.status = "serp_reject"
                 db.commit()
-                rejected.append({"source": src.query, "rewrite": rq, **gate})
+                rejected.append({"source": src.query, "rewrite": rq, "serp_strategy": strategy_meta, **gate})
                 continue
             card = make_card(db, kw)
             cards.append(card)
@@ -378,16 +445,16 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
             kws=discover_keywords(db, limit=limit, roots=roots)
         cards=[]
         skipped=[]
-        kws = [kw for kw in kws if kw.status != "rejected"]
+        kws = [kw for kw in kws if kw.status not in {"rejected", "serp_reject", "rewrite_exhausted"}]
         total_kws = len(kws[:limit])
         for idx, kw in enumerate(kws[:limit], 1):
             run.summary=json.dumps({"phase":"running", "current": idx, "total": total_kws, "keyword": kw.query, "cards": len(cards)}, ensure_ascii=False)
             db.commit()
-            serp = run_serp(db, kw)
+            serp, strategy_meta = run_serp_with_strategy(db, kw)
             admissible, gate = serp_admissibility(serp)
             if not admissible:
                 kw.status = "serp_reject"
-                skipped.append({"keyword": kw.query, **gate})
+                skipped.append({"keyword": kw.query, "serp_strategy": strategy_meta, **gate})
                 db.commit()
                 continue
             cards.append(make_card(db, kw))
