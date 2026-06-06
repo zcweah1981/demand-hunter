@@ -19,6 +19,19 @@ GOOD_INTENT_TERMS = {
     "tool", "automation", "workflow", "compliance", "invoice", "appointment", "schedule",
     "deadline", "clinic", "contractor", "rental", "small business", "management", "report",
 }
+COMMERCIAL_ICP_TERMS = {
+    "clinic", "dental", "doctor", "patient", "salon", "contractor", "rental", "landlord",
+    "freelancer", "small business", "vendor", "employee", "audit", "compliance", "permit",
+    "renewal", "training", "client", "invoice", "payment", "tax",
+}
+COMMERCIAL_OUTPUT_TERMS = {
+    "calculator", "template", "checklist", "tracker", "dashboard", "report", "packet",
+    "form", "letter", "email", "policy", "spreadsheet", "generator", "estimate", "receipt",
+}
+PAY_TRIGGER_TERMS = {
+    "late", "fee", "overdue", "deadline", "renewal", "audit", "risk", "penalty",
+    "payment", "no show", "cancellation", "reschedule", "compliance", "tax",
+}
 GOOD_MODIFIERS = {
     "clinic", "dental", "salon", "doctor", "patient", "client", "contractor", "rental",
     "reminder", "cancellation", "reschedule", "intake", "form", "sms", "calendar",
@@ -47,11 +60,26 @@ BUSINESS_MODIFIER_SETS = {
     ],
     "invoice": [
         "late fee", "payment", "contractor", "rental", "small business", "reminder",
-        "receipt", "tax", "estimate", "overdue",
+        "receipt", "tax", "estimate", "overdue", "freelancer", "landlord", "payment reminder",
     ],
     "calculator": [
         "late fee", "tax", "margin", "payment", "contractor", "rental", "estimate",
         "deadline", "penalty", "cost",
+    ],
+}
+
+COMMERCIAL_QUERY_PATTERNS = {
+    "appointment": [
+        "appointment reminder template for clinic", "patient no show policy template",
+        "appointment cancellation fee template", "dental appointment reminder sms template",
+    ],
+    "invoice": [
+        "overdue invoice payment reminder template", "invoice late fee calculator for small business",
+        "contractor invoice estimate template", "rental late fee notice template",
+    ],
+    "compliance": [
+        "vendor compliance checklist template", "employee training compliance tracker",
+        "permit renewal deadline tracker", "audit readiness checklist template",
     ],
 }
 
@@ -64,11 +92,17 @@ def business_modifier_variants(seed_keyword: str, limit: int = 12) -> list[str]:
     seed = re.sub(r"\s+", " ", seed_keyword.lower()).strip()
     seed_words = set(re.findall(r"[a-z0-9]+", seed))
     modifiers: list[str] = []
+    out: list[str] = []
+    seen: set[str] = set()
     for key, values in BUSINESS_MODIFIER_SETS.items():
         if key in seed_words:
             modifiers.extend(values)
-    out: list[str] = []
-    seen: set[str] = set()
+            for pattern in COMMERCIAL_QUERY_PATTERNS.get(key, []):
+                if pattern not in seen:
+                    seen.add(pattern)
+                    out.append(pattern)
+                    if len(out) >= limit:
+                        return out
     for modifier in modifiers:
         candidates = [f"{modifier} {seed}"]
         if "template" in seed_words and modifier not in seed:
@@ -125,6 +159,15 @@ def keyword_quality_score(seed: str, keyword: str, source_domain: str = "") -> t
 
     if any(term in kw for term in GOOD_INTENT_TERMS):
         score += 0.18; reasons.append("good_intent_term")
+    commercial_hits = 0
+    if any(term in kw for term in COMMERCIAL_ICP_TERMS):
+        commercial_hits += 1; score += 0.12; reasons.append("commercial_icp")
+    if any(term in kw for term in COMMERCIAL_OUTPUT_TERMS):
+        commercial_hits += 1; score += 0.10; reasons.append("commercial_output")
+    if any(term in kw for term in PAY_TRIGGER_TERMS):
+        commercial_hits += 1; score += 0.14; reasons.append("pay_trigger")
+    if commercial_hits == 0:
+        score -= 0.18; reasons.append("no_commercial_signal")
     if seed_l and len(set(seed_l.split()) & set(words)) >= max(1, min(2, len(seed_l.split()))):
         score += 0.08; reasons.append("seed_overlap")
     if seed_words and added_words and not (added_words & GOOD_MODIFIERS):
@@ -138,7 +181,7 @@ def keyword_quality_score(seed: str, keyword: str, source_domain: str = "") -> t
 
 def candidate_is_importable(seed: str, keyword: str, source_domain: str = "") -> bool:
     score, reasons = keyword_quality_score(seed, keyword, source_domain)
-    return score >= 0.62 and "blocked_noise_term" not in reasons and "seed_repeated_or_brand_echo" not in reasons and "weak_added_modifier" not in reasons
+    return score >= 0.68 and "blocked_noise_term" not in reasons and "seed_repeated_or_brand_echo" not in reasons and "weak_added_modifier" not in reasons and "no_commercial_signal" not in reasons
 
 # --- 1. 词找词 (Keyword → Keyword) ---
 
