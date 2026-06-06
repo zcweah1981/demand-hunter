@@ -178,6 +178,12 @@ def discovery_prune(_: bool=Depends(require_auth), db: Session=Depends(get_db)):
     result["loop_status"] = four_find.discovery_loop_status(db)
     return result
 
+@app.post("/api/discovery/recover-serp-rejects")
+def discovery_recover_serp_rejects(payload: schemas.DailyRunIn, _: bool=Depends(require_auth)):
+    """Rewrite SERP-rejected Four-Find keywords and generate cards only for admissible SERPs."""
+    job_id = _start_discovery_job(lambda db: services.recover_serp_rejects(db, limit=payload.limit or 8))
+    return {"job_id": job_id, "status": "pending", "poll": f"/api/discovery/job/{job_id}"}
+
 @app.get("/api/discovery/expansions")
 def discovery_list_expansions(_: bool=Depends(require_auth), db: Session=Depends(get_db)):
     return [obj(e) for e in db.query(models.DiscoveryExpansion).order_by(models.DiscoveryExpansion.created_at.desc()).limit(200).all()]

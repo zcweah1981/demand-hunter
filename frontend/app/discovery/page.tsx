@@ -5,6 +5,7 @@ import {DiscoveryDomainForm} from '../../components/DiscoveryDomainForm'
 import {FullPipelineForm} from '../../components/FullPipelineForm'
 import {DiscoveryImportButton} from '../../components/DiscoveryImportButton'
 import {DiscoveryPruneButton} from '../../components/DiscoveryPruneButton'
+import {DiscoveryRecoverButton} from '../../components/DiscoveryRecoverButton'
 
 export default async function Discovery(){
   const [expansions, competitorKws, similarSites] = await Promise.all([
@@ -57,7 +58,7 @@ export default async function Discovery(){
           </div>
           <div className="flex flex-col items-end gap-2">
             <span className="badge badge-action">API closed loop</span>
-            <DiscoveryPruneButton />
+            <div className="flex flex-wrap justify-end gap-2"><DiscoveryRecoverButton /><DiscoveryPruneButton /></div>
           </div>
         </div>
         <div className="grid gap-4 md:grid-cols-6">

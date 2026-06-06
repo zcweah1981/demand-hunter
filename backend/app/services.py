@@ -26,6 +26,8 @@ DEFAULT_SETTINGS = {
     "FOUR_FIND_AUTO_ENABLED": "true",
     "FOUR_FIND_AUTO_SEEDS": "invoice calculator,appointment template,compliance tracker",
     "FOUR_FIND_IMPORT_LIMIT": "12",
+    "FOUR_FIND_REWRITE_ON_SERP_REJECT": "true",
+    "FOUR_FIND_REWRITE_LIMIT": "4",
 }
 DEFAULT_ROOTS = [
     ("invoice", "function"), ("calculator", "tool"), ("template", "tool"),
@@ -184,6 +186,93 @@ def run_serp(db: Session, keyword: models.Keyword) -> list[models.SerpResult]:
     db.commit()
     return rows
 
+def rewrite_query_candidates(query: str) -> list[str]:
+    """Generate API/service-level query rewrites for SERP-rejected Four-Find keywords.
+
+    These rewrites are not root-combo guesses. They are task-intent rewrites designed
+    to disambiguate vague long-tails after SERP mismatch.
+    """
+    q = re.sub(r"\s+", " ", query.lower()).strip()
+    candidates: list[str] = []
+    if "appointment" in q:
+        candidates += [
+            "clinic appointment reminder template",
+            "patient appointment form template",
+            "appointment cancellation policy template",
+            "appointment reschedule email template",
+            "dental appointment reminder template",
+            "patient appointment intake form template",
+        ]
+    if "invoice" in q or "calculator" in q:
+        candidates += [
+            "invoice late fee calculator",
+            "overdue invoice interest calculator",
+            "late payment fee calculator",
+            "invoice payment reminder calculator",
+            "contractor invoice estimate calculator",
+            "rental late fee calculator",
+        ]
+    if "compliance" in q or "tracker" in q:
+        candidates += [
+            "compliance deadline tracking software",
+            "vendor compliance tracking spreadsheet",
+            "employee training compliance tracker",
+            "audit compliance checklist tracker",
+            "permit renewal compliance tracker",
+            "compliance report dashboard template",
+        ]
+    if not candidates:
+        terms = [t for t in re.findall(r"[a-z0-9]+", q) if t not in {"software", "tool", "online", "free"}]
+        base = " ".join(terms[:4])
+        candidates += [f"{base} template", f"{base} calculator", f"{base} tracker"]
+    out=[]; seen=set()
+    for c in candidates:
+        c = re.sub(r"\s+", " ", c).strip()
+        if c and c != q and c not in seen:
+            seen.add(c); out.append(c)
+    return out
+
+def recover_serp_rejects(db: Session, limit: int = 8) -> dict:
+    """Rewrite SERP-rejected Four-Find keywords and only generate cards for admissible SERPs."""
+    from . import four_find
+    source_rows = db.query(models.Keyword).filter(
+        models.Keyword.status == "serp_reject",
+        models.Keyword.source.like("four_find:%"),
+    ).order_by(models.Keyword.created_at.desc()).limit(limit).all()
+    created=[]; admitted=[]; rejected=[]; cards=[]
+    for src in source_rows:
+        rewrites = rewrite_query_candidates(src.query)
+        source_admitted = False
+        for rq in rewrites[:2]:
+            if not four_find.candidate_is_importable(src.query, rq):
+                rejected.append({"source": src.query, "rewrite": rq, "reason": "candidate_quality"})
+                continue
+            kw = db.query(models.Keyword).filter_by(query=rq).first()
+            if not kw:
+                kw = models.Keyword(query=rq, source="four_find:rewrite", root_terms=json.dumps([src.query]), intent=classify_intent(rq))
+                db.add(kw); db.commit(); db.refresh(kw)
+                created.append(rq)
+            if kw.status in {"action", "watch"}:
+                continue
+            serp = run_serp(db, kw)
+            ok, gate = serp_admissibility(serp)
+            if not ok:
+                kw.status = "serp_reject"
+                db.commit()
+                rejected.append({"source": src.query, "rewrite": rq, **gate})
+                continue
+            card = make_card(db, kw)
+            cards.append(card)
+            admitted.append({"source": src.query, "rewrite": rq, "card_id": card.id, "verdict": card.verdict, "score": card.score})
+            src.status = "rewrite_admitted"
+            db.commit()
+            source_admitted = True
+            break
+        if not source_admitted:
+            src.status = "rewrite_exhausted"
+            db.commit()
+    return {"source_keywords": len(source_rows), "created_rewrites": created, "admitted": admitted, "rejected": rejected[:20], "cards": len(cards)}
+
 def serp_admissibility(serp: list[models.SerpResult]) -> tuple[bool, dict]:
     """Gate keywords before card generation.
 
@@ -302,6 +391,16 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
                 db.commit()
                 continue
             cards.append(make_card(db, kw))
+        rewrite_summary = None
+        if (setting(db, "FOUR_FIND_REWRITE_ON_SERP_REJECT") or "false").lower() in {"1", "true", "yes", "on"} and skipped:
+            try:
+                rewrite_limit = int(setting(db, "FOUR_FIND_REWRITE_LIMIT") or "8")
+            except Exception:
+                rewrite_limit = 8
+            rewrite_summary = recover_serp_rejects(db, limit=rewrite_limit)
+            if rewrite_summary.get("cards"):
+                recovered_cards = db.query(models.OpportunityCard).order_by(models.OpportunityCard.created_at.desc()).limit(int(rewrite_summary.get("cards") or 0)).all()
+                cards.extend(recovered_cards)
         summary={
             "phase":"finished",
             "keywords":len(kws),
@@ -314,6 +413,7 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
             "root_combo_keywords": sum(1 for k in kws if k.source == "root_combo"),
             "skipped_low_quality_serp": len(skipped),
             "skipped_examples": skipped[:5],
+            "rewrite_recovery": rewrite_summary,
         }
         run.status="ok"; run.summary=json.dumps(summary, ensure_ascii=False); run.finished_at=datetime.utcnow()
     except Exception as e:
