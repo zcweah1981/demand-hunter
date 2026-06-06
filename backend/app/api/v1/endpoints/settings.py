@@ -69,3 +69,55 @@ def secret_list_clear(payload: schemas.SettingKeyClearIn, _: bool = Depends(requ
     db.merge(row)
     db.commit()
     return {"key": payload.key, "count": 0, "items": []}
+
+
+def _fallbacks_raw(db: Session) -> list[dict]:
+    import json
+    row = db.get(models.Setting, "LLM_FALLBACKS")
+    if not row or not row.value:
+        return []
+    try:
+        data = json.loads(row.value)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+def _save_fallbacks(db: Session, rows: list[dict]) -> dict:
+    import json
+    row = db.get(models.Setting, "LLM_FALLBACKS") or models.Setting(key="LLM_FALLBACKS", value="[]", secret=True)
+    row.value = json.dumps(rows, ensure_ascii=False)
+    row.secret = True
+    db.merge(row)
+    db.commit()
+    return _fallbacks_status(rows)
+
+def _fallbacks_status(rows: list[dict]) -> dict:
+    return {
+        "key": "LLM_FALLBACKS",
+        "count": len(rows),
+        "items": [
+            {"index": i, "provider": r.get("provider", ""), "model": r.get("model", ""), "api_key": _mask_entry(r.get("api_key", ""))}
+            for i, r in enumerate(rows)
+        ],
+    }
+
+@router.get("/llm/fallbacks")
+def llm_fallbacks(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    return _fallbacks_status(_fallbacks_raw(db))
+
+@router.post("/llm/fallbacks/append")
+def llm_fallbacks_append(payload: schemas.LLMFallbackAppendIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    rows = _fallbacks_raw(db)
+    rows.append({"provider": payload.provider.strip(), "model": payload.model.strip(), "api_key": payload.api_key.strip()})
+    return _save_fallbacks(db, rows)
+
+@router.post("/llm/fallbacks/remove")
+def llm_fallbacks_remove(payload: schemas.LLMFallbackRemoveIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    rows = _fallbacks_raw(db)
+    if 0 <= payload.index < len(rows):
+        rows.pop(payload.index)
+    return _save_fallbacks(db, rows)
+
+@router.post("/llm/fallbacks/clear")
+def llm_fallbacks_clear(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    return _save_fallbacks(db, [])

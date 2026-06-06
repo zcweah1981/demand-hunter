@@ -57,3 +57,11 @@ class SettingKeyAppendIn(BaseModel):
 
 class SettingKeyClearIn(BaseModel):
     key: str
+
+class LLMFallbackAppendIn(BaseModel):
+    provider: str
+    model: str
+    api_key: str = ""
+
+class LLMFallbackRemoveIn(BaseModel):
+    index: int
