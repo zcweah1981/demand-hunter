@@ -10,12 +10,20 @@ ROOT = Path(__file__).resolve().parents[2]
 
 DEFAULT_SETTINGS = {
     "SEARXNG_URL": "http://127.0.0.1:8080",
+    "SEARXNG_URLS": "",
+    "SEARXNG_ROTATION_STRATEGY": "round_robin",
     "SEARXNG_API_TOKEN": "",
     "SEARXNG_ENGINES": "bing,wikipedia",
     "BRAVE_API_KEY": "",
+    "BRAVE_API_KEYS": "",
     "TAVILY_API_KEY": "",
+    "TAVILY_API_KEYS": "",
     "LLM_PROVIDER": "",
     "LLM_API_KEY": "",
+    "LLM_PRIMARY_PROVIDER": "",
+    "LLM_PRIMARY_MODEL": "",
+    "LLM_PRIMARY_API_KEY": "",
+    "LLM_FALLBACKS": "[]",
     "AUTO_RUN_ENABLED": "true",
     "AUTO_RUN_INTERVAL_MINUTES": "360",
     "AUTO_RUN_LIMIT": "6",
@@ -58,7 +66,7 @@ def init_defaults(db: Session):
     for k,v in DEFAULT_SETTINGS.items():
         default_value = os.environ.get(k, v)
         if not db.get(models.Setting, k):
-            db.add(models.Setting(key=k, value=default_value, secret=k.endswith("KEY") or k.endswith("TOKEN")))
+            db.add(models.Setting(key=k, value=default_value, secret=k.endswith("KEY") or k.endswith("KEYS") or k.endswith("TOKEN") or k in {"LLM_FALLBACKS"}))
     for term, cat in DEFAULT_ROOTS:
         if not db.query(models.Root).filter_by(term=term).first():
             db.add(models.Root(term=term, category=cat, weight=1.0))
@@ -139,30 +147,67 @@ def discover_keywords_four_find(db: Session, limit=24, seeds: list[str] | None =
                 return out
     return out
 
+
+_ROTATION_STATE: dict[str, int] = {}
+
+def _split_multi_value(value: str) -> list[str]:
+    if not value:
+        return []
+    parts = re.split(r"[\n,]+", value)
+    return [p.strip() for p in parts if p.strip() and not p.strip().startswith("#")]
+
+def _rotating_values(db: Session, multi_key: str, single_key: str = "") -> list[str]:
+    values = _split_multi_value(setting(db, multi_key))
+    if not values and single_key:
+        single = setting(db, single_key).strip()
+        if single:
+            values = [single]
+    if not values:
+        return []
+    idx = _ROTATION_STATE.get(multi_key, 0) % len(values)
+    _ROTATION_STATE[multi_key] = idx + 1
+    return values[idx:] + values[:idx]
+
+def searxng_urls(db: Session) -> list[str]:
+    urls = _rotating_values(db, "SEARXNG_URLS", "SEARXNG_URL")
+    return [u.rstrip("/") for u in urls if u.strip()]
+
+def rotating_api_keys(db: Session, multi_key: str, single_key: str) -> list[str]:
+    return _rotating_values(db, multi_key, single_key)
+
 def searxng_search(db: Session, query: str, categories="general", limit=10) -> list[dict]:
-    base = setting(db, "SEARXNG_URL").rstrip("/")
-    if not base:
+    urls = searxng_urls(db)
+    if not urls:
         return []
     headers = {"Accept": "application/json"}
     token = setting(db, "SEARXNG_API_TOKEN")
     if token:
         headers["Authorization"] = f"Bearer {token}"
-    try:
-        params={"q": query, "format":"json", "categories":categories, "language":"en"}
-        engines = setting(db, "SEARXNG_ENGINES")
-        if engines: params["engines"] = engines
-        r = requests.get(f"{base}/search", params=params, headers=headers, timeout=12)
-        r.raise_for_status()
-        data = r.json()
-        return data.get("results", [])[:limit]
-    except Exception as e:
-        return [{"title":"SearXNG error", "url":"", "content":str(e), "engine":"error"}]
+    last_error = ""
+    for base in urls:
+        try:
+            params={"q": query, "format":"json", "categories":categories, "language":"en"}
+            engines = setting(db, "SEARXNG_ENGINES")
+            if engines: params["engines"] = engines
+            r = requests.get(f"{base}/search", params=params, headers=headers, timeout=12)
+            r.raise_for_status()
+            data = r.json()
+            results = data.get("results", [])[:limit]
+            for item in results:
+                item["provider_base"] = base
+            return results
+        except Exception as e:
+            last_error = f"{base}: {e}"
+            continue
+    return [{"title":"SearXNG error", "url":"", "content":last_error, "engine":"error"}]
 
 def brave_search(db: Session, query: str, limit=10) -> list[dict]:
-    key = setting(db, "BRAVE_API_KEY")
-    if not key:
+    keys = rotating_api_keys(db, "BRAVE_API_KEYS", "BRAVE_API_KEY")
+    if not keys:
         return []
-    try:
+    last_error = ""
+    for key in keys:
+      try:
         r = requests.get(
             "https://api.search.brave.com/res/v1/web/search",
             params={"q": query, "count": min(max(limit, 1), 20), "search_lang": "en"},
@@ -180,14 +225,18 @@ def brave_search(db: Session, query: str, limit=10) -> list[dict]:
                 "engine": "brave",
             })
         return out
-    except Exception as e:
-        return [{"title":"Brave error", "url":"", "content":str(e), "engine":"error"}]
+      except Exception as e:
+        last_error = str(e)
+        continue
+    return [{"title":"Brave error", "url":"", "content":last_error, "engine":"error"}]
 
 def tavily_search(db: Session, query: str, limit=10) -> list[dict]:
-    key = setting(db, "TAVILY_API_KEY")
-    if not key:
+    keys = rotating_api_keys(db, "TAVILY_API_KEYS", "TAVILY_API_KEY")
+    if not keys:
         return []
-    try:
+    last_error = ""
+    for key in keys:
+      try:
         r = requests.post(
             "https://api.tavily.com/search",
             json={"api_key": key, "query": query, "max_results": min(max(limit, 1), 10), "search_depth": "basic", "include_answer": False},
@@ -204,8 +253,10 @@ def tavily_search(db: Session, query: str, limit=10) -> list[dict]:
                 "engine": "tavily",
             })
         return out
-    except Exception as e:
-        return [{"title":"Tavily error", "url":"", "content":str(e), "engine":"error"}]
+      except Exception as e:
+        last_error = str(e)
+        continue
+    return [{"title":"Tavily error", "url":"", "content":last_error, "engine":"error"}]
 
 def available_serp_providers(db: Session) -> list[str]:
     order = [x.strip().lower() for x in (setting(db, "SERP_PROVIDER_ORDER") or "searxng").split(",") if x.strip()]
@@ -213,9 +264,9 @@ def available_serp_providers(db: Session) -> list[str]:
     for p in order:
         if p == "searxng":
             out.append(p)
-        elif p == "brave" and setting(db, "BRAVE_API_KEY"):
+        elif p == "brave" and rotating_api_keys(db, "BRAVE_API_KEYS", "BRAVE_API_KEY"):
             out.append(p)
-        elif p == "tavily" and setting(db, "TAVILY_API_KEY"):
+        elif p == "tavily" and rotating_api_keys(db, "TAVILY_API_KEYS", "TAVILY_API_KEY"):
             out.append(p)
     return out or ["searxng"]
 
@@ -572,7 +623,7 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
 def test_search_provider(db: Session) -> dict:
     base = setting(db, "SEARXNG_URL").rstrip("/")
     started = datetime.utcnow()
-    providers = {"available": available_serp_providers(db), "brave_configured": bool(setting(db, "BRAVE_API_KEY")), "tavily_configured": bool(setting(db, "TAVILY_API_KEY"))}
+    providers = {"available": available_serp_providers(db), "searxng_urls": len(searxng_urls(db)), "brave_keys": len(rotating_api_keys(db, "BRAVE_API_KEYS", "BRAVE_API_KEY")), "tavily_keys": len(rotating_api_keys(db, "TAVILY_API_KEYS", "TAVILY_API_KEY")), "brave_configured": bool(rotating_api_keys(db, "BRAVE_API_KEYS", "BRAVE_API_KEY")), "tavily_configured": bool(rotating_api_keys(db, "TAVILY_API_KEYS", "TAVILY_API_KEY"))}
     try:
         engines = setting(db, "SEARXNG_ENGINES") or "bing,wikipedia"
         r = requests.get(f"{base}/search", params={"q":"invoice calculator", "format":"json", "language":"en", "engines": engines}, timeout=12)

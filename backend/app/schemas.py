@@ -46,3 +46,7 @@ class DiscoverySeedIn(BaseModel):
 
 class DiscoveryDomainIn(BaseModel):
     domain: str
+
+class AuthPasswordChangeIn(BaseModel):
+    current_password: str
+    new_password: str
