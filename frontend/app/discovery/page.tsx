@@ -6,6 +6,7 @@ import {FullPipelineForm} from '../../components/FullPipelineForm'
 import {DiscoveryImportButton} from '../../components/DiscoveryImportButton'
 import {DiscoveryPruneButton} from '../../components/DiscoveryPruneButton'
 import {DiscoveryRecoverButton} from '../../components/DiscoveryRecoverButton'
+import {I18nText} from '../../components/I18nText'
 
 export default async function Discovery(){
   const [expansions, competitorKws, similarSites] = await Promise.all([
@@ -19,28 +20,28 @@ export default async function Discovery(){
     <div className="space-y-8">
       <section className="rounded-3xl border border-violet-500/30 bg-gradient-to-br from-violet-950/70 via-slate-950 to-blue-950/60 p-8 shadow-2xl">
         <p className="text-sm font-semibold uppercase tracking-[0.3em] text-violet-300">Four-Find Discovery</p>
-        <h1 className="mt-3 text-4xl font-black text-white">四找发现引擎</h1>
+        <h1 className="mt-3 text-4xl font-black text-white"><I18nText zh='四找发现引擎' en='Four-Find Discovery Engine'/></h1>
         <p className="mt-3 max-w-3xl text-slate-300">
-          基于「词找词 → 词找站 → 站找词 → 站找站」的完整找词链路。从一个 seed keyword 出发，发现更多搜索入口、竞品、和机会。
+          <I18nText zh='基于「词找词 → 词找站 → 站找词 → 站找站」的完整找词链路。从一个 seed keyword 出发，发现更多搜索入口、竞品、和机会。' en='A complete keyword discovery chain: keyword-to-keyword, keyword-to-site, site-to-keyword, and site-to-site. Start from one seed keyword to discover more entry points, competitors, and opportunities.'/>
         </p>
       </section>
 
       <section className="grid gap-6 xl:grid-cols-2">
         <div className="panel">
-          <h2 className="text-xl font-bold">词找词 / 词找站</h2>
-          <p className="mt-2 text-sm text-slate-400">输入一个 seed keyword，系统会自动扩展相关搜索词，并发现 SERP 上的竞品站。</p>
+          <h2 className="text-xl font-bold"><I18nText zh='词找词 / 词找站' en='Keyword → Keyword / Keyword → Site'/></h2>
+          <p className="mt-2 text-sm text-slate-400"><I18nText zh='输入一个 seed keyword，系统会自动扩展相关搜索词，并发现 SERP 上的竞品站。' en='Enter a seed keyword. The system expands related queries and finds competitor sites on the SERP.'/></p>
           <DiscoverySeedForm />
         </div>
         <div className="panel">
-          <h2 className="text-xl font-bold">站找词 / 站找站</h2>
-          <p className="mt-2 text-sm text-slate-400">输入一个竞品域名，系统会反查它的关键词，并找到类似站。</p>
+          <h2 className="text-xl font-bold"><I18nText zh='站找词 / 站找站' en='Site → Keyword / Site → Site'/></h2>
+          <p className="mt-2 text-sm text-slate-400"><I18nText zh='输入一个竞品域名，系统会反查它的关键词，并找到类似站。' en='Enter a competitor domain. The system reverse-discovers its keywords and similar sites.'/></p>
           <DiscoveryDomainForm />
         </div>
       </section>
 
       <section className="panel">
-        <h2 className="text-xl font-bold">完整四找流水线</h2>
-        <p className="mt-2 text-sm text-slate-400">一键执行：词找词 → 词找站 → 站找词 → 站找站</p>
+        <h2 className="text-xl font-bold"><I18nText zh='完整四找流水线' en='Full Four-Find Pipeline'/></h2>
+        <p className="mt-2 text-sm text-slate-400"><I18nText zh='一键执行：词找词 → 词找站 → 站找词 → 站找站' en='Run all steps: keyword-to-keyword → keyword-to-site → site-to-keyword → site-to-site'/></p>
         <FullPipelineForm />
       </section>
 
@@ -53,8 +54,8 @@ export default async function Discovery(){
       {loop&&<section className="panel">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-xl font-bold">四找闭环状态</h2>
-            <p className="mt-1 text-sm text-slate-400">Discovery → Import → SERP/Card → Review Feedback → 下一轮 seeds/domains。</p>
+            <h2 className="text-xl font-bold"><I18nText zh='四找闭环状态' en='Four-Find Loop Status'/></h2>
+            <p className="mt-1 text-sm text-slate-400"><I18nText zh='Discovery → Import → SERP/Card → Review Feedback → 下一轮 seeds/domains。' en='Discovery → Import → SERP/Card → Review Feedback → next-round seeds/domains.'/></p>
           </div>
           <div className="flex flex-col items-end gap-2">
             <span className="badge badge-action">API closed loop</span>
@@ -71,11 +72,11 @@ export default async function Discovery(){
         </div>
         <div className="mt-5 grid gap-4 lg:grid-cols-2">
           <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-            <h3 className="font-semibold text-slate-200">Top Seeds</h3>
+            <h3 className="font-semibold text-slate-200"><I18nText zh='Top Seeds' en='Top Seeds'/></h3>
             <div className="mt-3 space-y-2 text-sm">{(loop.seed_scores||[]).slice(0,6).map((s:any)=><div key={s.seed} className="flex justify-between gap-4"><span className="text-slate-300">{s.seed}</span><span className="text-slate-500">expanded {s.expanded} · imported {s.imported}</span></div>)}</div>
           </div>
           <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-            <h3 className="font-semibold text-slate-200">Top Competitor Domains</h3>
+            <h3 className="font-semibold text-slate-200"><I18nText zh='Top Competitor Domains' en='Top Competitor Domains'/></h3>
             <div className="mt-3 space-y-2 text-sm">{(loop.top_competitor_domains||[]).slice(0,6).map((d:any)=><div key={d.domain} className="flex justify-between gap-4"><span className="text-slate-300">{d.domain}</span><span className="text-slate-500">{d.keywords} keywords</span></div>)}</div>
           </div>
         </div>
@@ -83,7 +84,7 @@ export default async function Discovery(){
 
       <section className="grid gap-6 xl:grid-cols-2">
         <div className="panel overflow-x-auto">
-          <h2 className="mb-4 text-xl font-bold">词找词结果</h2>
+          <h2 className="mb-4 text-xl font-bold"><I18nText zh='词找词结果' en='Keyword Expansion Results'/></h2>
           {expansions.length ? (
             <table className="w-full text-sm">
               <thead><tr className="text-left text-slate-500"><th className="pb-2">Seed</th><th className="pb-2">Expanded</th><th className="pb-2">Type</th><th className="pb-2">Action</th></tr></thead>
@@ -100,11 +101,11 @@ export default async function Discovery(){
               ))}
               </tbody>
             </table>
-          ) : <p className="rounded-2xl border border-slate-800 bg-slate-950 p-5 text-sm text-slate-400">还没有词找词结果。输入 seed keyword 开始。</p>}
+          ) : <p className="rounded-2xl border border-slate-800 bg-slate-950 p-5 text-sm text-slate-400">还没有<I18nText zh='词找词结果' en='Keyword Expansion Results'/>。输入 seed keyword 开始。</p>}
         </div>
 
         <div className="panel overflow-x-auto">
-          <h2 className="mb-4 text-xl font-bold">站找词结果</h2>
+          <h2 className="mb-4 text-xl font-bold"><I18nText zh='站找词结果' en='Site-to-Keyword Results'/></h2>
           {competitorKws.length ? (
             <table className="w-full text-sm">
               <thead><tr className="text-left text-slate-500"><th className="pb-2">Domain</th><th className="pb-2">Keyword</th><th className="pb-2">Source</th><th className="pb-2">Action</th></tr></thead>
@@ -121,12 +122,12 @@ export default async function Discovery(){
               ))}
               </tbody>
             </table>
-          ) : <p className="rounded-2xl border border-slate-800 bg-slate-950 p-5 text-sm text-slate-400">还没有站找词结果。</p>}
+          ) : <p className="rounded-2xl border border-slate-800 bg-slate-950 p-5 text-sm text-slate-400">还没有<I18nText zh='站找词结果' en='Site-to-Keyword Results'/>。</p>}
         </div>
       </section>
 
       <section className="panel overflow-x-auto">
-        <h2 className="mb-4 text-xl font-bold">站找站结果</h2>
+        <h2 className="mb-4 text-xl font-bold"><I18nText zh='站找站结果' en='Similar Site Results'/></h2>
         {similarSites.length ? (
           <table className="w-full text-sm">
             <thead><tr className="text-left text-slate-500"><th className="pb-2">From</th><th className="pb-2">Similar Domain</th><th className="pb-2">Title</th></tr></thead>
@@ -140,11 +141,11 @@ export default async function Discovery(){
             ))}
             </tbody>
           </table>
-        ) : <p className="rounded-2xl border border-slate-800 bg-slate-950 p-5 text-sm text-slate-400">还没有站找站结果。</p>}
+        ) : <p className="rounded-2xl border border-slate-800 bg-slate-950 p-5 text-sm text-slate-400">还没有<I18nText zh='站找站结果' en='Similar Site Results'/>。</p>}
       </section>
 
       <section className="panel">
-        <h2 className="text-xl font-bold">方法论</h2>
+        <h2 className="text-xl font-bold"><I18nText zh='方法论' en='Methodology'/></h2>
         <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-2xl border border-violet-500/30 bg-violet-950/30 p-4">
             <div className="text-2xl">🔍</div>

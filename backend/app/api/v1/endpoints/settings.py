@@ -133,3 +133,32 @@ def llm_fallbacks_remove(payload: schemas.LLMFallbackRemoveIn, _: bool = Depends
 @router.post("/llm/fallbacks/clear")
 def llm_fallbacks_clear(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
     return _save_fallbacks(db, [])
+
+
+@router.post("/provider-health")
+def provider_health(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    import time
+    import requests
+    health = {"searxng": [], "brave": {"configured": False, "keys": 0, "ok": False}, "tavily": {"configured": False, "keys": 0, "ok": False}}
+    # SearXNG: test every configured URL independently.
+    for base in services.searxng_urls(db):
+        started = time.time()
+        try:
+            r = requests.get(f"{base.rstrip('/')}/search", params={"q": "invoice calculator", "format": "json", "language": "en", "engines": services.setting(db, "SEARXNG_ENGINES") or "bing"}, timeout=12)
+            r.raise_for_status()
+            data = r.json()
+            health["searxng"].append({"url": base, "ok": True, "elapsed_ms": int((time.time()-started)*1000), "results": len(data.get("results", []))})
+        except Exception as e:
+            health["searxng"].append({"url": base, "ok": False, "elapsed_ms": int((time.time()-started)*1000), "error": str(e)})
+    brave_keys = services.rotating_api_keys(db, "BRAVE_API_KEYS", "BRAVE_API_KEY")
+    tavily_keys = services.rotating_api_keys(db, "TAVILY_API_KEYS", "TAVILY_API_KEY")
+    health["brave"].update({"configured": bool(brave_keys), "keys": len(brave_keys)})
+    health["tavily"].update({"configured": bool(tavily_keys), "keys": len(tavily_keys)})
+    if brave_keys:
+        res = services.brave_search(db, "invoice calculator", limit=3)
+        health["brave"].update({"ok": bool(res and res[0].get("engine") != "error"), "results": len(res), "sample": (res[0] if res else None)})
+    if tavily_keys:
+        res = services.tavily_search(db, "invoice calculator", limit=3)
+        health["tavily"].update({"ok": bool(res and res[0].get("engine") != "error"), "results": len(res), "sample": (res[0] if res else None)})
+    health["available"] = services.available_serp_providers(db)
+    return health

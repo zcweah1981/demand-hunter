@@ -5,7 +5,7 @@ export type Lang='zh'|'en'
 const dict:Record<string,Record<Lang,string>>={
  overview:{zh:'概览',en:'Overview'}, discovery:{zh:'四找发现',en:'Discovery'}, dashboard:{zh:'仪表盘',en:'Dashboard'}, review:{zh:'复核队列',en:'Review Queue'}, cards:{zh:'机会卡',en:'Cards'}, keywords:{zh:'关键词',en:'Keywords'}, roots:{zh:'词根库',en:'Root Library'}, runs:{zh:'运行历史',en:'Run History'}, settings:{zh:'设置',en:'Settings'},
  qualityFormula:{zh:'质量公式',en:'Quality Formula'}, formula:{zh:'需求 × 入口 × 缺口 × MVP × 变现',en:'Demand × Entry × Gap × MVP × Monetization'},
- configuration:{zh:'配置',en:'Configuration'}, saveGroup:{zh:'保存模块',en:'Save module'}, testProviders:{zh:'测试搜索源',en:'Test Providers'}, testing:{zh:'测试中...',en:'Testing...'},
+ configuration:{zh:'配置',en:'Configuration'}, saveGroup:{zh:'保存模块',en:'Save module'}, testProviders:{zh:'测试搜索源',en:'Test Providers'}, providerHealth:{zh:'Provider 健康检查',en:'Provider Health'}, testing:{zh:'测试中...',en:'Testing...'},
  searchProviders:{zh:'搜索源',en:'Search Providers'}, searchDesc:{zh:'SearXNG 多地址、provider fallback、SERP strategy',en:'SearXNG URLs, provider fallback, SERP strategy'},
  braveDesc:{zh:'Brave 多 Key 轮询',en:'Brave multi-key rotation'}, tavilyDesc:{zh:'Tavily 多 Key 轮询',en:'Tavily multi-key rotation'},
  llmDesc:{zh:'Primary + fallback 模型配置',en:'Primary + fallback model configuration'}, automation:{zh:'自动化',en:'Automation'}, automationDesc:{zh:'自动运行和 Four-Find 闭环策略',en:'Auto run and Four-Find loop policy'}, quality:{zh:'质量',en:'Quality'}, qualityDesc:{zh:'Action 门槛和噪音控制',en:'Action threshold and noise controls'}, security:{zh:'安全',en:'Security'}, securityDesc:{zh:'登录密码修改',en:'Login password change'},
