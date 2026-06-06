@@ -83,16 +83,16 @@ export default async function Discovery(){
       </section>}
 
       <section className="grid gap-6 xl:grid-cols-2">
-        <div className="panel overflow-x-auto">
+        <div className="panel">
           <h2 className="mb-4 text-xl font-bold"><I18nText zh='词找词结果' en='Keyword Expansion Results'/></h2>
           {expansions.length ? (
-            <table className="w-full text-sm">
+            <div className="table-scroll"><table className="data-table">
               <thead><tr className="text-left text-slate-500"><th className="pb-2"><I18nText zh='Seed' en='Seed'/></th><th className="pb-2"><I18nText zh='扩展词' en='Expanded'/></th><th className="pb-2"><I18nText zh='类型' en='Type'/></th><th className="pb-2"><I18nText zh='操作' en='Action'/></th></tr></thead>
               <tbody>
               {expansions.slice(0,30).map((e:any)=>(
                 <tr key={e.id} className="border-t border-slate-800">
-                  <td className="py-2 text-slate-400">{e.seed_keyword}</td>
-                  <td className="py-2 font-medium text-white">{e.expanded_keyword}</td>
+                  <td className="safe-text py-2 text-slate-400">{e.seed_keyword}</td>
+                  <td className="safe-text py-2 font-medium text-white">{e.expanded_keyword}</td>
                   <td className="py-2"><span className="badge">{e.expansion_type}</span></td>
                   <td className="py-2">
                     {e.status === 'new' ? <DiscoveryImportButton id={e.id} type="expansion"/> : <span className="text-xs text-emerald-400">{e.status}</span>}
@@ -100,20 +100,20 @@ export default async function Discovery(){
                 </tr>
               ))}
               </tbody>
-            </table>
+            </table></div>
           ) : <p className="rounded-2xl border border-slate-800 bg-slate-950 p-5 text-sm text-slate-400">还没有<I18nText zh='词找词结果' en='Keyword Expansion Results'/>。输入 seed keyword 开始。</p>}
         </div>
 
-        <div className="panel overflow-x-auto">
+        <div className="panel">
           <h2 className="mb-4 text-xl font-bold"><I18nText zh='站找词结果' en='Site-to-Keyword Results'/></h2>
           {competitorKws.length ? (
-            <table className="w-full text-sm">
+            <div className="table-scroll"><table className="data-table">
               <thead><tr className="text-left text-slate-500"><th className="pb-2"><I18nText zh='域名' en='Domain'/></th><th className="pb-2"><I18nText zh='关键词' en='Keyword'/></th><th className="pb-2"><I18nText zh='来源' en='Source'/></th><th className="pb-2"><I18nText zh='操作' en='Action'/></th></tr></thead>
               <tbody>
               {competitorKws.slice(0,30).map((e:any)=>(
                 <tr key={e.id} className="border-t border-slate-800">
-                  <td className="py-2 text-slate-400">{e.competitor_domain}</td>
-                  <td className="py-2 font-medium text-white">{e.discovered_keyword}</td>
+                  <td className="safe-text py-2 text-slate-400">{e.competitor_domain}</td>
+                  <td className="safe-text py-2 font-medium text-white">{e.discovered_keyword}</td>
                   <td className="py-2"><span className="badge">{e.source}</span></td>
                   <td className="py-2">
                     {e.status === 'new' ? <DiscoveryImportButton id={e.id} type="competitor-keyword"/> : <span className="text-xs text-emerald-400">{e.status}</span>}
@@ -121,26 +121,26 @@ export default async function Discovery(){
                 </tr>
               ))}
               </tbody>
-            </table>
+            </table></div>
           ) : <p className="rounded-2xl border border-slate-800 bg-slate-950 p-5 text-sm text-slate-400">还没有<I18nText zh='站找词结果' en='Site-to-Keyword Results'/>。</p>}
         </div>
       </section>
 
-      <section className="panel overflow-x-auto">
+      <section className="panel">
         <h2 className="mb-4 text-xl font-bold"><I18nText zh='站找站结果' en='Similar Site Results'/></h2>
         {similarSites.length ? (
-          <table className="w-full text-sm">
+          <div className="table-scroll"><table className="data-table">
             <thead><tr className="text-left text-slate-500"><th className="pb-2"><I18nText zh='来源站' en='From'/></th><th className="pb-2"><I18nText zh='相似域名' en='Similar Domain'/></th><th className="pb-2"><I18nText zh='标题' en='Title'/></th></tr></thead>
             <tbody>
             {similarSites.slice(0,30).map((e:any)=>(
               <tr key={e.id} className="border-t border-slate-800">
-                <td className="py-2 text-slate-400">{e.seed_domain}</td>
-                <td className="py-2 font-medium text-white">{e.similar_domain}</td>
-                <td className="py-2 text-slate-300">{e.title}</td>
+                <td className="safe-text py-2 text-slate-400">{e.seed_domain}</td>
+                <td className="safe-text py-2 font-medium text-white">{e.similar_domain}</td>
+                <td className="safe-text py-2 text-slate-300">{e.title}</td>
               </tr>
             ))}
             </tbody>
-          </table>
+          </table></div>
         ) : <p className="rounded-2xl border border-slate-800 bg-slate-950 p-5 text-sm text-slate-400">还没有<I18nText zh='站找站结果' en='Similar Site Results'/>。</p>}
       </section>
 
