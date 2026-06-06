@@ -4,7 +4,7 @@ from fastapi import FastAPI, Depends, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from .database import Base, engine, get_db, configure_sqlite
-from . import models, schemas, services
+from . import four_find, models, schemas, services
 
 AUTH_TOKEN = os.environ.get("DEMAND_HUNTER_AUTH_TOKEN", "") or secrets.token_urlsafe(32)
 AUTH_PASSWORD = os.environ.get("DEMAND_HUNTER_PASSWORD", "")
@@ -77,6 +77,59 @@ def obj(row):
 @app.get("/api/health")
 def health(db: Session=Depends(get_db)):
     return {"ok": True, "settings": len(db.query(models.Setting).all()), "keywords": db.query(models.Keyword).count(), "cards": db.query(models.OpportunityCard).count()}
+
+# ---- Four-Find Discovery ----
+
+@app.post("/api/discovery/expand")
+def discovery_expand(payload: schemas.DiscoverySeedIn, _: bool=Depends(require_auth), db: Session=Depends(get_db)):
+    """词找词: expand a seed keyword"""
+    expansions = four_find.expand_by_suggest(db, payload.seed, services.searxng_search)
+    related = four_find.expand_by_related(db, payload.seed, services.searxng_search)
+    return [obj(e) for e in expansions + related]
+
+@app.post("/api/discovery/find-sites")
+def discovery_find_sites(payload: schemas.DiscoverySeedIn, _: bool=Depends(require_auth), db: Session=Depends(get_db)):
+    """词找站: find sites from a keyword"""
+    return four_find.find_sites_from_keyword(db, payload.seed, services.searxng_search)
+
+@app.post("/api/discovery/site-keywords")
+def discovery_site_keywords(payload: schemas.DiscoveryDomainIn, _: bool=Depends(require_auth), db: Session=Depends(get_db)):
+    """站找词: reverse discover keywords from a competitor domain"""
+    return [obj(e) for e in four_find.find_keywords_from_site(db, payload.domain, services.searxng_search)]
+
+@app.post("/api/discovery/similar-sites")
+def discovery_similar_sites(payload: schemas.DiscoveryDomainIn, _: bool=Depends(require_auth), db: Session=Depends(get_db)):
+    """站找站: find similar sites"""
+    return [obj(e) for e in four_find.find_similar_sites(db, payload.domain, services.searxng_search)]
+
+@app.post("/api/discovery/run")
+def discovery_run(payload: schemas.DiscoverySeedIn, _: bool=Depends(require_auth), db: Session=Depends(get_db)):
+    """Run full four-find pipeline"""
+    return four_find.run_four_find(db, payload.seed, services.searxng_search, depth=payload.depth or 2)
+
+@app.get("/api/discovery/expansions")
+def discovery_list_expansions(_: bool=Depends(require_auth), db: Session=Depends(get_db)):
+    return [obj(e) for e in db.query(models.DiscoveryExpansion).order_by(models.DiscoveryExpansion.created_at.desc()).limit(200).all()]
+
+@app.get("/api/discovery/competitor-keywords")
+def discovery_list_ck(_: bool=Depends(require_auth), db: Session=Depends(get_db)):
+    return [obj(e) for e in db.query(models.CompetitorKeyword).order_by(models.CompetitorKeyword.created_at.desc()).limit(200).all()]
+
+@app.get("/api/discovery/similar-sites")
+def discovery_list_similar(_: bool=Depends(require_auth), db: Session=Depends(get_db)):
+    return [obj(e) for e in db.query(models.CompetitorSite).order_by(models.CompetitorSite.created_at.desc()).limit(200).all()]
+
+@app.post("/api/discovery/import-expansion/{expansion_id}")
+def discovery_import_expansion(expansion_id: int, _: bool=Depends(require_auth), db: Session=Depends(get_db)):
+    kw = four_find.import_expansion_to_keywords(db, expansion_id)
+    if not kw: raise HTTPException(404, "not found or already imported")
+    return obj(kw)
+
+@app.post("/api/discovery/import-competitor-keyword/{ck_id}")
+def discovery_import_ck(ck_id: int, _: bool=Depends(require_auth), db: Session=Depends(get_db)):
+    kw = four_find.import_competitor_keyword(db, ck_id)
+    if not kw: raise HTTPException(404, "not found or already imported")
+    return obj(kw)
 
 
 @app.post("/api/auth/login")

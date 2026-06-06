@@ -36,3 +36,10 @@ class AuthLoginOut(BaseModel):
 
 class AutoTickIn(BaseModel):
     force: bool = False
+
+class DiscoverySeedIn(BaseModel):
+    seed: str
+    depth: int | None = 2
+
+class DiscoveryDomainIn(BaseModel):
+    domain: str

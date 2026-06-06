@@ -4,6 +4,43 @@ from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Te
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
 
+class DiscoveryExpansion(Base):
+    """词找词 expansion:从一个 seed keyword 扩展出更多搜索词"""
+    __tablename__ = "discovery_expansions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    seed_keyword: Mapped[str] = mapped_column(String(260), index=True)
+    expanded_keyword: Mapped[str] = mapped_column(String(260))
+    expansion_type: Mapped[str] = mapped_column(String(60))  # suggest, related, modifier, paa
+    source_domain: Mapped[str] = mapped_column(String(255), default="")  # which domain we found it from
+    score: Mapped[float] = mapped_column(Float, default=0.0)
+    status: Mapped[str] = mapped_column(String(40), default="new")  # new, imported, rejected
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+class CompetitorKeyword(Base):
+    """站找词:从竞品域名反查到的关键词"""
+    __tablename__ = "competitor_keywords"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    competitor_domain: Mapped[str] = mapped_column(String(255), index=True)
+    discovered_keyword: Mapped[str] = mapped_column(String(260))
+    source: Mapped[str] = mapped_column(String(80))  # sitemap, title, url_path, site_search
+    source_url: Mapped[str] = mapped_column(Text, default="")
+    score: Mapped[float] = mapped_column(Float, default=0.0)
+    status: Mapped[str] = mapped_column(String(40), default="new")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+class CompetitorSite(Base):
+    """站找站:从一个竞品找到的相似站"""
+    __tablename__ = "competitor_sites"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    seed_domain: Mapped[str] = mapped_column(String(255), index=True)
+    similar_domain: Mapped[str] = mapped_column(String(255))
+    discovery_method: Mapped[str] = mapped_column(String(80))  # alternative_to, directory, reddit
+    source_url: Mapped[str] = mapped_column(Text, default="")
+    title: Mapped[str] = mapped_column(Text, default="")
+    score: Mapped[float] = mapped_column(Float, default=0.0)
+    status: Mapped[str] = mapped_column(String(40), default="new")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
 class Setting(Base):
     __tablename__ = "settings"
     key: Mapped[str] = mapped_column(String(120), primary_key=True)
