@@ -80,17 +80,20 @@ function SecretListManager({settingKey}:{settingKey:string}){
  const [status,setStatus]=useState<any>(null)
  const [value,setValue]=useState('')
  const [busy,setBusy]=useState(false)
+ const [msg,setMsg]=useState('')
  async function load(){setStatus(await api(`/api/settings/secret-list/${settingKey}`))}
  useEffect(()=>{load().catch(()=>{})},[settingKey])
- async function add(){if(!value.trim()) return; setBusy(true); try{setStatus(await api('/api/settings/secret-list/append',{method:'POST',body:JSON.stringify({key:settingKey,value})})); setValue('')} finally{setBusy(false)}}
- async function remove(index:number){setBusy(true); try{setStatus(await api('/api/settings/secret-list/remove',{method:'POST',body:JSON.stringify({key:settingKey,index})}))} finally{setBusy(false)}}
- async function clear(){if(!confirm(t('clearAllConfirm'))) return; setBusy(true); try{setStatus(await api('/api/settings/secret-list/clear',{method:'POST',body:JSON.stringify({key:settingKey})}))} finally{setBusy(false)}}
+ async function add(){if(!value.trim()) return; setBusy(true); setMsg(''); try{setStatus(await api('/api/settings/secret-list/append',{method:'POST',body:JSON.stringify({key:settingKey,value})})); setValue(''); setMsg('✅ 密钥已保存')}catch(e:any){setMsg(`❌ ${e.message}`)} finally{setBusy(false)}}
+ async function save(){if(value.trim()) return add(); setBusy(true); setMsg(''); try{await load(); setMsg('✅ 已保存')}catch(e:any){setMsg(`❌ ${e.message}`)} finally{setBusy(false)}}
+ async function remove(index:number){setBusy(true); setMsg(''); try{setStatus(await api('/api/settings/secret-list/remove',{method:'POST',body:JSON.stringify({key:settingKey,index})})); setMsg('✅ 已删除并保存')}catch(e:any){setMsg(`❌ ${e.message}`)} finally{setBusy(false)}}
+ async function clear(){if(!confirm(t('clearAllConfirm'))) return; setBusy(true); setMsg(''); try{setStatus(await api('/api/settings/secret-list/clear',{method:'POST',body:JSON.stringify({key:settingKey})})); setMsg('✅ 已清空并保存')}catch(e:any){setMsg(`❌ ${e.message}`)} finally{setBusy(false)}}
  return <div className="space-y-3">
   <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-   <div className="mb-3 flex items-center justify-between"><div><b>已配置 {status?.count||0} 条</b><p className="text-xs text-slate-500">{t('rotationHint')}</p></div><button className="btn-secondary" disabled={busy||!(status?.count)} onClick={clear}>{t('clearAll')}</button></div>
+   <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><div><b>已配置 {status?.count||0} 条</b><p className="text-xs text-slate-500">{t('rotationHint')}</p></div><div className="flex gap-2"><button className="btn-secondary" disabled={busy||!(status?.count)} onClick={clear}>{t('clearAll')}</button><button className="btn" disabled={busy} onClick={save}>{busy?'保存中...':'保存密钥'}</button></div></div>
    <div className="space-y-2">{status?.items?.length?status.items.map((it:any)=><div className="flex items-center justify-between rounded-xl bg-slate-950 px-3 py-2 text-sm" key={it.index}><span>#{it.index+1}</span><code>{it.masked}</code><button className="btn-secondary" disabled={busy} onClick={()=>remove(it.index)}>{t('remove')}</button></div>):<div className="text-sm text-slate-500">{t('noEntries')}</div>}</div>
   </div>
-  <div className="flex gap-2"><input className="input flex-1 font-mono text-sm" type="password" value={value} placeholder={t('pasteNewApiKey')} onChange={e=>setValue(e.target.value)}/><button className="btn" disabled={busy||!value.trim()} onClick={add}>{t('confirmAdd')}</button></div>
+  <div className="flex gap-2"><input className="input flex-1 font-mono text-sm" type="password" value={value} placeholder={t('pasteNewApiKey')} onChange={e=>setValue(e.target.value)}/><button className="btn" disabled={busy||!value.trim()} onClick={add}>保存新增密钥</button></div>
+  {msg&&<div className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-200">{msg}</div>}
  </div>
 }
 
