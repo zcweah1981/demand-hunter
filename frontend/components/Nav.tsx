@@ -1,19 +1,63 @@
 'use client'
 
 import Link from 'next/link'
+import {useEffect, useState} from 'react'
+import {usePathname} from 'next/navigation'
 import {LogoutButton} from './LogoutButton'
 import {useLang} from '../lib/i18n'
 
-const items = [
+const mainItems = [
   ['/', 'autopilot'],
   ['/review', 'review'],
   ['/cards', 'cards'],
   ['/collectors', 'collectors'],
-  ['/settings', 'settings'],
+]
+
+const settingsItems = [
+  ['/settings/api-keys', 'API Key 管理中心'],
+  ['/settings/search', '搜索总控'],
+  ['/settings/searxng', 'SearXNG'],
+  ['/settings/llm', 'LLM'],
+  ['/settings/automation', '自动化'],
+  ['/settings/quality', '质量控制'],
+  ['/settings/security', '安全'],
+]
+
+const advancedItems = [
+  ['/discovery', 'discovery'],
+  ['/runs', 'runs'],
+  ['/keywords', 'keywords'],
+  ['/roots', 'roots'],
 ]
 
 export function Nav() {
   const {lang, setLang, t} = useLang()
+  const pathname = usePathname()
+  const [open, setOpen] = useState<'settings'|'advanced'|null>(null)
+
+  useEffect(() => {
+    if (pathname.startsWith('/settings')) setOpen('settings')
+    else if (advancedItems.some(([href]) => pathname.startsWith(href))) setOpen('advanced')
+  }, [pathname])
+
+  const linkClass = (href:string) => {
+    const active = href === '/' ? pathname === '/' : pathname.startsWith(href)
+    return `block rounded-xl px-3 py-2 text-sm no-underline transition ${active ? 'bg-blue-600/20 text-blue-100 ring-1 ring-blue-500/40' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`
+  }
+  const childClass = (href:string) => {
+    const active = pathname.startsWith(href)
+    return `block rounded-xl px-3 py-2 text-sm no-underline transition ${active ? 'bg-blue-600/20 text-blue-100' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`
+  }
+  const sectionButton = (id:'settings'|'advanced', label:string) => (
+    <button
+      type="button"
+      onClick={() => setOpen(open === id ? null : id)}
+      className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition ${open===id?'bg-slate-800 text-white':'text-slate-300 hover:bg-slate-800 hover:text-white'}`}
+    >
+      <span>{label}</span><span className="text-xs text-slate-500">{open===id?'▾':'▸'}</span>
+    </button>
+  )
+
   return (
     <aside className="border-b border-slate-800 bg-slate-950/95 p-4 backdrop-blur md:sticky md:top-0 md:min-h-screen md:w-72 md:shrink-0 md:border-b-0 md:border-r md:p-5">
       <div className="flex flex-wrap items-start justify-between gap-4 md:block">
@@ -28,22 +72,23 @@ export function Nav() {
       </div>
 
       <nav className="mt-4 flex gap-2 overflow-x-auto pb-1 md:mt-8 md:block md:space-y-2 md:overflow-visible md:pb-0">
-        {items.map(([href, key]) => (
-          <Link className="shrink-0 rounded-xl px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white md:block" href={href} key={href}>
-            {t(key)}
-          </Link>
+        {mainItems.map(([href, key]) => (
+          <Link className={`shrink-0 ${linkClass(href)}`} href={href} key={href} onClick={()=>setOpen(null)}>{t(key)}</Link>
         ))}
+        <div className="min-w-[170px] shrink-0 md:min-w-0">
+          {sectionButton('settings', t('settings'))}
+          {open==='settings'&&<div className="mt-2 space-y-1 rounded-2xl border border-slate-800 bg-slate-900/50 p-2">
+            {settingsItems.map(([href, label]) => <Link key={href} className={childClass(href)} href={href}>{label}</Link>)}
+          </div>}
+        </div>
+        <div className="min-w-[150px] shrink-0 md:min-w-0">
+          {sectionButton('advanced', t('advanced'))}
+          {open==='advanced'&&<div className="mt-2 space-y-1 rounded-2xl border border-slate-800 bg-slate-900/50 p-2">
+            {advancedItems.map(([href, key]) => <Link key={href} className={childClass(href)} href={href}>{t(key)}</Link>)}
+          </div>}
+        </div>
       </nav>
 
-      <details className="mt-5 hidden rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-xs text-slate-400 md:block">
-        <summary className="cursor-pointer font-semibold text-slate-300">{t('advanced')}</summary>
-        <div className="mt-3 space-y-2">
-          <Link className="block hover:text-white" href="/discovery">{t('discovery')}</Link>
-          <Link className="block hover:text-white" href="/runs">{t('runs')}</Link>
-          <Link className="block hover:text-white" href="/keywords">{t('keywords')}</Link>
-          <Link className="block hover:text-white" href="/roots">{t('roots')}</Link>
-        </div>
-      </details>
       <div className="mt-4 md:mt-8"><LogoutButton /></div>
     </aside>
   )
