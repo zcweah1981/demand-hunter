@@ -62,9 +62,9 @@ export function AutopilotPanel({status}:{status:AutopilotStatus}){
     </div>}
 
     <div className="mt-5 grid gap-3 md:grid-cols-3">
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"><div className="kpi-label">{lang==='en'?'Pending review':'待复核'}</div><b className="text-3xl text-amber-300">{status.counts.pending_review}</b></div>
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"><div className="kpi-label">Action</div><b className="text-3xl text-emerald-300">{status.counts.action}</b></div>
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"><div className="kpi-label">Watch</div><b className="text-3xl text-blue-300">{status.counts.watch}</b></div>
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"><div className="kpi-label">待复核</div><b className="text-3xl text-amber-300">{status.counts.pending_review}</b></div>
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"><div className="kpi-label">行动 Action</div><b className="text-3xl text-emerald-300">{status.counts.action}</b></div>
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"><div className="kpi-label">观察 Watch</div><b className="text-3xl text-blue-300">{status.counts.watch}</b></div>
     </div>
 
     {error&&<p className="mt-4 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</p>}
@@ -72,9 +72,9 @@ export function AutopilotPanel({status}:{status:AutopilotStatus}){
     <details className="mt-4 text-sm text-slate-400">
       <summary className="cursor-pointer text-slate-500 hover:text-slate-300">{lang==='en'?'System details':'系统细节'}</summary>
       <div className="mt-3 grid gap-3 md:grid-cols-4">
-        {status.checks.map(c=><div key={c.key} className="rounded-xl border border-slate-800 bg-slate-950 p-3"><div className="flex justify-between gap-2"><b className="text-slate-300">{c.label}</b><span className={c.ok?'text-emerald-300':'text-rose-300'}>{c.ok?'OK':'Fix'}</span></div><p className="mt-1 text-xs text-slate-500">{c.detail}</p></div>)}
+        {status.checks.map(c=><div key={c.key} className="rounded-xl border border-slate-800 bg-slate-950 p-3"><div className="flex justify-between gap-2"><b className="text-slate-300">{c.label}</b><span className={c.ok?'text-emerald-300':'text-rose-300'}>{c.ok?'正常':'需处理'}</span></div><p className="mt-1 text-xs text-slate-500">{c.detail}</p></div>)}
       </div>
-      <div className="mt-3 text-xs text-slate-500">Providers: {status.providers.join(', ')||'none'} · Seeds: {status.seeds.slice(0,5).join(', ')||'none'}</div>
+      <div className="mt-3 text-xs text-slate-500">搜索源：{status.providers.join(', ')||'无'} · 种子词：{status.seeds.slice(0,5).join(', ')||'无'}</div>
     </details>
   </section>
 }

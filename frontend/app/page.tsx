@@ -26,12 +26,12 @@ export default async function Page(){
 
   <section className="grid gap-6 xl:grid-cols-2">
    <div className="panel">
-    <div className="mb-4 flex items-center justify-between"><h2 className="text-xl font-bold"><I18nText zh='待复核' en='To review'/></h2><a href="/review" className="btn-secondary"><I18nText zh='全部复核' en='Review all'/></a></div>
+    <div className="mb-4 flex items-center justify-between"><h2 className="text-xl font-bold">待复核</h2><a href="/review" className="btn-secondary">全部复核</a></div>
     <div className="space-y-4">{review.length?review.map(c=><OpportunityCardView key={c.id} card={c} compact/>):<p className="rounded-2xl border border-slate-800 bg-slate-950 p-5 text-sm text-slate-400">暂无待复核卡片。</p>}</div>
    </div>
    <div className="panel">
-    <div className="mb-4 flex items-center justify-between"><h2 className="text-xl font-bold">Action</h2><a href="/cards" className="btn-secondary"><I18nText zh='全部卡片' en='All cards'/></a></div>
-    <div className="space-y-4">{actions.length?actions.map(c=><OpportunityCardView key={c.id} card={c} compact/>):<p className="rounded-2xl border border-slate-800 bg-slate-950 p-5 text-sm text-slate-400">暂无 Action。保持严格，系统会继续找。</p>}</div>
+    <div className="mb-4 flex items-center justify-between"><h2 className="text-xl font-bold">行动候选 <span className="text-slate-500">Action</span></h2><a href="/cards" className="btn-secondary">全部卡片</a></div>
+    <div className="space-y-4">{actions.length?actions.map(c=><OpportunityCardView key={c.id} card={c} compact/>):<p className="rounded-2xl border border-slate-800 bg-slate-950 p-5 text-sm text-slate-400">暂无行动候选。保持严格，系统会继续找。</p>}</div>
    </div>
   </section>
  </div>
