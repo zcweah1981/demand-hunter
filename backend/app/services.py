@@ -710,6 +710,38 @@ def business_profile(query: str, intent: str, monetization_type: str) -> dict:
     key_assumption = "用户会为更具体、可直接用于工作流的输出付费，而不只是消费免费泛内容。"
     return {"type":"business", "business_type": business_type, "icp": icp, "pain": pain, "pay_trigger": pay_trigger, "wedge": wedge, "commercial_mvp": commercial_mvp, "revenue_path": revenue_path, "pricing": pricing, "gtm": gtm, "first_sale_test": first_sale_test, "commercial_score": commercial_score, "go_no_go": go_no_go, "key_assumption": key_assumption, "monetization": monetization_type}
 
+
+def _zh_verdict_reason(verdict: str, total: float, gap: float, strong_count: int, relevant_count: int, has_social: bool, require_social: bool, mismatch_count: int) -> str:
+    parts = [f"总分 {total}", f"搜索缺口 {round(gap,2)}", f"相关结果 {relevant_count}", f"强品牌 {strong_count}", f"意图不匹配 {mismatch_count}"]
+    if require_social:
+        parts.append("有社媒旁证" if has_social else "缺少社媒旁证")
+    if verdict == "Action":
+        return "行动理由：" + "；".join(parts) + "。证据达到当前 Action 门槛，可以进入小规模验证。"
+    if verdict == "Watch":
+        return "观察理由：" + "；".join(parts) + "。方向可能成立，但证据还不足以直接执行，需要补强需求/社媒/搜索缺口证据。"
+    return "拒绝理由：" + "；".join(parts) + "。当前搜索入口或证据质量不足，不建议包装成机会。"
+
+def _keyword_task_detail(keyword_query: str) -> dict:
+    ql = keyword_query.lower()
+    if "late fee" in ql or "rental" in ql:
+        return {"task":"生成一份可发送给租客的 late fee notice，并自动计算滞纳金、宽限期和付款截止日", "artifact":"滞纳金通知模板 + 金额计算 + 可复制邮件/短信文本", "test":"让房东/物业用户填写租金、到期日、州/合同规则，测试是否愿意为可导出通知付费"}
+    if "reminder" in ql:
+        return {"task":"生成发票催款提醒，并根据逾期天数选择不同语气和跟进节奏", "artifact":"催款邮件/短信 + 逾期天数计算 + 跟进日历", "test":"测试用户是否愿意为品牌化导出、批量提醒或会计工具集成付费"}
+    if "payment terms" in ql:
+        return {"task":"帮助小企业选择/解释 Net 7、Net 15、Net 30 等付款条款，并计算现金流影响", "artifact":"付款条款比较器 + 推荐条款 + 合同句子模板", "test":"测试用户是否点击下载合同条款模板或咨询付款政策"}
+    if "estimate" in ql:
+        return {"task":"把报价估算转成专业 invoice/estimate 输出，减少手工计算和格式错误", "artifact":"报价估算器 + 可导出 estimate/invoice PDF + 项目行模板", "test":"测试用户是否为 PDF 导出、模板包或会计软件导入付费"}
+    return {"task":f"解决 `{keyword_query}` 背后的单一任务", "artifact":"单页工具/模板 + 可导出结果", "test":"测试用户是否愿意为导出、模板包或定制服务付费"}
+
+def _keyword_specific_mvp(keyword_query: str, biz: dict, verdict: str, reason: str) -> str:
+    q = keyword_query.strip()
+    detail = _keyword_task_detail(q)
+    if verdict == "Reject":
+        return f"{reason}\n\n不建议推进：`{q}` 当前不应作为独立机会执行。下一步只做证据补充：重新检查搜索意图、换更具体的长尾词、确认是否有真实付费场景；证据不足前不要做 MVP。"
+    if verdict == "Watch":
+        return f"{reason}\n\n待验证假设：围绕 `{q}` 做一个最小验证页，不先完整开发产品。\n\n要验证的具体任务：{detail['task']}。\n\n最小交付：{detail['artifact']}。\n\n验证动作：{detail['test']}；同时记录点击、留资或回复。如果没有明确转化，再降级或换词。"
+    return f"{reason}\n\n执行型 MVP：围绕 `{q}` 做一个单页工具/模板，只解决这个具体任务：{detail['task']}。\n\n核心交付：{detail['artifact']}。\n\n变现路径：{biz['revenue_path']}\n\n定价测试：{biz['pricing']}\n\n获客入口：{biz['gtm']}\n\n第一笔钱测试：{detail['test']}。\n\n关键假设：{biz['key_assumption']}"
+
 def make_card(db: Session, keyword: models.Keyword) -> models.OpportunityCard:
     serp = db.query(models.SerpResult).filter_by(keyword_id=keyword.id).all() or run_serp(db, keyword)
     comps = analyze_competitors(db, keyword)
@@ -733,13 +765,15 @@ def make_card(db: Session, keyword: models.Keyword) -> models.OpportunityCard:
     require_social = (setting(db, "REQUIRE_SOCIAL_FOR_ACTION") or "true").lower() in {"1", "true", "yes", "on"}
     social_ok = has_social or not require_social
     verdict = "Action" if total >= min_action_score and strong_count <= 2 and gap >= .52 and social_ok and relevant_count >= 5 else ("Watch" if total >= 55 and relevant_count >= 3 else "Reject")
+    reason = _zh_verdict_reason(verdict, total, gap, strong_count, relevant_count, has_social, require_social, mismatch_count)
+    biz["verdict_reason"] = reason
     evidence = [biz] + [{"type":"serp","url":s.url,"title":s.title,"tags":json.loads(s.gap_tags or "[]")} for s in serp[:5]] + [{"type":x.platform,"url":x.url,"title":x.title} for x in socials[:4]]
     risks=[]
     if strong_count>3: risks.append("SERP 强品牌过多，切入难度高")
     if len(socials)==0 and require_social: risks.append("缺少社媒痛点旁证")
     if mismatch_count >= max(2, len(serp)//2): risks.append("SERP 查询意图不匹配，搜索入口不可靠")
     if gap<.5: risks.append("SERP 缺口不明显")
-    plan = f"商业目标：{biz['business_type']}。快速商业 MVP：{biz['commercial_mvp']} 商业化路径：{biz['revenue_path']} 定价：{biz['pricing']} 获客：{biz['gtm']} 第一笔钱测试：{' / '.join(biz['first_sale_test'])}。关键假设：{biz['key_assumption']}"
+    plan = _keyword_specific_mvp(keyword.query, biz, verdict, reason)
     card=models.OpportunityCard(keyword_id=keyword.id,title=f"{keyword.query} 机会", verdict=verdict, score=total, demand_score=round(demand,2), serp_gap_score=round(gap,2), competitor_weakness_score=round(comp,2), mvp_score=commercial, monetization_score=mscore, monetization_type=mtype, mvp_plan=plan, evidence_json=json.dumps(evidence,ensure_ascii=False), risks=json.dumps(risks,ensure_ascii=False))
     db.add(card); keyword.score=total; keyword.status=verdict.lower(); db.commit(); db.refresh(card); return card
 
