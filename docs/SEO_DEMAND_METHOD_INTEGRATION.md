@@ -262,7 +262,7 @@ Four-Find 仍然是主框架：
 
 ### 搜索词 / SEO 指标
 - Google Custom Search API / Programmable Search API：SERP。
-- Bing Webmaster Tools / Bing Search APIs：关键词研究、搜索量、国家分布、SERP。
+- Bing Webmaster Tools API：站长/关键词研究、搜索量、国家分布；Bing Search APIs 已于 2025-08-11 退役，不再使用。
 - DataForSEO API：Google Suggest、SERP、Trends、Search Volume、Keyword Difficulty、Ads/CPC（付费，最适合系统化）。
 - Semrush API：关键词、KD、CPC、竞品词、域名关键词（付费）。
 - Ahrefs API：KD、volume、traffic、top pages（付费）。

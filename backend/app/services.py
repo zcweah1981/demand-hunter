@@ -50,7 +50,6 @@ DEFAULT_SETTINGS = {
     # Collector / SEO data provider credentials. Store multiple keys where providers support rotation.
     "GOOGLE_CSE_API_KEYS": "",
     "GOOGLE_CSE_CX": "",
-    "BING_API_KEYS": "",
     "BING_WEBMASTER_API_KEYS": "",
     "DATAFORSEO_CREDENTIALS": "",
     "SEMRUSH_API_KEYS": "",

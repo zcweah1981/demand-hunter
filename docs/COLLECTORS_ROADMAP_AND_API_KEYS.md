@@ -222,8 +222,7 @@ Collectors → Candidate Pool → Four-Find Expansion → SEO Validation → LLM
 
 - GOOGLE_CSE_API_KEYS
 - GOOGLE_CSE_CX
-- BING_API_KEYS
-- BING_WEBMASTER_API_KEYS
+- - BING_WEBMASTER_API_KEYS
 - DATAFORSEO_CREDENTIALS
 - SEMRUSH_API_KEYS
 - AHREFS_API_KEYS
@@ -275,3 +274,10 @@ Collectors → Candidate Pool → Four-Find Expansion → SEO Validation → LLM
 6. SimilarWeb Collector。
 7. Trends Collector。
 8. Extension Complaint Miner / AI Request Miner / Source Radar。
+
+
+## API 可用性校验
+
+- Bing Search APIs：已于 2025-08-11 退役，不再作为配置项。
+- Bing Webmaster API：保留，但只用于 Bing Webmaster/Keyword Research，不作为通用搜索 API。
+- Google Custom Search JSON API：普通 API 仍有文档，但 Site Restricted JSON API 已于 2025-01-08 停止；新 PSE 范围限制较多，作为可选而非核心依赖。
