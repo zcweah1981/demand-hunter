@@ -15,8 +15,15 @@ BAD_SINGLE_MODIFIERS = {
     "page", "about", "contact", "support", "license", "portal", "map", "started",
 }
 GOOD_INTENT_TERMS = {
-    "calculator", "template", "generator", "tracker", "dashboard", "checklist", "software",
-    "tool", "automation", "workflow", "compliance", "invoice", "appointment", "schedule",
+    # SEO/tool-page intent roots. These come from the merged Four-Find + SEO keyword method:
+    # use roots to find existing search demand, then validate by SERP/competition.
+    "calculator", "template", "generator", "checker", "converter", "analyzer", "summarizer",
+    "humanizer", "paraphraser", "detector", "planner", "scheduler", "tracker", "dashboard",
+    "directory", "finder", "builder", "creator", "maker", "editor", "designer", "optimizer",
+    "scraper", "crawler", "extractor", "formatter", "guide", "how to", "faq", "example",
+    "sample", "list", "comparison", "comparator", "review", "resources", "portal",
+    # Commercial/workflow/vertical terms.
+    "software", "tool", "automation", "workflow", "compliance", "invoice", "appointment", "schedule",
     "deadline", "clinic", "contractor", "rental", "small business", "management", "report",
 }
 COMMERCIAL_ICP_TERMS = {
@@ -27,6 +34,9 @@ COMMERCIAL_ICP_TERMS = {
 COMMERCIAL_OUTPUT_TERMS = {
     "calculator", "template", "checklist", "tracker", "dashboard", "report", "packet",
     "form", "letter", "email", "policy", "spreadsheet", "generator", "estimate", "receipt",
+    "checker", "converter", "analyzer", "summarizer", "humanizer", "paraphraser", "detector",
+    "planner", "scheduler", "directory", "finder", "builder", "creator", "maker", "editor",
+    "designer", "optimizer", "extractor", "guide", "faq", "example", "sample",
 }
 PAY_TRIGGER_TERMS = {
     "late", "fee", "overdue", "deadline", "renewal", "audit", "risk", "penalty",
@@ -39,6 +49,8 @@ GOOD_MODIFIERS = {
     "deadline", "compliance", "invoice", "booking", "schedule", "scheduling", "policy", "report",
     "audit", "vendor", "employee", "training", "risk", "inspection", "renewal", "permit",
     "late", "fee", "payment", "tax", "estimate", "overdue", "receipt", "penalty", "cost",
+    "ai", "checker", "converter", "generator", "template", "analyzer", "detector", "planner",
+    "summarizer", "humanizer", "paraphraser", "image", "photo", "audio", "speech", "video",
 }
 
 BUSINESS_MODIFIER_SETS = {

@@ -28,6 +28,12 @@ export function OpportunityCardView({card,compact=false,showFeedback=true}:{card
 
   {!compact&&business&&<section className="rounded-2xl border border-blue-500/30 bg-blue-500/10 p-4">
    <div className="mb-3 text-xs font-semibold tracking-wide text-blue-200">商业化判断 <span className="text-blue-300/60">Commercialization Brief</span></div>
+   <div className="mb-3 flex flex-wrap gap-2 text-xs">
+    {business.keyword_type&&<span className="badge">词类型：{business.keyword_type}</span>}
+    {business.seo_fit&&<span className="badge badge-action">SEO 适配：{business.seo_fit}</span>}
+    {business.analysis_source&&<span className="badge badge-watch">分析来源：{business.analysis_source}</span>}
+   </div>
+   {business.missing_evidence?.length>0&&<div className="mb-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100"><b>待补证据：</b>{business.missing_evidence.join('、')}</div>}
    <div className="grid gap-3 text-sm text-slate-200 md:grid-cols-2">
     <div><b>目标用户 <span className="text-slate-500">ICP</span></b><p className="mt-1 text-slate-400">{business.icp}</p></div>
     <div><b>付费触发 <span className="text-slate-500">Pay Trigger</span></b><p className="mt-1 text-slate-400">{business.pay_trigger}</p></div>

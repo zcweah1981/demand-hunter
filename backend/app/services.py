@@ -824,18 +824,24 @@ def _safe_verdict(llm_v: str, rule_v: str) -> str:
 def _llm_opportunity_analysis(db: Session, keyword: models.Keyword, serp: list[models.SerpResult], comps: list[models.CompetitorPage], socials: list[models.SocialEvidence], metrics: dict, rule_verdict: str, rule_reason: str) -> dict | None:
     if (setting(db, "LLM_CARD_ANALYSIS_ENABLED") or "true").lower() not in {"1","true","yes","on"}:
         return None
-    system = """你是 Nero 的机会分析器。你的职责不是套模板，而是基于真实搜索证据判断一个关键词是否值得推进为可验证商业机会。
+    system = """你是 Nero 的 SEO 需求词机会分析器。你的职责不是套模板，而是基于真实搜索证据判断一个关键词是否值得推进为可验证商业机会。
+
+核心方法融合 Four-Find 与两篇找词文章：
+- Four-Find 负责扩词路径：词找词、词找站、站找词、站找站。
+- 文章方法负责判断：搜索词是否代表真实需求、新词/老词属性、Google Trends/国家分布、搜索量/CPC/KD、SERP 是否可打、是否适合快速做 SEO 工具页。
 
 必须遵守：
 1. 中文输出。英文原始标题/关键词可以保留，但解释必须中文。
-2. 不能编造证据，只能使用输入里的关键词、SERP、竞品、社媒证据。
-3. 每张卡必须针对该关键词的具体任务，不允许输出泛泛的“做一个工具/模板”。
-4. Action/Watch/Reject 必须和证据强度一致：
-   - Action：搜索意图清楚、SERP 有缺口、竞品/现有结果弱、能定义很小的付费验证。
-   - Watch：方向可能有价值，但证据不足，需要补需求/入口/付费验证。
+2. 不能编造证据，只能使用输入里的关键词、SERP、竞品、社媒证据；如果缺少 volume/CPC/KD/趋势/国家分布，就明确写“需要补证据”，不要假设。
+3. 每张卡必须针对该关键词的具体搜索任务，不允许输出泛泛的“做一个工具/模板”。
+4. 必须判断该词属于哪类：新词/上升词/老词/常青词/未知。没有趋势证据时写“未知，需要 Google Trends/SEO 工具补证”。
+5. 必须判断是否适合 SEO 工具页：calculator/template/checker/generator/converter 等轻量页面优先；若只是泛信息词或品牌错配，应降级。
+6. Action/Watch/Reject 必须和证据强度一致：
+   - Action：搜索意图清楚、SERP 有缺口、竞品/现有结果弱、能定义很小的付费/广告/联盟验证，并且没有明显 SEO 指标缺口。
+   - Watch：方向可能有价值，但缺搜索量/CPC/KD/趋势/国家/付费验证等关键证据。
    - Reject：搜索入口错、意图混乱、强竞品过多、缺口弱或无法定义付费验证。
-5. Reject 不能包装成机会；只能写否决原因和需要补什么证据。
-6. 输出必须是严格 JSON，不要 Markdown，不要代码块。"""
+7. Reject 不能包装成机会；只能写否决原因和需要补什么证据。
+8. 输出必须是严格 JSON，不要 Markdown，不要代码块。"""
     evidence = {
         "keyword": keyword.query,
         "intent": keyword.intent,
@@ -863,6 +869,9 @@ def _llm_opportunity_analysis(db: Session, keyword: models.Keyword, serp: list[m
   "first_sale_test": ["第一步", "第二步", "第三步"],
   "key_assumption": "关键假设",
   "risks": ["风险1", "风险2"],
+  "keyword_type": "new|rising|old|evergreen|unknown",
+  "seo_fit": "high|medium|low|unknown",
+  "missing_evidence": ["缺少搜索量", "缺少CPC", "缺少KD", "缺少国家分布"],
   "commercial_score": 0.0到1.0
 }
 
@@ -924,6 +933,9 @@ def make_card(db: Session, keyword: models.Keyword) -> models.OpportunityCard:
             "first_sale_test": llm.get("first_sale_test") if isinstance(llm.get("first_sale_test"), list) else biz.get("first_sale_test"),
             "key_assumption": str(llm.get("key_assumption") or biz.get("key_assumption")),
             "commercial_score": commercial,
+            "keyword_type": str(llm.get("keyword_type") or "unknown"),
+            "seo_fit": str(llm.get("seo_fit") or "unknown"),
+            "missing_evidence": llm.get("missing_evidence") if isinstance(llm.get("missing_evidence"), list) else [],
             "analysis_source": "llm",
         })
         plan = str(llm.get("mvp_plan") or _keyword_specific_mvp(keyword.query, biz, verdict, reason))
