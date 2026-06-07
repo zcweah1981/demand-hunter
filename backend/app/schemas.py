@@ -110,3 +110,13 @@ class CollectorSuggestIn(BaseModel):
 
 class CandidateImportIn(BaseModel):
     limit: int = 30
+
+class CollectorAdvancedSearchIn(BaseModel):
+    roots: list[str]
+    domains: list[str] = []
+    days: int = 30
+    limit_per_query: int = 8
+
+class CollectorSourceRadarIn(BaseModel):
+    seeds: list[str]
+    limit_per_seed: int = 10

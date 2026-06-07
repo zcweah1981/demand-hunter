@@ -148,3 +148,95 @@ def import_candidates_to_keywords(db:Session, limit:int=30)->dict:
         db.merge(c)
     db.commit()
     return {'ok':True,'selected':len(rows),'imported':imported}
+
+from datetime import timedelta
+from . import services
+
+def _candidate_from_search_result(item:dict)->str:
+    title=item.get('title') or ''
+    url=item.get('url') or item.get('link') or ''
+    kw=keyword_from_url(url)
+    title_kw=normalize_keyword(title)
+    # Prefer URL slug when it looks specific; otherwise title.
+    if kw and len(kw.split())>=2:
+        return kw
+    return title_kw
+
+def run_advanced_search_collector(db:Session, roots:list[str], domains:list[str]|None=None, days:int=30, limit_per_query:int=8)->dict:
+    """Article method: advanced search demand discovery.
+
+    Generates allintitle/site/date variants and uses the configured SERP provider
+    rotation (SearXNG/SerpApi/Zenserp/ScaleSERP/Brave/Tavily). Results are not
+    treated as opportunities; title/URL terms are normalized into candidate pool.
+    """
+    domains=domains or []
+    after=(datetime.utcnow()-timedelta(days=max(1,days))).date().isoformat()
+    queries=[]
+    for root in [r.strip() for r in roots if r.strip()]:
+        queries.append((f'allintitle:"{root}" after:{after}', root, 'allintitle_after'))
+        queries.append((f'"{root}" -site:.gov -site:wikipedia.org after:{after}', root, 'fresh_non_gov'))
+        for d in domains[:10]:
+            queries.append((f'site:{d.strip()} "{root}" after:{after}', root, 'site_after'))
+    providers=services.available_serp_providers(db)
+    saved=0; seen=0; errors=[]
+    for q,root,variant in queries[:80]:
+        provider_used=''
+        items=[]
+        for p in providers[:max(1, int(services.setting(db,'SERP_PROVIDER_ATTEMPT_LIMIT') or '3'))]:
+            provider_used=p
+            res=services.provider_search(db,p,q,limit=limit_per_query)
+            if res and res[0].get('engine')!='error':
+                items=res; break
+        if not items:
+            errors.append({'query':q,'error':'no results'})
+            continue
+        for item in items:
+            kw=_candidate_from_search_result(item)
+            if not kw: continue
+            seen+=1
+            url=item.get('url') or item.get('link') or ''
+            row=upsert_candidate(db, kw, 'advanced_search', url, domain_of(url), '高级搜索找需求', {'query':q,'root':root,'variant':variant,'provider':provider_used,'title':item.get('title','')}, 0.58)
+            if row: saved+=1
+    db.commit()
+    return {'ok':True,'source':'advanced_search','queries':len(queries),'providers':providers,'candidates_seen':seen,'saved':saved,'errors':errors[:20]}
+
+def run_source_radar(db:Session, seeds:list[str], limit_per_seed:int=10)->dict:
+    """Article method: trace demand to early information sources.
+
+    Free-first sources: Hacker News Algolia and arXiv. GitHub/HF can join later
+    through the same candidate pool.
+    """
+    saved=0; seen=0; errors=[]
+    for seed in [s.strip() for s in seeds if s.strip()]:
+        # HN Algolia
+        try:
+            r=requests.get('https://hn.algolia.com/api/v1/search_by_date', params={'query':seed,'tags':'story','hitsPerPage':limit_per_seed}, timeout=12)
+            r.raise_for_status(); data=r.json()
+            for h in data.get('hits',[])[:limit_per_seed]:
+                title=h.get('title') or h.get('story_title') or ''
+                url=h.get('url') or h.get('story_url') or ''
+                kw=normalize_keyword(title)
+                if kw:
+                    seen+=1
+                    row=upsert_candidate(db, kw, 'hn_algolia', url, domain_of(url), '信息溯源', {'seed':seed,'title':title,'hn_object_id':h.get('objectID')}, 0.50)
+                    if row: saved+=1
+        except Exception as e:
+            errors.append({'source':'hn','seed':seed,'error':str(e)[:180]})
+        # arXiv Atom feed (no key)
+        try:
+            r=requests.get('http://export.arxiv.org/api/query', params={'search_query':f'all:{seed}','sortBy':'submittedDate','sortOrder':'descending','max_results':limit_per_seed}, timeout=15)
+            r.raise_for_status(); text=r.text
+            titles=re.findall(r'<title>\s*([^<]+?)\s*</title>', text, flags=re.I|re.S)
+            links=re.findall(r'<id>\s*([^<]+?)\s*</id>', text, flags=re.I|re.S)
+            for i,title in enumerate(titles[1:limit_per_seed+1]): # first title is feed title
+                title=re.sub(r'\s+',' ',title).strip()
+                kw=normalize_keyword(title)
+                if kw:
+                    seen+=1
+                    url=links[i+1] if i+1 < len(links) else ''
+                    row=upsert_candidate(db, kw, 'arxiv', url, 'arxiv.org', '信息溯源', {'seed':seed,'title':title}, 0.48)
+                    if row: saved+=1
+        except Exception as e:
+            errors.append({'source':'arxiv','seed':seed,'error':str(e)[:180]})
+    db.commit()
+    return {'ok':True,'source':'source_radar','seeds':len(seeds),'candidates_seen':seen,'saved':saved,'errors':errors[:20]}

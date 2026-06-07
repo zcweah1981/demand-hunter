@@ -33,6 +33,17 @@ def suggest_run(payload: schemas.CollectorSuggestIn, _: bool = Depends(require_a
     seeds=[s.strip() for s in payload.seeds if s.strip()]
     return collectors.run_suggest_collector(db, seeds)
 
+@router.post("/advanced-search/run")
+def advanced_search_run(payload: schemas.CollectorAdvancedSearchIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    roots=[x.strip() for x in payload.roots if x.strip()]
+    domains=[x.strip() for x in payload.domains if x.strip()]
+    return collectors.run_advanced_search_collector(db, roots, domains, payload.days, payload.limit_per_query)
+
+@router.post("/source-radar/run")
+def source_radar_run(payload: schemas.CollectorSourceRadarIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    seeds=[x.strip() for x in payload.seeds if x.strip()]
+    return collectors.run_source_radar(db, seeds, payload.limit_per_seed)
+
 @router.post("/candidates/import")
 def candidate_import(payload: schemas.CandidateImportIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     return collectors.import_candidates_to_keywords(db, payload.limit)
