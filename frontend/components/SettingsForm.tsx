@@ -7,7 +7,7 @@ import {ProviderHealthPanel} from './ProviderHealthPanel'
 
 const GROUPS:any[]=[
  {id:'search',titleKey:'searchProviders',descKey:'searchDesc',keys:['SERP_PROVIDER_ORDER','SERP_PROVIDER_ATTEMPT_LIMIT','FOUR_FIND_SERP_STRATEGY_ENABLED','FOUR_FIND_SERP_VARIANT_LIMIT']},
- {id:'searxng',title:'SearXNG',descKey:'searxngDesc',keys:['SEARXNG_ENDPOINTS','SEARXNG_ROTATION_STRATEGY','SEARXNG_ENGINES']},
+ {id:'searxng',title:'SearXNG',descKey:'searxngDesc',keys:['SEARXNG_ENDPOINTS']},
  {id:'brave',title:'Brave',descKey:'braveDesc',keys:['BRAVE_API_KEYS']},
  {id:'tavily',title:'Tavily',descKey:'tavilyDesc',keys:['TAVILY_API_KEYS']},
  {id:'llm',title:'LLM',descKey:'llmDesc',keys:['LLM_PRIMARY_PROVIDER','LLM_PRIMARY_MODEL','LLM_PRIMARY_API_KEY','LLM_FALLBACKS']},
@@ -16,15 +16,15 @@ const GROUPS:any[]=[
  {id:'security',titleKey:'security',descKey:'securityDesc',keys:[]},
 ]
 const BOOL_KEYS=['AUTO_RUN_ENABLED','REQUIRE_SOCIAL_FOR_ACTION','COLLECT_SOCIAL_EVIDENCE','FOUR_FIND_AUTO_ENABLED','FOUR_FIND_SERP_STRATEGY_ENABLED','FOUR_FIND_REWRITE_ON_SERP_REJECT']
-const SECRET_KEYS=['SEARXNG_ENDPOINTS','SEARXNG_API_TOKEN','BRAVE_API_KEY','BRAVE_API_KEYS','TAVILY_API_KEY','TAVILY_API_KEYS','LLM_API_KEY','LLM_PRIMARY_API_KEY','LLM_FALLBACKS']
+const SECRET_KEYS=['SEARXNG_API_TOKEN','BRAVE_API_KEY','BRAVE_API_KEYS','TAVILY_API_KEY','TAVILY_API_KEYS','LLM_API_KEY','LLM_PRIMARY_API_KEY','LLM_FALLBACKS']
 const LIST_KEYS=['BRAVE_API_KEYS','TAVILY_API_KEYS']
 const MULTILINE_KEYS=['FOUR_FIND_AUTO_SEEDS','FOUR_FIND_AUTO_DOMAINS','BLOCKED_TERMS']
 
 const KEY_LABELS:Record<string,string>={
  SERP_PROVIDER_ORDER:'搜索源顺序', SERP_PROVIDER_ATTEMPT_LIMIT:'搜索源尝试次数', FOUR_FIND_SERP_STRATEGY_ENABLED:'启用 SERP 自动策略', FOUR_FIND_SERP_VARIANT_LIMIT:'SERP 查询变体数量',
  SEARXNG_ENDPOINTS:'SearXNG 实例', SEARXNG_ROTATION_STRATEGY:'轮询策略', SEARXNG_ENGINES:'默认搜索引擎（旧配置）',
- BRAVE_API_KEYS:'Brave API Keys', TAVILY_API_KEYS:'Tavily API Keys',
- LLM_PRIMARY_PROVIDER:'主模型提供商', LLM_PRIMARY_MODEL:'主模型', LLM_PRIMARY_API_KEY:'主模型 API Key', LLM_FALLBACKS:'备用模型',
+ BRAVE_API_KEYS:'Brave 密钥列表', TAVILY_API_KEYS:'Tavily 密钥列表',
+ LLM_PRIMARY_PROVIDER:'主模型提供商', LLM_PRIMARY_MODEL:'主模型', LLM_PRIMARY_API_KEY:'主模型密钥', LLM_FALLBACKS:'备用模型',
  AUTO_RUN_ENABLED:'启用自动运行', AUTO_RUN_INTERVAL_MINUTES:'自动运行间隔（分钟）', AUTO_RUN_LIMIT:'每轮处理数量', FOUR_FIND_AUTO_ENABLED:'启用四找闭环', FOUR_FIND_AUTO_SEEDS:'自动种子词', FOUR_FIND_AUTO_DOMAINS:'自动竞品域名', FOUR_FIND_IMPORT_LIMIT:'四找导入数量', FOUR_FIND_REWRITE_ON_SERP_REJECT:'SERP 失败后自动改写', FOUR_FIND_REWRITE_LIMIT:'改写恢复数量',
  MIN_ACTION_SCORE:'Action 最低分', REQUIRE_SOCIAL_FOR_ACTION:'Action 必须有社媒证据', COLLECT_SOCIAL_EVIDENCE:'采集社媒证据', BLOCKED_TERMS:'屏蔽词',
 }
@@ -85,7 +85,7 @@ function SecretListManager({settingKey}:{settingKey:string}){
  async function clear(){if(!confirm(t('clearAllConfirm'))) return; setBusy(true); try{setStatus(await api('/api/settings/secret-list/clear',{method:'POST',body:JSON.stringify({key:settingKey})}))} finally{setBusy(false)}}
  return <div className="space-y-3">
   <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-   <div className="mb-3 flex items-center justify-between"><div><b>{status?.count||0} configured</b><p className="text-xs text-slate-500">{t('rotationHint')}</p></div><button className="btn-secondary" disabled={busy||!(status?.count)} onClick={clear}>Clear all</button></div>
+   <div className="mb-3 flex items-center justify-between"><div><b>已配置 {status?.count||0} 条</b><p className="text-xs text-slate-500">{t('rotationHint')}</p></div><button className="btn-secondary" disabled={busy||!(status?.count)} onClick={clear}>{t('clearAll')}</button></div>
    <div className="space-y-2">{status?.items?.length?status.items.map((it:any)=><div className="flex items-center justify-between rounded-xl bg-slate-950 px-3 py-2 text-sm" key={it.index}><span>#{it.index+1}</span><code>{it.masked}</code><button className="btn-secondary" disabled={busy} onClick={()=>remove(it.index)}>{t('remove')}</button></div>):<div className="text-sm text-slate-500">{t('noEntries')}</div>}</div>
   </div>
   <div className="flex gap-2"><input className="input flex-1 font-mono text-sm" type="password" value={value} placeholder={t('pasteNewApiKey')} onChange={e=>setValue(e.target.value)}/><button className="btn" disabled={busy||!value.trim()} onClick={add}>{t('confirmAdd')}</button></div>
@@ -107,7 +107,7 @@ function LLMFallbackManager(){
  async function clear(){if(!confirm(t('clearFallbackConfirm'))) return; setBusy(true); try{setStatus(await api('/api/settings/llm/fallbacks/clear',{method:'POST'}))} finally{setBusy(false)}}
  return <div className="space-y-3">
   <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-   <div className="mb-3 flex items-center justify-between"><div><b>{status?.count||0} {t('configured')}</b><p className="text-xs text-slate-500">{t('fallbackHint')}</p></div><button className="btn-secondary" disabled={busy||!(status?.count)} onClick={clear}>{t('clearAll')}</button></div>
+   <div className="mb-3 flex items-center justify-between"><div><b>已配置 {status?.count||0} 个备用模型</b><p className="text-xs text-slate-500">{t('fallbackHint')}</p></div><button className="btn-secondary" disabled={busy||!(status?.count)} onClick={clear}>{t('clearAll')}</button></div>
    <div className="space-y-2">{status?.items?.length?status.items.map((it:any)=><div key={it.index} className="grid gap-2 rounded-xl bg-slate-950 px-3 py-2 text-sm md:grid-cols-[60px_1fr_1fr_1fr_auto]"><span>#{it.index+1}</span><code>{it.provider}</code><code>{it.model}</code><code>{it.api_key||'***'}</code><button className="btn-secondary" onClick={()=>remove(it.index)}>{t('remove')}</button></div>):<div className="text-sm text-slate-500">{t('noEntries')}</div>}</div>
   </div>
   <div className="grid gap-2 md:grid-cols-[1fr_1fr_1fr_auto]"><input className="input" placeholder={t('provider')} value={provider} onChange={e=>setProvider(e.target.value)}/><input className="input" placeholder={t('model')} value={model} onChange={e=>setModel(e.target.value)}/><input className="input font-mono" type="password" placeholder={t('pasteNewApiKey')} value={apiKey} onChange={e=>setApiKey(e.target.value)}/><button className="btn" disabled={busy||!provider.trim()||!model.trim()} onClick={add}>{t('addFallback')}</button></div>
@@ -145,7 +145,7 @@ export function SettingsForm({rows, initialGroup='search'}:{rows:any[]; initialG
   </aside>
   <main className="space-y-5">
    <section className="rounded-3xl border border-blue-500/20 bg-gradient-to-br from-slate-950 to-blue-950/40 p-6 shadow-2xl">
-    <div className="flex flex-wrap items-center justify-between gap-3"><div><div className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-300">{t('configuration')}</div><h2 className="mt-2 text-3xl font-black">{group.title||t(group.titleKey)}</h2><p className="mt-1 text-sm text-slate-400">{group.desc||t(group.descKey)}</p></div><div className="flex gap-2">{['search','searxng'].includes(active)&&<><button className="btn-secondary" disabled={testing} onClick={test}>{testing?t('testing'):t('testProviders')}</button></>}{group.keys.length>0&&<><span className={`badge ${dirty?'badge-watch':'badge-action'}`}>{saving?t('saving'):(dirty?t('unsaved'):t('savedState'))}</span><button className="btn" disabled={saving||!dirty} onClick={()=>saveGroup(group.keys)}>{t('saveGroup')}</button></>}</div></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><div><div className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-300">{t('configuration')}</div><h2 className="mt-2 text-3xl font-black">{group.title||t(group.titleKey)}</h2><p className="mt-1 text-sm text-slate-400">{group.desc||t(group.descKey)}</p></div><div className="flex gap-2">{['search','searxng'].includes(active)&&<><button className="btn-secondary" disabled={testing} onClick={test}>{testing?t('testing'):t('testProviders')}</button></>}{group.keys.filter((k:string)=>k!=='SEARXNG_ENDPOINTS').length>0&&<><span className={`badge ${dirty?'badge-watch':'badge-action'}`}>{saving?t('saving'):(dirty?t('unsaved'):t('savedState'))}</span><button className="btn" disabled={saving||!dirty} onClick={()=>saveGroup(group.keys)}>{t('saveGroup')}</button></>}</div></div>
     {msg&&<div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-200">{msg}</div>}{['search','searxng'].includes(active)&&<div className="mt-5"><ProviderHealthPanel/></div>}
    </section>
    {active==='security'?<section className="panel space-y-4"><h3 className="text-xl font-bold">{t('changePassword')}</h3><div className="grid gap-3 md:grid-cols-2"><input className="input" type="password" placeholder={t('currentPassword')} value={currentPassword} onChange={e=>setCurrentPassword(e.target.value)}/><input className="input" type="password" placeholder={t('newPassword')} value={newPassword} onChange={e=>setNewPassword(e.target.value)}/></div><button className="btn" disabled={!newPassword||newPassword.length<8} onClick={changePassword}>{t('updatePassword')}</button></section>:<section className="space-y-4">{group.keys.map((key:string)=>renderSetting(key))}</section>}
