@@ -20,4 +20,4 @@ export async function api<T>(path:string, init?:RequestInit):Promise<T>{
   return res.json()
 }
 export type Keyword={id:number;query:string;source:string;intent:string;status:string;score:number;root_terms:string[];created_at:string}
-export type Card={id:number;keyword_id:number;title:string;verdict:string;score:number;demand_score:number;serp_gap_score:number;competitor_weakness_score:number;mvp_score:number;monetization_score:number;monetization_type:string;mvp_plan:string;evidence_json:any[];risks:string[];feedback_label:string}
+export type Card={id:number;keyword_id:number;title:string;verdict:string;score:number;demand_score:number;serp_gap_score:number;competitor_weakness_score:number;mvp_score:number;monetization_score:number;monetization_type:string;mvp_plan:string;evidence_json:any[];risks:string[];feedback_label:string;source_keyword?:string;keyword_source?:string;keyword_intent?:string}
