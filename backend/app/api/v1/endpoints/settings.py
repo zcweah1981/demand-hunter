@@ -273,7 +273,7 @@ def llm_fallbacks_clear(_: bool = Depends(require_auth), db: Session = Depends(g
 def provider_health(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
     import time
     import requests
-    health = {"searxng": [], "brave": {"configured": False, "keys": 0, "ok": False}, "tavily": {"configured": False, "keys": 0, "ok": False}}
+    health = {"searxng": [], "brave": {"configured": False, "keys": 0, "ok": False}, "tavily": {"configured": False, "keys": 0, "ok": False}, "serpapi": {"configured": False, "keys": 0, "ok": False}, "zenserp": {"configured": False, "keys": 0, "ok": False}, "scaleserp": {"configured": False, "keys": 0, "ok": False}}
     # SearXNG: test every configured URL independently.
     for endpoint in services.searxng_endpoints(db):
         base = endpoint["url"]
@@ -301,5 +301,29 @@ def provider_health(_: bool = Depends(require_auth), db: Session = Depends(get_d
     if tavily_keys:
         res = services.tavily_search(db, "invoice calculator", limit=3)
         health["tavily"].update({"ok": bool(res and res[0].get("engine") != "error"), "results": len(res), "sample": (res[0] if res else None)})
+    serpapi_keys = services.rotating_api_keys(db, "SERPAPI_API_KEYS", "")
+    zenserp_keys = services.rotating_api_keys(db, "ZENSERP_API_KEYS", "")
+    scaleserp_keys = services.rotating_api_keys(db, "SCALESERP_API_KEYS", "")
+    health["serpapi"].update({"configured": bool(serpapi_keys), "keys": len(serpapi_keys)})
+    health["zenserp"].update({"configured": bool(zenserp_keys), "keys": len(zenserp_keys)})
+    health["scaleserp"].update({"configured": bool(scaleserp_keys), "keys": len(scaleserp_keys)})
+    if serpapi_keys:
+        res = services.serpapi_search(db, "invoice calculator", limit=3)
+        health["serpapi"].update({"ok": bool(res and res[0].get("engine") != "error"), "results": len(res), "sample": (res[0] if res else None)})
+    if zenserp_keys:
+        res = services.zenserp_search(db, "invoice calculator", limit=3)
+        health["zenserp"].update({"ok": bool(res and res[0].get("engine") != "error"), "results": len(res), "sample": (res[0] if res else None)})
+    if scaleserp_keys:
+        res = services.scaleserp_search(db, "invoice calculator", limit=3)
+        health["scaleserp"].update({"ok": bool(res and res[0].get("engine") != "error"), "results": len(res), "sample": (res[0] if res else None)})
+    # Key pool status for all configured SERP providers
+    health["key_pools"] = {
+        "brave": services.provider_key_pool_status(db, "BRAVE_API_KEYS", "BRAVE_API_KEY"),
+        "tavily": services.provider_key_pool_status(db, "TAVILY_API_KEYS", "TAVILY_API_KEY"),
+        "serpapi": services.provider_key_pool_status(db, "SERPAPI_API_KEYS"),
+        "zenserp": services.provider_key_pool_status(db, "ZENSERP_API_KEYS"),
+        "scaleserp": services.provider_key_pool_status(db, "SCALESERP_API_KEYS"),
+    }
+    health["rotation_strategy"] = services.serp_rotation_strategy(db)
     health["available"] = services.available_serp_providers(db)
     return health

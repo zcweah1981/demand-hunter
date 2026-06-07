@@ -43,9 +43,9 @@ DEFAULT_SETTINGS = {
     "FOUR_FIND_REWRITE_LIMIT": "4",
     "FOUR_FIND_SERP_STRATEGY_ENABLED": "true",
     "FOUR_FIND_SERP_VARIANT_LIMIT": "2",
-    "SERP_PROVIDER_ORDER": "searxng,serpapi,brave,tavily",
+    "SERP_PROVIDER_ORDER": "searxng,serpapi,zenserp,scaleserp,brave,tavily",
     "SERP_PROVIDER_ATTEMPT_LIMIT": "3",
-    "SERP_ROTATION_STRATEGY": "failover",
+    "SERP_ROTATION_STRATEGY": "round_robin",
 
     # Collector / SEO data provider credentials. Store multiple keys where providers support rotation.
     "BING_WEBMASTER_API_KEYS": "",
@@ -422,6 +422,60 @@ def serpapi_search(db: Session, query: str, limit=10) -> list[dict]:
             continue
     return [{"title":"SerpApi error", "url":"", "content":last_error, "engine":"error"}]
 
+def zenserp_search(db: Session, query: str, limit=10) -> list[dict]:
+    keys = provider_key_pool(db, "ZENSERP_API_KEYS")
+    if not keys:
+        return []
+    last_error = ""
+    for entry in keys:
+        try:
+            r = requests.get(
+                "https://app.zenserp.com/api/v2/search",
+                params={"q": query, "apikey": entry["key"], "num": min(max(limit, 1), 10), "hl": "en", "gl": "us"},
+                timeout=15,
+            )
+            r.raise_for_status()
+            data = r.json()
+            if data.get("error"):
+                raise RuntimeError(data.get("error"))
+            out=[]
+            for item in (data.get("organic") or [])[:limit]:
+                out.append({"title": item.get("title") or "", "url": item.get("url") or "", "content": item.get("desc") or item.get("snippet") or "", "engine": "zenserp", "provider_key": entry["masked"]})
+            record_provider_key_result("ZENSERP_API_KEYS", entry["index"], True)
+            return out
+        except Exception as e:
+            last_error = str(e)
+            record_provider_key_result("ZENSERP_API_KEYS", entry.get("index"), False, last_error)
+            continue
+    return [{"title":"Zenserp error", "url":"", "content":last_error, "engine":"error"}]
+
+def scaleserp_search(db: Session, query: str, limit=10) -> list[dict]:
+    keys = provider_key_pool(db, "SCALESERP_API_KEYS")
+    if not keys:
+        return []
+    last_error = ""
+    for entry in keys:
+        try:
+            r = requests.get(
+                "https://api.scaleserp.com/search",
+                params={"q": query, "api_key": entry["key"], "num": min(max(limit, 1), 10), "hl": "en", "gl": "us", "output": "json"},
+                timeout=15,
+            )
+            r.raise_for_status()
+            data = r.json()
+            if data.get("error"):
+                raise RuntimeError(data.get("error"))
+            out=[]
+            for item in (data.get("organic_results") or [])[:limit]:
+                out.append({"title": item.get("title") or "", "url": item.get("link") or item.get("url") or "", "content": item.get("snippet") or item.get("description") or "", "engine": "scaleserp", "provider_key": entry["masked"]})
+            record_provider_key_result("SCALESERP_API_KEYS", entry["index"], True)
+            return out
+        except Exception as e:
+            last_error = str(e)
+            record_provider_key_result("SCALESERP_API_KEYS", entry.get("index"), False, last_error)
+            continue
+    return [{"title":"Scale SERP error", "url":"", "content":last_error, "engine":"error"}]
+
 def available_serp_providers(db: Session) -> list[str]:
     order = [x.strip().lower() for x in (setting(db, "SERP_PROVIDER_ORDER") or "searxng").split(",") if x.strip()]
     out=[]
@@ -434,12 +488,18 @@ def available_serp_providers(db: Session) -> list[str]:
             out.append(p)
         elif p == "serpapi" and rotating_api_keys(db, "SERPAPI_API_KEYS", ""):
             out.append(p)
+        elif p == "zenserp" and rotating_api_keys(db, "ZENSERP_API_KEYS", ""):
+            out.append(p)
+        elif p == "scaleserp" and rotating_api_keys(db, "SCALESERP_API_KEYS", ""):
+            out.append(p)
     return out or ["searxng"]
 
 def provider_search(db: Session, provider: str, query: str, limit=10) -> list[dict]:
     if provider == "brave": return brave_search(db, query, limit)
     if provider == "tavily": return tavily_search(db, query, limit)
     if provider == "serpapi": return serpapi_search(db, query, limit)
+    if provider == "zenserp": return zenserp_search(db, query, limit)
+    if provider == "scaleserp": return scaleserp_search(db, query, limit)
     return searxng_search(db, query, limit=limit)
 
 def domain(url: str) -> str:
