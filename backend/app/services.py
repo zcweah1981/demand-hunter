@@ -12,7 +12,6 @@ DEFAULT_SETTINGS = {
     "SEARXNG_URL": "http://127.0.0.1:8080",
     "SEARXNG_URLS": "",
     "SEARXNG_ENDPOINTS": "[]",
-    "SEARXNG_ROTATION_STRATEGY": "round_robin",
     "SEARXNG_API_TOKEN": "",
     "SEARXNG_ENGINES": "bing",
     "BRAVE_API_KEY": "",
@@ -43,6 +42,7 @@ DEFAULT_SETTINGS = {
     "FOUR_FIND_SERP_VARIANT_LIMIT": "2",
     "SERP_PROVIDER_ORDER": "searxng,brave,tavily",
     "SERP_PROVIDER_ATTEMPT_LIMIT": "3",
+    "SERP_ROTATION_STRATEGY": "failover",
 }
 DEFAULT_ROOTS = [
     ("invoice", "function"), ("calculator", "tool"), ("template", "tool"),
@@ -173,6 +173,19 @@ def _split_multi_value(value: str) -> list[str]:
     parts = re.split(r"[\n,]+", value)
     return [p.strip() for p in parts if p.strip() and not p.strip().startswith("#")]
 
+def serp_rotation_strategy(db: Session) -> str:
+    raw = (setting(db, "SERP_ROTATION_STRATEGY") or "failover").strip().lower()
+    return "round_robin" if raw in {"round_robin", "sequential", "顺序轮询"} else "failover"
+
+def _maybe_rotate(db: Session, key: str, values: list):
+    if not values:
+        return values
+    if serp_rotation_strategy(db) != "round_robin":
+        return values
+    idx = _ROTATION_STATE.get(key, 0) % len(values)
+    _ROTATION_STATE[key] = idx + 1
+    return values[idx:] + values[:idx]
+
 def _rotating_values(db: Session, multi_key: str, single_key: str = "") -> list[str]:
     values = _split_multi_value(setting(db, multi_key))
     if not values and single_key:
@@ -181,9 +194,7 @@ def _rotating_values(db: Session, multi_key: str, single_key: str = "") -> list[
             values = [single]
     if not values:
         return []
-    idx = _ROTATION_STATE.get(multi_key, 0) % len(values)
-    _ROTATION_STATE[multi_key] = idx + 1
-    return values[idx:] + values[:idx]
+    return _maybe_rotate(db, multi_key, values)
 
 def searxng_urls(db: Session) -> list[str]:
     return [e["url"] for e in searxng_endpoints(db)]
@@ -223,9 +234,7 @@ def searxng_endpoints(db: Session) -> list[dict]:
         endpoints = [{"url": u.rstrip("/"), "api_token": legacy_token, "use_builtin_engines": not bool(legacy_engines), "engines": legacy_engines} for u in urls if u.strip()]
     if not endpoints:
         return []
-    idx = _ROTATION_STATE.get("SEARXNG_ENDPOINTS", 0) % len(endpoints)
-    _ROTATION_STATE["SEARXNG_ENDPOINTS"] = idx + 1
-    return endpoints[idx:] + endpoints[:idx]
+    return _maybe_rotate(db, "SEARXNG_ENDPOINTS", endpoints)
 
 def rotating_api_keys(db: Session, multi_key: str, single_key: str) -> list[str]:
     return _rotating_values(db, multi_key, single_key)
