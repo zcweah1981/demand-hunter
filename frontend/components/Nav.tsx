@@ -5,13 +5,11 @@ import {LogoutButton} from './LogoutButton'
 import {useLang} from '../lib/i18n'
 
 const items = [
-  ['/overview', 'overview'],
-  ['/discovery', 'discovery'],
-  ['/', 'dashboard'],
+  ['/', 'autopilot'],
   ['/review', 'review'],
   ['/cards', 'cards'],
-  ['/keywords', 'keywords'],
-  ['/roots', 'roots'],
+  ['/overview', 'overview'],
+  ['/discovery', 'discovery'],
   ['/runs', 'runs'],
   ['/settings', 'settings'],
 ]

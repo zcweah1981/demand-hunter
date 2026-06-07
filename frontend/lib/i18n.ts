@@ -3,7 +3,7 @@ import {useEffect, useState} from 'react'
 
 export type Lang='zh'|'en'
 const dict:Record<string,Record<Lang,string>>={
- overview:{zh:'概览',en:'Overview'}, discovery:{zh:'四找发现',en:'Discovery'}, dashboard:{zh:'仪表盘',en:'Dashboard'}, review:{zh:'复核队列',en:'Review Queue'}, cards:{zh:'机会卡',en:'Cards'}, keywords:{zh:'关键词',en:'Keywords'}, roots:{zh:'词根库',en:'Root Library'}, runs:{zh:'运行历史',en:'Run History'}, settings:{zh:'设置',en:'Settings'},
+ autopilot:{zh:'自动猎手',en:'Autopilot'}, overview:{zh:'概览',en:'Overview'}, discovery:{zh:'四找发现',en:'Discovery'}, dashboard:{zh:'仪表盘',en:'Dashboard'}, review:{zh:'复核队列',en:'Review Queue'}, cards:{zh:'机会卡',en:'Cards'}, keywords:{zh:'关键词',en:'Keywords'}, roots:{zh:'词根库',en:'Root Library'}, runs:{zh:'运行历史',en:'Run History'}, settings:{zh:'设置',en:'Settings'},
  qualityFormula:{zh:'质量公式',en:'Quality Formula'}, formula:{zh:'需求 × 入口 × 缺口 × MVP × 变现',en:'Demand × Entry × Gap × MVP × Monetization'},
  configuration:{zh:'配置',en:'Configuration'}, saveGroup:{zh:'保存模块',en:'Save module'}, testProviders:{zh:'测试搜索源',en:'Test Providers'}, providerHealth:{zh:'Provider 健康检查',en:'Provider Health'}, testing:{zh:'测试中...',en:'Testing...'},
  searchProviders:{zh:'搜索总控',en:'Search Control'}, searchDesc:{zh:'Provider 顺序、重试和 SERP 策略总控',en:'Provider order, retry, and SERP strategy control'},
