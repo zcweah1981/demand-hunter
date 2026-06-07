@@ -5,7 +5,7 @@ export function verdictClass(v:string){return v==='Action'?'badge badge-action':
 export function verdictLabel(v:string){return v==='Action'?'行动 Action':v==='Watch'?'观察 Watch':v==='Reject'?'拒绝 Reject':v==='Block'?'屏蔽 Block':v}
 function evidenceTypeLabel(t:string){const m:any={business:'商业判断',serp:'搜索结果',social:'社媒证据',competitor:'竞品',keyword:'关键词',source:'来源',url:'链接',error:'错误'}; return m[t]||t}
 
-export function OpportunityCardView({card,compact=false}:{card:any;compact?:boolean}){
+export function OpportunityCardView({card,compact=false,showFeedback=true}:{card:any;compact?:boolean;showFeedback?:boolean}){
  const allEvidence=card.evidence_json||[]
  const business=allEvidence.find((e:any)=>e.type==='business')
  const evidence=allEvidence.filter((e:any)=>e.type!=='business').slice(0,compact?2:5)
@@ -47,9 +47,9 @@ export function OpportunityCardView({card,compact=false}:{card:any;compact?:bool
 
   {!compact&&evidence.length>0&&<div><div className="mb-2 text-xs font-semibold tracking-wide text-slate-500">证据 Evidence</div><div className="space-y-1">{evidence.map((e:any,i:number)=><a key={i} className="block truncate text-xs text-blue-300 hover:text-blue-200" href={e.url} target="_blank">[{evidenceTypeLabel(e.type)}] {e.title}</a>)}</div></div>}
 
-  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-3">
+  {showFeedback&&<div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-3">
    <span className="text-xs text-slate-500">复核反馈会训练词根和屏蔽词</span>
    <Feedback id={card.id}/>
-  </div>
+  </div>}
  </article>
 }

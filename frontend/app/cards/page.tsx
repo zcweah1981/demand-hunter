@@ -16,7 +16,7 @@ export default async function Page(){
   </div>
   <section className="panel">
    <div className="mb-4 flex items-center justify-between"><h2 className="text-xl font-bold">行动机会 <span className="text-slate-500">Action</span></h2><span className="badge">{opportunities.length}</span></div>
-   <OpportunityList cards={opportunities} empty="暂无达到 Action 门槛的机会。" showVerdictFilter={false} />
+   <OpportunityList cards={opportunities} empty="暂无达到 Action 门槛的机会。" showVerdictFilter={false} mode="opportunity" />
   </section>
  </div>
 }
