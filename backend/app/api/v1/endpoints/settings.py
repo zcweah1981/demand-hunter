@@ -23,6 +23,14 @@ def list_settings(_: bool = Depends(require_auth), db: Session = Depends(get_db)
 @router.post("")
 def upsert_setting(payload: schemas.SettingIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     row = db.get(models.Setting, payload.key) or models.Setting(key=payload.key)
+    # Do not let a masked secret from the UI (***xxxx), or an empty secret
+    # placeholder, overwrite a real stored secret. Secret-specific editors
+    # use dedicated endpoints when the user intentionally clears/removes keys.
+    if payload.secret and row.value and (not payload.value.strip() or payload.value.startswith("***")):
+        row.secret = True
+        db.merge(row)
+        db.commit()
+        return obj(row)
     row.value = payload.value
     row.secret = payload.secret
     db.merge(row)
