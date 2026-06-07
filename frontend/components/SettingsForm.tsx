@@ -119,23 +119,44 @@ function LLMPrimaryManager({settingFor, update}:{settingFor:(key:string)=>Settin
 }
 
 function LLMFallbackManager(){
- const {t}=useLang()
- const [status,setStatus]=useState<any>(null)
- const [provider,setProvider]=useState('')
- const [model,setModel]=useState('')
- const [apiKey,setApiKey]=useState('')
+ const [rows,setRows]=useState<any[]>([])
+ const [modelsByIndex,setModelsByIndex]=useState<Record<number,string[]>>({})
  const [busy,setBusy]=useState(false)
- async function load(){setStatus(await api('/api/settings/llm/fallbacks'))}
+ const [msg,setMsg]=useState('')
+ async function load(){const r=await api<any>('/api/settings/llm/fallbacks'); setRows(r.items||[])}
  useEffect(()=>{load().catch(()=>{})},[])
- async function add(){if(!provider.trim()||!model.trim()) return; setBusy(true); try{setStatus(await api('/api/settings/llm/fallbacks/append',{method:'POST',body:JSON.stringify({provider,model,api_key:apiKey})})); setProvider(''); setModel(''); setApiKey('')} finally{setBusy(false)}}
- async function remove(index:number){setBusy(true); try{setStatus(await api('/api/settings/llm/fallbacks/remove',{method:'POST',body:JSON.stringify({index})}))} finally{setBusy(false)}}
- async function clear(){if(!confirm(t('clearFallbackConfirm'))) return; setBusy(true); try{setStatus(await api('/api/settings/llm/fallbacks/clear',{method:'POST'}))} finally{setBusy(false)}}
- return <div className="space-y-3">
-  <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-   <div className="mb-3 flex items-center justify-between"><div><b>已配置 {status?.count||0} 个备用模型</b><p className="text-xs text-slate-500">{t('fallbackHint')}</p></div><button className="btn-secondary" disabled={busy||!(status?.count)} onClick={clear}>{t('clearAll')}</button></div>
-   <div className="space-y-2">{status?.items?.length?status.items.map((it:any)=><div key={it.index} className="grid gap-2 rounded-xl bg-slate-950 px-3 py-2 text-sm md:grid-cols-[60px_1fr_1fr_1fr_auto]"><span>#{it.index+1}</span><code>{it.provider}</code><code>{it.model}</code><code>{it.api_key||'***'}</code><button className="btn-secondary" onClick={()=>remove(it.index)}>{t('remove')}</button></div>):<div className="text-sm text-slate-500">{t('noEntries')}</div>}</div>
-  </div>
-  <div className="grid gap-2 md:grid-cols-[1fr_1fr_1fr_auto]"><input className="input" placeholder={t('provider')} value={provider} onChange={e=>setProvider(e.target.value)}/><input className="input" placeholder={t('model')} value={model} onChange={e=>setModel(e.target.value)}/><input className="input font-mono" type="password" placeholder={t('pasteNewApiKey')} value={apiKey} onChange={e=>setApiKey(e.target.value)}/><button className="btn" disabled={busy||!provider.trim()||!model.trim()} onClick={add}>{t('addFallback')}</button></div>
+ function add(){setRows([...rows,{base_url:'',model:'',api_key:''}])}
+ function update(i:number,patch:any){setRows(rows.map((r,idx)=>idx===i?{...r,...patch}:r))}
+ function remove(i:number){setRows(rows.filter((_,idx)=>idx!==i))}
+ async function save(){
+  setBusy(true); setMsg('')
+  try{
+   const fallbacks=rows.map(r=>({base_url:(r.base_url||r.provider||'').trim(),model:(r.model||'').trim(),api_key:(r.api_key||'').trim()})).filter(r=>r.base_url)
+   const saved=await api<any>('/api/settings/llm/fallbacks',{method:'POST',body:JSON.stringify({fallbacks})})
+   setRows(saved.items||[]); setMsg('✅ 已保存备用模型')
+  }catch(e:any){setMsg(`❌ ${e.message}`)} finally{setBusy(false)}
+ }
+ async function loadModels(i:number){
+  const row=rows[i]
+  setBusy(true); setMsg(`正在获取 #${i+1} 模型列表...`)
+  try{
+   const r=await api<any>('/api/settings/llm/models',{method:'POST',body:JSON.stringify({base_url:(row.base_url||row.provider||''),api_key:(row.api_key||'').startsWith('***')?'':(row.api_key||''),fallback_index:i})})
+   if(r.ok){setModelsByIndex({...modelsByIndex,[i]:r.models||[]}); setMsg(`✅ #${i+1} 获取到 ${r.count||0} 个模型`)} else {setMsg(`❌ #${i+1} ${r.error||'获取失败'}`)}
+  }catch(e:any){setMsg(`❌ ${e.message}`)} finally{setBusy(false)}
+ }
+ return <div className="space-y-3 rounded-3xl border border-slate-800 bg-slate-950/70 p-5 shadow-xl shadow-black/10">
+  <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-bold text-slate-100">备用模型</h3><p className="mt-1 text-xs text-slate-500">每个 fallback 都填写 Base URL 和 Key，然后自动获取模型列表选择。</p></div><button className="btn" disabled={busy} onClick={save}>{busy?'保存中...':'保存备用模型'}</button></div>
+  <div className="space-y-3">{rows.length?rows.map((row,i)=>{const list=modelsByIndex[i]||[]; return <div key={i} className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+   <div className="mb-3 flex items-center justify-between"><span className="text-sm text-slate-500">Fallback #{i+1}</span><button className="btn-secondary" onClick={()=>remove(i)}>删除</button></div>
+   <div className="grid gap-3 lg:grid-cols-2">
+    <label className="block"><span className="mb-1 block text-xs text-slate-500">Base URL</span><input className="input font-mono text-sm" value={row.base_url||row.provider||''} placeholder="https://api.openai.com/v1" onChange={e=>update(i,{base_url:e.target.value,provider:e.target.value})}/></label>
+    <label className="block"><span className="mb-1 block text-xs text-slate-500">API Key</span><input className="input font-mono text-sm" type="password" value={(row.api_key||'').startsWith('***')?'':(row.api_key||'')} placeholder={(row.api_key||'').startsWith('***')?row.api_key:'sk-...'} onChange={e=>update(i,{api_key:e.target.value})}/></label>
+   </div>
+   <div className="mt-3 flex flex-wrap gap-2"><button className="btn-secondary" disabled={busy||!(row.base_url||row.provider||'').trim()} onClick={()=>loadModels(i)}>获取模型列表</button></div>
+   <label className="mt-3 block"><span className="mb-1 block text-xs text-slate-500">模型</span>{list.length?<select className="input w-full" value={row.model||''} onChange={e=>update(i,{model:e.target.value})}><option value="">请选择模型</option>{list.map(m=><option key={m} value={m}>{m}</option>)}</select>:<input className="input font-mono text-sm" value={row.model||''} placeholder="先获取模型列表；也可手动填写" onChange={e=>update(i,{model:e.target.value})}/>}</label>
+  </div>}) : <div className="rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-500">暂无备用模型</div>}</div>
+  <button className="btn-secondary" onClick={add}>新增备用模型</button>
+  {msg&&<div className="rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-300">{msg}</div>}
  </div>
 }
 

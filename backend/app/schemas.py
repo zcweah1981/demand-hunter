@@ -71,6 +71,15 @@ class LLMFallbackAppendIn(BaseModel):
     provider: str
     model: str
     api_key: str = ""
+    base_url: str = ""
+
+class LLMFallbackIn(BaseModel):
+    base_url: str
+    model: str = ""
+    api_key: str = ""
+
+class LLMFallbacksIn(BaseModel):
+    fallbacks: list[LLMFallbackIn]
 
 class LLMFallbackRemoveIn(BaseModel):
     index: int
@@ -78,6 +87,7 @@ class LLMFallbackRemoveIn(BaseModel):
 class LLMModelsIn(BaseModel):
     base_url: str
     api_key: str = ""
+    fallback_index: int | None = None
 
 class SettingKeyRemoveIn(BaseModel):
     key: str

@@ -37,14 +37,19 @@ def test_search(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
 @router.post("/llm/models")
 def llm_models(payload: schemas.LLMModelsIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     import requests
-    base = (payload.base_url.strip() or services.setting(db, "LLM_PRIMARY_BASE_URL")).rstrip("/")
+    fallback_row = None
+    if payload.fallback_index is not None:
+        rows = _fallbacks_raw(db)
+        if 0 <= payload.fallback_index < len(rows):
+            fallback_row = rows[payload.fallback_index]
+    base = (payload.base_url.strip() or (fallback_row or {}).get("base_url", "") or (fallback_row or {}).get("provider", "") or services.setting(db, "LLM_PRIMARY_BASE_URL")).rstrip("/")
     if not base:
         return {"ok": False, "models": [], "error": "Base URL 不能为空"}
     url = base if base.endswith("/models") else f"{base}/models"
     headers = {"Accept": "application/json"}
     api_key = payload.api_key.strip()
     if not api_key or api_key.startswith("***"):
-        api_key = services.setting(db, "LLM_PRIMARY_API_KEY")
+        api_key = (fallback_row or {}).get("api_key", "") if fallback_row else services.setting(db, "LLM_PRIMARY_API_KEY")
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
     try:
@@ -184,7 +189,7 @@ def _fallbacks_status(rows: list[dict]) -> dict:
         "key": "LLM_FALLBACKS",
         "count": len(rows),
         "items": [
-            {"index": i, "provider": r.get("provider", ""), "model": r.get("model", ""), "api_key": _mask_entry(r.get("api_key", ""))}
+            {"index": i, "base_url": r.get("base_url", r.get("provider", "")), "provider": r.get("provider", ""), "model": r.get("model", ""), "api_key": _mask_entry(r.get("api_key", "")), "has_key": bool(r.get("api_key", ""))}
             for i, r in enumerate(rows)
         ],
     }
@@ -196,7 +201,22 @@ def llm_fallbacks(_: bool = Depends(require_auth), db: Session = Depends(get_db)
 @router.post("/llm/fallbacks/append")
 def llm_fallbacks_append(payload: schemas.LLMFallbackAppendIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     rows = _fallbacks_raw(db)
-    rows.append({"provider": payload.provider.strip(), "model": payload.model.strip(), "api_key": payload.api_key.strip()})
+    base_url = (payload.base_url or payload.provider).strip().rstrip("/")
+    rows.append({"base_url": base_url, "provider": base_url, "model": payload.model.strip(), "api_key": payload.api_key.strip()})
+    return _save_fallbacks(db, rows)
+
+@router.post("/llm/fallbacks")
+def llm_fallbacks_save(payload: schemas.LLMFallbacksIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    existing = _fallbacks_raw(db)
+    rows = []
+    for idx, item in enumerate(payload.fallbacks):
+        base_url = item.base_url.strip().rstrip("/")
+        if not base_url:
+            continue
+        api_key = item.api_key.strip()
+        if (not api_key or api_key.startswith("***")) and idx < len(existing) and existing[idx].get("base_url", existing[idx].get("provider", "")) == base_url:
+            api_key = existing[idx].get("api_key", "")
+        rows.append({"base_url": base_url, "provider": base_url, "model": item.model.strip(), "api_key": api_key})
     return _save_fallbacks(db, rows)
 
 @router.post("/llm/fallbacks/remove")
