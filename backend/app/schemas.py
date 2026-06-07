@@ -58,6 +58,13 @@ class SettingKeyAppendIn(BaseModel):
 class SettingKeyClearIn(BaseModel):
     key: str
 
+class SearxngEndpointIn(BaseModel):
+    url: str
+    api_token: str = ""
+
+class SearxngEndpointsIn(BaseModel):
+    endpoints: list[SearxngEndpointIn]
+
 class LLMFallbackAppendIn(BaseModel):
     provider: str
     model: str

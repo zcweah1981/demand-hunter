@@ -7,7 +7,7 @@ import {ProviderHealthPanel} from './ProviderHealthPanel'
 
 const GROUPS:any[]=[
  {id:'search',titleKey:'searchProviders',descKey:'searchDesc',keys:['SERP_PROVIDER_ORDER','SERP_PROVIDER_ATTEMPT_LIMIT','FOUR_FIND_SERP_STRATEGY_ENABLED','FOUR_FIND_SERP_VARIANT_LIMIT']},
- {id:'searxng',title:'SearXNG',descKey:'searxngDesc',keys:['SEARXNG_URLS','SEARXNG_URL','SEARXNG_ROTATION_STRATEGY','SEARXNG_ENGINES','SEARXNG_API_TOKEN']},
+ {id:'searxng',title:'SearXNG',descKey:'searxngDesc',keys:['SEARXNG_ENDPOINTS','SEARXNG_ROTATION_STRATEGY','SEARXNG_ENGINES']},
  {id:'brave',title:'Brave',descKey:'braveDesc',keys:['BRAVE_API_KEYS']},
  {id:'tavily',title:'Tavily',descKey:'tavilyDesc',keys:['TAVILY_API_KEYS']},
  {id:'llm',title:'LLM',descKey:'llmDesc',keys:['LLM_PRIMARY_PROVIDER','LLM_PRIMARY_MODEL','LLM_PRIMARY_API_KEY','LLM_FALLBACKS']},
@@ -16,8 +16,8 @@ const GROUPS:any[]=[
  {id:'security',titleKey:'security',descKey:'securityDesc',keys:[]},
 ]
 const BOOL_KEYS=['AUTO_RUN_ENABLED','REQUIRE_SOCIAL_FOR_ACTION','COLLECT_SOCIAL_EVIDENCE','FOUR_FIND_AUTO_ENABLED','FOUR_FIND_SERP_STRATEGY_ENABLED','FOUR_FIND_REWRITE_ON_SERP_REJECT']
-const SECRET_KEYS=['SEARXNG_API_TOKEN','BRAVE_API_KEY','BRAVE_API_KEYS','TAVILY_API_KEY','TAVILY_API_KEYS','LLM_API_KEY','LLM_PRIMARY_API_KEY','LLM_FALLBACKS']
-const LIST_KEYS=['SEARXNG_URLS','BRAVE_API_KEYS','TAVILY_API_KEYS']
+const SECRET_KEYS=['SEARXNG_ENDPOINTS','SEARXNG_API_TOKEN','BRAVE_API_KEY','BRAVE_API_KEYS','TAVILY_API_KEY','TAVILY_API_KEYS','LLM_API_KEY','LLM_PRIMARY_API_KEY','LLM_FALLBACKS']
+const LIST_KEYS=['BRAVE_API_KEYS','TAVILY_API_KEYS']
 const MULTILINE_KEYS=['FOUR_FIND_AUTO_SEEDS','FOUR_FIND_AUTO_DOMAINS','BLOCKED_TERMS']
 
 type Setting={key:string;value:string;secret:boolean;updated_at?:string}
@@ -25,29 +25,38 @@ function splitList(v:string){return (v||'').split(/[\n,]+/).map(x=>x.trim()).fil
 function joinList(xs:string[]){return xs.map(x=>x.trim()).filter(Boolean).join('\n')}
 function masked(v:string){return v&&v.startsWith('***')}
 
-function UrlPoolManager({settingKey,value,onChange}:{settingKey:string;value:string;onChange:(value:string)=>void}){
+function SearxngEndpointManager(){
  const {t}=useLang()
- const [draft,setDraft]=useState('')
- const values=splitList(value)
- function add(){
-  const clean=draft.trim().replace(/\/$/,'')
-  if(!clean) return
-  if(!/^https?:\/\//.test(clean)){alert('URL must start with http:// or https://'); return}
-  if(values.includes(clean)){setDraft(''); return}
-  onChange(joinList([...values,clean])); setDraft('')
+ const [rows,setRows]=useState<any[]>([])
+ const [busy,setBusy]=useState(false)
+ const [msg,setMsg]=useState('')
+ async function load(){const r=await api<any>('/api/settings/searxng/endpoints'); setRows(r.items||[])}
+ useEffect(()=>{load().catch(()=>{})},[])
+ function add(){setRows([...rows,{url:'',api_token:'',has_token:false}])}
+ function update(i:number,patch:any){setRows(rows.map((r,idx)=>idx===i?{...r,...patch}:r))}
+ function remove(i:number){setRows(rows.filter((_,idx)=>idx!==i))}
+ async function save(){
+  setBusy(true); setMsg('')
+  try{
+   const endpoints=rows.map(r=>({url:(r.url||'').trim(),api_token:(r.api_token||'').trim()})).filter(r=>r.url)
+   const saved=await api<any>('/api/settings/searxng/endpoints',{method:'POST',body:JSON.stringify({endpoints})})
+   setRows(saved.items||[]); setMsg(`✅ ${t('saved')}`)
+  }catch(e:any){setMsg(`❌ ${e.message}`)} finally{setBusy(false)}
  }
- function remove(index:number){const xs=[...values]; xs.splice(index,1); onChange(joinList(xs))}
- function clear(){if(confirm(t('clearAllConfirm'))) onChange('')}
  return <div className="space-y-3">
   <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-   <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><div><b>{values.length} SearXNG URLs</b><p className="text-xs text-slate-500">轮询地址池：系统会按顺序尝试这些 SearXNG 实例。</p></div><button className="btn-secondary" disabled={!values.length} onClick={clear}>Clear all</button></div>
-   <div className="space-y-2">{values.length?values.map((url,i)=><div key={`${url}-${i}`} className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-950 px-3 py-2 text-sm"><span className="text-slate-500">#{i+1}</span><code className="safe-text flex-1 text-slate-200">{url}</code><button className="btn-secondary" onClick={()=>remove(i)}>{t('remove')}</button></div>):<div className="text-sm text-slate-500">{t('noEntries')}</div>}</div>
+   <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><div><b>{rows.length} SearXNG endpoints</b><p className="text-xs text-slate-500">每一条 URL 都可以单独设置请求头 <code>X-API-TOKEN</code>。</p></div><button className="btn" disabled={busy} onClick={save}>{busy?t('saving'):t('saveGroup')}</button></div>
+   <div className="space-y-3">{rows.length?rows.map((row,i)=><div key={i} className="grid gap-2 rounded-2xl border border-slate-800 bg-slate-950 p-3 md:grid-cols-[48px_1fr_1fr_auto]">
+    <div className="pt-3 text-sm text-slate-500">#{i+1}</div>
+    <label className="block"><span className="mb-1 block text-xs text-slate-500">URL</span><input className="input font-mono text-sm" value={row.url||''} placeholder="http://searxng:8080" onChange={e=>update(i,{url:e.target.value})}/></label>
+    <label className="block"><span className="mb-1 block text-xs text-slate-500">X-API-TOKEN</span><input className="input font-mono text-sm" type="password" value={row.api_token?.startsWith('***')?'':(row.api_token||'')} placeholder={row.api_token?.startsWith('***')?row.api_token:'optional'} onChange={e=>update(i,{api_token:e.target.value})}/></label>
+    <button className="btn-secondary self-end" onClick={()=>remove(i)}>{t('remove')}</button>
+   </div>):<div className="rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-500">{t('noEntries')}</div>}</div>
   </div>
-  <div className="flex flex-col gap-2 sm:flex-row"><input className="input flex-1 font-mono text-sm" value={draft} placeholder="http://searxng:8080" onChange={e=>setDraft(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault(); add()}}}/><button className="btn" disabled={!draft.trim()} onClick={add}>{t('confirmAdd')}</button></div>
-  <textarea className="input min-h-24 w-full font-mono text-xs" value={value||''} onChange={e=>onChange(e.target.value)} placeholder={'http://searxng-1:8080\nhttp://searxng-2:8080'}/>
+  <button className="btn-secondary" onClick={add}>{t('confirmAdd')} endpoint</button>
+  {msg&&<div className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-200">{msg}</div>}
  </div>
 }
-
 
 function SecretListManager({settingKey}:{settingKey:string}){
  const {t}=useLang()
@@ -105,7 +114,7 @@ export function SettingsForm({rows, initialGroup='search'}:{rows:any[]; initialG
  const group=GROUPS.find(g=>g.id===active)||GROUPS[0]
  function settingFor(key:string):Setting{return byKey[key]||{key,value:'',secret:SECRET_KEYS.includes(key)}}
  function update(key:string, patch:Partial<Setting>){setDirty(true); setItems(items.map((x:any)=>x.key===key?{...x,...patch}:x).concat(byKey[key]?[]:[{key,value:'',secret:SECRET_KEYS.includes(key),...patch} as Setting]))}
- async function saveGroup(keys:string[]){setSaving(true); try{for(const k of keys){const s=settingFor(k); if(s.secret&&masked(s.value)) continue; await api('/api/settings',{method:'POST',body:JSON.stringify(s)})} setDirty(false); setMsg(`${t('saved')} ${group.title||t(group.titleKey)}`)} finally{setSaving(false)}}
+ async function saveGroup(keys:string[]){setSaving(true); try{for(const k of keys){if(k==='SEARXNG_ENDPOINTS') continue; const s=settingFor(k); if(s.secret&&masked(s.value)) continue; await api('/api/settings',{method:'POST',body:JSON.stringify(s)})} setDirty(false); setMsg(`${t('saved')} ${group.title||t(group.titleKey)}`)} finally{setSaving(false)}}
   async function test(){setTesting(true);setMsg(t('testing')); try{const r=await api<any>('/api/settings/test-search',{method:'POST'}); const p=r.providers||{}; setMsg(r.ok?`✅ ${t('searchOk')}: ${r.result_count} results, ${r.elapsed_ms}ms · providers=${(p.available||[]).join(',')||'none'} · searxng=${p.searxng_urls||0} · braveKeys=${p.brave_keys||0} · tavilyKeys=${p.tavily_keys||0}`:`❌ ${t('searchFailed')}: ${r.error}`)}catch(e:any){setMsg(`❌ ${e.message}`)} finally{setTesting(false)}}
  async function changePassword(){setMsg(t('changingPassword')); try{await api('/api/auth/password',{method:'POST',body:JSON.stringify({current_password:currentPassword,new_password:newPassword})}); setCurrentPassword(''); setNewPassword(''); setMsg(`✅ ${t('passwordChanged')}`)}catch(e:any){setMsg(`❌ ${e.message}`)}}
  function setListItem(key:string, idx:number, value:string){const xs=splitList(settingFor(key).value); xs[idx]=value; update(key,{value:joinList(xs)})}
@@ -127,5 +136,5 @@ export function SettingsForm({rows, initialGroup='search'}:{rows:any[]; initialG
   </main>
  </div>
 
- function renderSetting(key:string){const s=settingFor(key); const bool=BOOL_KEYS.includes(key); const list=LIST_KEYS.includes(key); const multi=MULTILINE_KEYS.includes(key); const values=splitList(s.value); const fallback=key==='LLM_FALLBACKS'; return <div key={key} className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5 shadow-xl shadow-black/10"><div className="mb-4 flex flex-wrap items-start justify-between gap-3"><div><div className="flex items-center gap-2"><h3 className="font-bold text-slate-100">{key}</h3>{SECRET_KEYS.includes(key)&&s.secret&&<span className="badge">{t('secret')}</span>}{list&&<span className="badge badge-action">{t('rotation')}</span>}</div><div className="mt-1 text-xs text-slate-500">{s.updated_at?new Date(s.updated_at).toLocaleString():t('notSaved')}</div>{list&&<p className="mt-2 text-xs text-blue-300">{t('rotationHint')}</p>}{fallback&&<p className="mt-2 text-xs text-blue-300">{t('fallbackHint')}</p>}</div>{SECRET_KEYS.includes(key)&&<div className="flex gap-2"><label className="flex items-center gap-2 text-xs text-slate-400"><input type="checkbox" checked={!!s.secret} onChange={e=>update(key,{secret:e.target.checked})}/> {t('secret')}</label></div>}</div>{bool?<select className="input w-full" value={s.value||'false'} onChange={e=>update(key,{value:e.target.value})}><option value="true">true</option><option value="false">false</option></select>:key==='SEARXNG_URLS'?<UrlPoolManager settingKey={key} value={s.value||''} onChange={(value)=>update(key,{value,secret:false})}/>:list&&['BRAVE_API_KEYS','TAVILY_API_KEYS'].includes(key)?<SecretListManager settingKey={key}/>:list?<div className="space-y-3"><div className="space-y-2">{values.length?values.map((v,i)=><div key={i} className="flex items-center gap-2 rounded-2xl border border-slate-800 bg-slate-900/60 p-3"><div className="flex-1 font-mono text-sm text-slate-200">{masked(v)?v:v}</div><button className="btn-secondary" onClick={()=>removeListItem(key,i)}>{t('remove')}</button></div>):<div className="rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-500">{t('noEntries')}</div>}</div><div className="flex gap-2"><input className="input flex-1 font-mono text-sm" type={s.secret?'password':'text'} value={pendingAdd[key]||''} placeholder={key==='SEARXNG_URLS'?'http://searxng:8080':t('pasteNewApiKey')} onChange={e=>setPendingAdd({...pendingAdd,[key]:e.target.value})}/><button className="btn" disabled={!(pendingAdd[key]||'').trim()} onClick={()=>{const xs=splitList(s.value); xs.push((pendingAdd[key]||'').trim()); update(key,{value:joinList(xs)}); setPendingAdd({...pendingAdd,[key]:''})}}>{t('confirmAdd')}</button></div><textarea className="input min-h-24 w-full font-mono text-xs" value={s.value||''} onChange={e=>update(key,{value:e.target.value})} placeholder={t('pasteBulk')}/></div>:fallback?<LLMFallbackManager/>:multi?<textarea className="input min-h-28 w-full font-mono text-sm" value={s.value||''} onChange={e=>update(key,{value:e.target.value})}/>:<input className="input w-full" type={s.secret?'password':'text'} value={masked(s.value)?'':s.value||''} placeholder={masked(s.value)?s.value:''} onChange={e=>update(key,{value:e.target.value})}/>}</div>}
+ function renderSetting(key:string){const s=settingFor(key); const bool=BOOL_KEYS.includes(key); const list=LIST_KEYS.includes(key); const multi=MULTILINE_KEYS.includes(key); const values=splitList(s.value); const fallback=key==='LLM_FALLBACKS'; return <div key={key} className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5 shadow-xl shadow-black/10"><div className="mb-4 flex flex-wrap items-start justify-between gap-3"><div><div className="flex items-center gap-2"><h3 className="font-bold text-slate-100">{key}</h3>{SECRET_KEYS.includes(key)&&s.secret&&<span className="badge">{t('secret')}</span>}{list&&<span className="badge badge-action">{t('rotation')}</span>}</div><div className="mt-1 text-xs text-slate-500">{s.updated_at?new Date(s.updated_at).toLocaleString():t('notSaved')}</div>{list&&<p className="mt-2 text-xs text-blue-300">{t('rotationHint')}</p>}{fallback&&<p className="mt-2 text-xs text-blue-300">{t('fallbackHint')}</p>}</div>{SECRET_KEYS.includes(key)&&<div className="flex gap-2"><label className="flex items-center gap-2 text-xs text-slate-400"><input type="checkbox" checked={!!s.secret} onChange={e=>update(key,{secret:e.target.checked})}/> {t('secret')}</label></div>}</div>{bool?<select className="input w-full" value={s.value||'false'} onChange={e=>update(key,{value:e.target.value})}><option value="true">true</option><option value="false">false</option></select>:key==='SEARXNG_ENDPOINTS'?<SearxngEndpointManager/>:list&&['BRAVE_API_KEYS','TAVILY_API_KEYS'].includes(key)?<SecretListManager settingKey={key}/>:list?<div className="space-y-3"><div className="space-y-2">{values.length?values.map((v,i)=><div key={i} className="flex items-center gap-2 rounded-2xl border border-slate-800 bg-slate-900/60 p-3"><div className="flex-1 font-mono text-sm text-slate-200">{masked(v)?v:v}</div><button className="btn-secondary" onClick={()=>removeListItem(key,i)}>{t('remove')}</button></div>):<div className="rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-500">{t('noEntries')}</div>}</div><div className="flex gap-2"><input className="input flex-1 font-mono text-sm" type={s.secret?'password':'text'} value={pendingAdd[key]||''} placeholder={key==='SEARXNG_URLS'?'http://searxng:8080':t('pasteNewApiKey')} onChange={e=>setPendingAdd({...pendingAdd,[key]:e.target.value})}/><button className="btn" disabled={!(pendingAdd[key]||'').trim()} onClick={()=>{const xs=splitList(s.value); xs.push((pendingAdd[key]||'').trim()); update(key,{value:joinList(xs)}); setPendingAdd({...pendingAdd,[key]:''})}}>{t('confirmAdd')}</button></div><textarea className="input min-h-24 w-full font-mono text-xs" value={s.value||''} onChange={e=>update(key,{value:e.target.value})} placeholder={t('pasteBulk')}/></div>:fallback?<LLMFallbackManager/>:multi?<textarea className="input min-h-28 w-full font-mono text-sm" value={s.value||''} onChange={e=>update(key,{value:e.target.value})}/>:<input className="input w-full" type={s.secret?'password':'text'} value={masked(s.value)?'':s.value||''} placeholder={masked(s.value)?s.value:''} onChange={e=>update(key,{value:e.target.value})}/>}</div>}
 }

@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SETTINGS = {
     "SEARXNG_URL": "http://127.0.0.1:8080",
     "SEARXNG_URLS": "",
+    "SEARXNG_ENDPOINTS": "[]",
     "SEARXNG_ROTATION_STRATEGY": "round_robin",
     "SEARXNG_API_TOKEN": "",
     "SEARXNG_ENGINES": "bing",
@@ -184,22 +185,56 @@ def _rotating_values(db: Session, multi_key: str, single_key: str = "") -> list[
     return values[idx:] + values[:idx]
 
 def searxng_urls(db: Session) -> list[str]:
-    urls = _rotating_values(db, "SEARXNG_URLS", "SEARXNG_URL")
-    return [u.rstrip("/") for u in urls if u.strip()]
+    return [e["url"] for e in searxng_endpoints(db)]
+
+def searxng_endpoints(db: Session) -> list[dict]:
+    """Return SearXNG endpoints as {url, api_token} with rotation applied.
+
+    New config uses SEARXNG_ENDPOINTS JSON so each URL can carry its own
+    X-API-TOKEN. Old SEARXNG_URLS/SEARXNG_URL + SEARXNG_API_TOKEN remain as
+    fallback for existing deployments.
+    """
+    raw = setting(db, "SEARXNG_ENDPOINTS") or ""
+    endpoints: list[dict] = []
+    if raw and not raw.startswith("***"):
+        try:
+            data = json.loads(raw)
+            if isinstance(data, list):
+                for item in data:
+                    if isinstance(item, dict):
+                        url = str(item.get("url") or "").strip().rstrip("/")
+                        token = str(item.get("api_token") or item.get("token") or "").strip()
+                    else:
+                        url = str(item or "").strip().rstrip("/")
+                        token = ""
+                    if url:
+                        endpoints.append({"url": url, "api_token": token})
+        except Exception:
+            endpoints = []
+    if not endpoints:
+        legacy_token = setting(db, "SEARXNG_API_TOKEN") or ""
+        urls = _rotating_values(db, "SEARXNG_URLS", "SEARXNG_URL")
+        endpoints = [{"url": u.rstrip("/"), "api_token": legacy_token} for u in urls if u.strip()]
+    if not endpoints:
+        return []
+    idx = _ROTATION_STATE.get("SEARXNG_ENDPOINTS", 0) % len(endpoints)
+    _ROTATION_STATE["SEARXNG_ENDPOINTS"] = idx + 1
+    return endpoints[idx:] + endpoints[:idx]
 
 def rotating_api_keys(db: Session, multi_key: str, single_key: str) -> list[str]:
     return _rotating_values(db, multi_key, single_key)
 
 def searxng_search(db: Session, query: str, categories="general", limit=10) -> list[dict]:
-    urls = searxng_urls(db)
-    if not urls:
+    endpoints = searxng_endpoints(db)
+    if not endpoints:
         return []
-    headers = {"Accept": "application/json"}
-    token = setting(db, "SEARXNG_API_TOKEN")
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
     last_error = ""
-    for base in urls:
+    for endpoint in endpoints:
+        base = endpoint["url"]
+        headers = {"Accept": "application/json"}
+        token = endpoint.get("api_token") or ""
+        if token:
+            headers["X-API-TOKEN"] = token
         try:
             engines = setting(db, "SEARXNG_ENGINES")
             params={"q": query, "format":"json", "language":"en"}
@@ -758,12 +793,16 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
 
 
 def test_search_provider(db: Session) -> dict:
-    base = setting(db, "SEARXNG_URL").rstrip("/")
+    endpoint = (searxng_endpoints(db) or [{"url": setting(db, "SEARXNG_URL").rstrip("/"), "api_token": setting(db, "SEARXNG_API_TOKEN")}])[0]
+    base = endpoint["url"].rstrip("/")
     started = datetime.utcnow()
     providers = {"available": available_serp_providers(db), "searxng_urls": len(searxng_urls(db)), "brave_keys": len(rotating_api_keys(db, "BRAVE_API_KEYS", "BRAVE_API_KEY")), "tavily_keys": len(rotating_api_keys(db, "TAVILY_API_KEYS", "TAVILY_API_KEY")), "brave_configured": bool(rotating_api_keys(db, "BRAVE_API_KEYS", "BRAVE_API_KEY")), "tavily_configured": bool(rotating_api_keys(db, "TAVILY_API_KEYS", "TAVILY_API_KEY"))}
     try:
         engines = setting(db, "SEARXNG_ENGINES") or "bing,wikipedia"
-        r = requests.get(f"{base}/search", params={"q":"invoice calculator", "format":"json", "language":"en", "engines": engines}, timeout=12)
+        headers = {"Accept": "application/json"}
+        if endpoint.get("api_token"):
+            headers["X-API-TOKEN"] = endpoint["api_token"]
+        r = requests.get(f"{base}/search", params={"q":"invoice calculator", "format":"json", "language":"en", "engines": engines}, headers=headers, timeout=12)
         elapsed_ms = int((datetime.utcnow() - started).total_seconds() * 1000)
         r.raise_for_status()
         data = r.json()

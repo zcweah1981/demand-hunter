@@ -43,6 +43,50 @@ def _mask_entry(value: str) -> str:
         return ""
     return "***" + value[-4:] if len(value) > 4 else "***"
 
+def _searxng_rows_raw(db: Session) -> list[dict]:
+    import json
+    rows: list[dict] = []
+    row = db.get(models.Setting, "SEARXNG_ENDPOINTS")
+    if row and row.value:
+        try:
+            data = json.loads(row.value)
+            if isinstance(data, list):
+                rows = [{"url": str(x.get("url", "")).rstrip("/"), "api_token": str(x.get("api_token", ""))} for x in data if isinstance(x, dict) and x.get("url")]
+        except Exception:
+            pass
+    if rows:
+        return rows
+    legacy_token = services.setting(db, "SEARXNG_API_TOKEN") or ""
+    legacy_urls = services._rotating_values(db, "SEARXNG_URLS", "SEARXNG_URL")
+    return [{"url": u.rstrip("/"), "api_token": legacy_token} for u in legacy_urls if u.strip()]
+
+def _searxng_rows_status(rows: list[dict]) -> dict:
+    return {"count": len(rows), "items": [{"index": i, "url": r.get("url", ""), "api_token": _mask_entry(r.get("api_token", "")), "has_token": bool(r.get("api_token"))} for i, r in enumerate(rows)]}
+
+@router.get("/searxng/endpoints")
+def searxng_endpoints_status(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    return _searxng_rows_status(_searxng_rows_raw(db))
+
+@router.post("/searxng/endpoints")
+def searxng_endpoints_save(payload: schemas.SearxngEndpointsIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    import json
+    existing = _searxng_rows_raw(db)
+    rows = []
+    for idx, item in enumerate(payload.endpoints):
+        url = item.url.strip().rstrip("/")
+        if not url:
+            continue
+        token = item.api_token.strip()
+        if (not token or token.startswith("***")) and idx < len(existing) and existing[idx].get("url") == url:
+            token = existing[idx].get("api_token", "")
+        rows.append({"url": url, "api_token": token})
+    row = db.get(models.Setting, "SEARXNG_ENDPOINTS") or models.Setting(key="SEARXNG_ENDPOINTS", value="[]", secret=True)
+    row.value = json.dumps(rows, ensure_ascii=False)
+    row.secret = True
+    db.merge(row)
+    db.commit()
+    return _searxng_rows_status(rows)
+
 @router.get("/secret-list/{key}")
 def secret_list_status(key: str, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     row = db.get(models.Setting, key)
@@ -141,10 +185,14 @@ def provider_health(_: bool = Depends(require_auth), db: Session = Depends(get_d
     import requests
     health = {"searxng": [], "brave": {"configured": False, "keys": 0, "ok": False}, "tavily": {"configured": False, "keys": 0, "ok": False}}
     # SearXNG: test every configured URL independently.
-    for base in services.searxng_urls(db):
+    for endpoint in services.searxng_endpoints(db):
+        base = endpoint["url"]
         started = time.time()
         try:
-            r = requests.get(f"{base.rstrip('/')}/search", params={"q": "invoice calculator", "format": "json", "language": "en", "engines": services.setting(db, "SEARXNG_ENGINES") or "bing"}, timeout=12)
+            headers = {"Accept": "application/json"}
+            if endpoint.get("api_token"):
+                headers["X-API-TOKEN"] = endpoint["api_token"]
+            r = requests.get(f"{base.rstrip('/')}/search", params={"q": "invoice calculator", "format": "json", "language": "en", "engines": services.setting(db, "SEARXNG_ENGINES") or "bing"}, headers=headers, timeout=12)
             r.raise_for_status()
             data = r.json()
             health["searxng"].append({"url": base, "ok": True, "elapsed_ms": int((time.time()-started)*1000), "results": len(data.get("results", []))})
