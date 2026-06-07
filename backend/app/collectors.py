@@ -4,7 +4,7 @@ from datetime import datetime
 from urllib.parse import urljoin, urlparse, unquote
 import requests
 from sqlalchemy.orm import Session
-from . import models
+from . import models, services
 
 STOPWORDS={"best","top","free","online","app","apps","software","tool","tools","page","blog","pricing","login","signup","about","contact","privacy","terms","docs","help","features","category","tag","author","news","article","post","posts","product","products"}
 TOOL_INTENT_TERMS={"calculator","generator","template","checker","converter","tracker","dashboard","analyzer","builder","creator","planner","estimator","form","spreadsheet","invoice","policy","report","monitor","automation","integration","api"}
@@ -120,6 +120,25 @@ def score_candidate(keyword:str, source:str, evidence:dict|None=None, base:float
     if len(set(terms)) < len(terms): score -= 0.06
     return round(max(0.0, min(1.0, score)), 3)
 
+def _collector_source_weights(db:Session)->dict:
+    try:
+        data=json.loads(services.setting(db,'COLLECTOR_SOURCE_WEIGHTS') or '{}')
+        return data if isinstance(data,dict) else {}
+    except Exception:
+        return {}
+
+def _save_collector_source_weights(db:Session, weights:dict)->None:
+    row=db.get(models.Setting,'COLLECTOR_SOURCE_WEIGHTS') or models.Setting(key='COLLECTOR_SOURCE_WEIGHTS', value='{}', secret=False)
+    row.value=json.dumps(weights, ensure_ascii=False, sort_keys=True)
+    row.secret=False
+    db.merge(row)
+
+def collector_source_multiplier(db:Session, source:str)->float:
+    weights=_collector_source_weights(db)
+    raw=weights.get(source,{}).get('weight', 1.0) if isinstance(weights.get(source,{}),dict) else 1.0
+    try: return max(0.25, min(2.5, float(raw)))
+    except Exception: return 1.0
+
 def mark_sitemap_seen(db:Session, url:str, keyword:str)->bool:
     """Return True when URL is first seen, otherwise update last_seen metadata."""
     row=db.query(models.SitemapSeenUrl).filter_by(url=url).first()
@@ -136,7 +155,7 @@ def mark_sitemap_seen(db:Session, url:str, keyword:str)->bool:
 def upsert_candidate(db:Session, keyword:str, source:str, source_url:str='', source_domain:str='', method:str='', evidence:dict|None=None, score:float=0.0):
     kw=normalize_keyword(keyword)
     if not kw: return None
-    computed_score=score_candidate(kw, source, evidence, score)
+    computed_score=round(max(0.0, min(1.0, score_candidate(kw, source, evidence, score) * collector_source_multiplier(db, source))), 3)
     q=db.query(models.CandidateKeyword).filter_by(keyword=kw, source=source, source_url=source_url or '').first()
     if q:
         q.score=max(q.score, computed_score)
@@ -280,7 +299,90 @@ def collector_pool_summary(db:Session)->dict:
         try: ev=json.loads(r.evidence_json or '{}')
         except Exception: ev={}
         top.append({'id':r.id,'keyword':r.keyword,'canonical_keyword':ev.get('canonical_keyword') or canonical_keyword(r.keyword),'source':r.source,'method':r.method,'score':r.score,'source_url':r.source_url})
-    return {'total':sum(by_status.values()),'by_status':by_status,'by_source':by_source,'top_new':top}
+    return {'total':sum(by_status.values()),'by_status':by_status,'by_source':by_source,'source_weights':_collector_source_weights(db),'top_new':top}
+
+def _match_imported_candidates_for_keyword(db:Session, keyword_query:str, source:str)->list[tuple[models.CandidateKeyword,dict]]:
+    source=source.removeprefix('collector:')
+    rows=db.query(models.CandidateKeyword).filter_by(source=source).order_by(models.CandidateKeyword.created_at.desc()).limit(250).all()
+    out=[]
+    target=canonical_keyword(keyword_query) or normalize_keyword(keyword_query)
+    for r in rows:
+        try: ev=json.loads(r.evidence_json or '{}')
+        except Exception: ev={}
+        aliases={normalize_keyword(r.keyword), canonical_keyword(r.keyword), normalize_keyword(ev.get('imported_query','')), canonical_keyword(ev.get('imported_query','')), normalize_keyword(ev.get('canonical_keyword',''))}
+        if target and target in aliases:
+            out.append((r,ev))
+    return out
+
+def apply_collector_feedback(db:Session, keyword, label:str)->dict:
+    """Closed-loop learning for collector-origin opportunity feedback.
+
+    Action/Watch promotes source weight and seeds/domains; Reject/Block demotes
+    them and suppresses matching imported candidates so the pool does not retry
+    the same low-quality term forever.
+    """
+    if not keyword or not getattr(keyword,'source','').startswith('collector:'):
+        return {'applied':False,'reason':'not_collector_keyword'}
+    good=label in {'Action','Watch'}
+    bad=label in {'Reject','Block'}
+    if not (good or bad):
+        return {'applied':False,'reason':'neutral_label'}
+    source=keyword.source.removeprefix('collector:')
+    delta={'Action':0.18,'Watch':0.06,'Reject':-0.16,'Block':-0.35}.get(label,0.0)
+    weights=_collector_source_weights(db)
+    entry=weights.get(source,{}) if isinstance(weights.get(source,{}),dict) else {}
+    entry['weight']=round(max(0.25, min(2.5, float(entry.get('weight',1.0))+delta)), 3)
+    stats=entry.setdefault('stats',{})
+    stats[label]=int(stats.get(label,0))+1
+    entry['last_keyword']=keyword.query
+    entry['last_label']=label
+    weights[source]=entry
+    _save_collector_source_weights(db, weights)
+
+    matched=_match_imported_candidates_for_keyword(db, keyword.query, keyword.source)
+    domains=[]
+    for cand, ev in matched:
+        stats=ev.setdefault('feedback_stats',{})
+        stats[label]=int(stats.get(label,0))+1
+        ev['last_feedback_label']=label
+        ev['last_feedback_at']=datetime.utcnow().isoformat(timespec='seconds')
+        if good:
+            cand.score=max(cand.score or 0, min(1.0, (cand.score or 0)+0.12))
+            cand.status='promoted'
+        elif bad:
+            cand.score=max(0.0, (cand.score or 0)-0.25)
+            cand.status='rejected'
+            ev['reject_reason']='feedback_'+label.lower()
+        if cand.source_domain:
+            domains.append(cand.source_domain)
+        cand.evidence_json=json.dumps(ev, ensure_ascii=False)
+        db.merge(cand)
+
+    # Learn seeds/domains from reviewed collector outputs. Keep this conservative:
+    # good collector keywords become auto seeds; Block removes them and adds them to blocked terms.
+    seed_row=db.get(models.Setting,'COLLECTOR_AUTO_SEEDS') or models.Setting(key='COLLECTOR_AUTO_SEEDS', value='', secret=False)
+    seeds=[x.strip() for x in re.split(r'[\n,]+', seed_row.value or '') if x.strip()]
+    domain_row=db.get(models.Setting,'COLLECTOR_AUTO_DOMAINS') or models.Setting(key='COLLECTOR_AUTO_DOMAINS', value='', secret=False)
+    auto_domains=[x.strip() for x in re.split(r'[\n,]+', domain_row.value or '') if x.strip()]
+    if good:
+        if keyword.query not in seeds:
+            seeds.append(keyword.query)
+        for d in domains:
+            if d and d not in auto_domains:
+                auto_domains.append(d)
+    elif bad:
+        seeds=[s for s in seeds if s != keyword.query]
+        if label == 'Block':
+            blocked=[t.strip() for t in services.setting(db,'BLOCKED_TERMS').split(',') if t.strip()]
+            blocked.append(keyword.query)
+            row=db.get(models.Setting,'BLOCKED_TERMS') or models.Setting(key='BLOCKED_TERMS', value='', secret=False)
+            row.value=','.join(sorted(set(blocked)))
+            row.secret=False
+            db.merge(row)
+    seed_row.value=','.join(seeds[:80]); seed_row.secret=False; db.merge(seed_row)
+    domain_row.value='\n'.join(auto_domains[:80]); domain_row.secret=False; db.merge(domain_row)
+    db.commit()
+    return {'applied':True,'source':source,'label':label,'matched_candidates':len(matched),'source_weight':weights[source]['weight'],'seed_count':len(seeds),'domain_count':len(auto_domains)}
 
 def _split_setting_list(value:str)->list[str]:
     return [x.strip() for x in re.split(r"[\n,]+", value or '') if x.strip()]
@@ -318,7 +420,6 @@ def run_collector_autopilot(db:Session, limit:int=24, import_limit:int=12)->dict
     return {'enabled':True,'seeds':seeds,'domains':domains,'results':results,'errors':errors[:20],'clean':clean,'import':imported,'summary':collector_pool_summary(db)}
 
 from datetime import timedelta
-from . import services
 
 def _candidate_from_search_result(item:dict)->str:
     title=item.get('title') or ''

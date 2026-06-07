@@ -16,7 +16,7 @@ type AutopilotStatus = {
   providers:string[]
   seeds:string[]
   domains:string[]
-  collectors?:{by_status?:Record<string,number>;by_source?:Record<string,number>;top_new?:any[]}
+  collectors?:{by_status?:Record<string,number>;by_source?:Record<string,number>;source_weights?:Record<string,any>;top_new?:any[]}
 }
 
 export function AutopilotPanel({status}:{status:AutopilotStatus}){
@@ -31,6 +31,7 @@ export function AutopilotPanel({status}:{status:AutopilotStatus}){
   const healthy=status.ready && !running
   const collectorStatus=status.collectors?.by_status||{}
   const collectorTop=status.collectors?.top_new||[]
+  const collectorWeights=status.collectors?.source_weights||{}
 
   async function call(path:string){
     setError('')
@@ -76,6 +77,7 @@ export function AutopilotPanel({status}:{status:AutopilotStatus}){
         <div className="flex gap-3 text-sm"><span className="text-blue-300">New {collectorStatus.new||0}</span><span className="text-emerald-300">Imported {collectorStatus.imported||0}</span><span className="text-rose-300">Rejected {collectorStatus.rejected||0}</span></div>
       </div>
       {collectorTop.length>0&&<div className="mt-3 grid gap-2 md:grid-cols-2">{collectorTop.slice(0,4).map((c:any)=><div key={c.id} className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-xs"><div className="flex justify-between gap-2"><b className="truncate text-slate-200">{c.keyword}</b><span className="text-blue-300">{Number(c.score||0).toFixed(2)}</span></div><p className="mt-1 truncate text-slate-500">{c.source} · {c.method}</p></div>)}</div>}
+      {Object.keys(collectorWeights).length>0&&<div className="mt-3 flex flex-wrap gap-2">{Object.entries(collectorWeights).slice(0,8).map(([source,row]:any)=><span key={source} className="rounded-lg bg-slate-950 px-2 py-1 text-xs text-slate-400">{source} ×{Number(row?.weight||1).toFixed(2)}</span>)}</div>}
     </div>
 
     {error&&<p className="mt-4 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</p>}

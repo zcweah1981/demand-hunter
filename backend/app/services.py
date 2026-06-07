@@ -55,6 +55,7 @@ DEFAULT_SETTINGS = {
     "COLLECTOR_AUTO_SOURCE_RADAR_ENABLED": "true",
     "COLLECTOR_AUTO_SITEMAP_ENABLED": "true",
     "COLLECTOR_AUTO_SUGGEST_ENABLED": "true",
+    "COLLECTOR_SOURCE_WEIGHTS": "{}",
 
     # Collector / SEO data provider credentials. Store multiple keys where providers support rotation.
     "BING_WEBMASTER_API_KEYS": "",
@@ -1325,6 +1326,20 @@ def apply_feedback(db: Session, card: models.OpportunityCard, label: str, note: 
         try: roots = json.loads(kw.root_terms or "[]")
         except Exception: roots = []
         kw.status = label.lower()
+        collector_feedback = None
+        if kw.source.startswith("collector:"):
+            try:
+                from . import collectors as collector_service
+                collector_feedback = collector_service.apply_collector_feedback(db, kw, label)
+            except Exception as e:
+                collector_feedback = {"applied": False, "error": str(e)[:180]}
+            try:
+                evidence = json.loads(card.evidence_json or "[]")
+                if isinstance(evidence, list):
+                    evidence.append({"type":"collector_feedback", "data": collector_feedback})
+                    card.evidence_json = json.dumps(evidence, ensure_ascii=False)
+            except Exception:
+                pass
         # Four-Find closed loop: feedback on generated cards should change the
         # next discovery cycle, not just the card label.
         if kw.source.startswith("four_find:"):
