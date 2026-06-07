@@ -16,6 +16,7 @@ type AutopilotStatus = {
   providers:string[]
   seeds:string[]
   domains:string[]
+  collectors?:{by_status?:Record<string,number>;by_source?:Record<string,number>;top_new?:any[]}
 }
 
 export function AutopilotPanel({status}:{status:AutopilotStatus}){
@@ -28,6 +29,8 @@ export function AutopilotPanel({status}:{status:AutopilotStatus}){
   const running=status.running || last?.status==='running'
   const progress=running&&summary.total?Math.round((summary.current||0)*100/summary.total):last?.status==='ok'?100:0
   const healthy=status.ready && !running
+  const collectorStatus=status.collectors?.by_status||{}
+  const collectorTop=status.collectors?.top_new||[]
 
   async function call(path:string){
     setError('')
@@ -65,6 +68,14 @@ export function AutopilotPanel({status}:{status:AutopilotStatus}){
       <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"><div className="kpi-label">待复核</div><b className="text-3xl text-amber-300">{status.counts.pending_review}</b></div>
       <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"><div className="kpi-label">行动 Action</div><b className="text-3xl text-emerald-300">{status.counts.action}</b></div>
       <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"><div className="kpi-label">观察 Watch</div><b className="text-3xl text-blue-300">{status.counts.watch}</b></div>
+    </div>
+
+    <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div><h3 className="font-bold text-slate-100">采集器候选池</h3><p className="mt-1 text-xs text-slate-500">采集器只发现候选；自动清洗后进入 Four-Find / SEO / LLM。</p></div>
+        <div className="flex gap-3 text-sm"><span className="text-blue-300">New {collectorStatus.new||0}</span><span className="text-emerald-300">Imported {collectorStatus.imported||0}</span><span className="text-rose-300">Rejected {collectorStatus.rejected||0}</span></div>
+      </div>
+      {collectorTop.length>0&&<div className="mt-3 grid gap-2 md:grid-cols-2">{collectorTop.slice(0,4).map((c:any)=><div key={c.id} className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-xs"><div className="flex justify-between gap-2"><b className="truncate text-slate-200">{c.keyword}</b><span className="text-blue-300">{Number(c.score||0).toFixed(2)}</span></div><p className="mt-1 truncate text-slate-500">{c.source} · {c.method}</p></div>)}</div>}
     </div>
 
     {error&&<p className="mt-4 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</p>}

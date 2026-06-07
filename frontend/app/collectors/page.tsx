@@ -5,8 +5,8 @@ import {api} from '../../lib/api'
 const collectors = [
  {id:'sitemap',name:'Sitemap 监控',tag:'站找词',status:'已接入·免费',desc:'监控竞品 sitemap 新增 URL，从路径抽取新页面、新工具、新长尾词。',feeds:['robots.txt','sitemap.xml','sitemap index'],output:'new URL/page → candidate pool → keyword → SEO 验证'},
  {id:'suggest',name:'搜索联想 / 相关搜索',tag:'词找词',status:'已接入·免费',desc:'从公开 suggest 接口扩展长尾搜索词。后续可接 PAA/Related Search 付费增强。',feeds:['Google Suggest','DuckDuckGo Suggest'],output:'suggest query → candidate pool → Four-Find'},
- {id:'advanced',name:'高级搜索找需求',tag:'SERP 变体',status:'下一步',desc:'allintitle/site/date 变体，用于发现新页面和竞品内容缺口。',feeds:['SearXNG','SerpApi/Zenserp/ScaleSERP'],output:'SERP URL/title → candidate pool'},
- {id:'source-radar',name:'一手信息源雷达',tag:'信息溯源',status:'下一步',desc:'监控 HN、arXiv、GitHub、HuggingFace 等源头，捕捉新模型/新技术/新词。',feeds:['HN Algolia','arXiv','GitHub','Hugging Face'],output:'early signal → candidate pool'},
+ {id:'advanced',name:'高级搜索找需求',tag:'SERP 变体',status:'已接入·轮询 SERP',desc:'allintitle/site/date 变体，用于发现新页面和竞品内容缺口。',feeds:['SearXNG','SerpApi/Zenserp/ScaleSERP'],output:'SERP URL/title → candidate pool'},
+ {id:'source-radar',name:'一手信息源雷达',tag:'信息溯源',status:'已接入·免费',desc:'监控 HN、arXiv、GitHub、HuggingFace 等源头，捕捉新模型/新技术/新词。',feeds:['HN Algolia','arXiv','GitHub','Hugging Face'],output:'early signal → candidate pool'},
  {id:'extensions',name:'插件差评挖掘',tag:'抱怨找需求',status:'计划中',desc:'找高下载、低评分、差评多的插件，从用户抱怨抽取具体需求词。',feeds:['Firefox Add-ons','Chrome Web Store'],output:'complaint topic → candidate pool'},
  {id:'requests',name:'AI 工具请求',tag:'请求找需求',status:'计划中',desc:'抓取 AI 工具请求/愿望单，按最新、投票数、重复诉求提取候选词。',feeds:['TheresAnAIForThat','ProductHunt'],output:'request text → candidate pool'},
  {id:'similarweb',name:'SimilarWeb / Landing Pages',tag:'站找词 / 站找站',status:'付费增强',desc:'获取站点关键词、相似站、出站流量、着陆页新点击量。',feeds:['SimilarWeb keywords','Similar sites','Landing pages'],output:'site/page/keyword → Four-Find'},
@@ -29,6 +29,7 @@ export default function Page(){
  async function importCandidates(){setBusy(true);setMsg('导入关键词流...');try{const r=await api<any>('/api/collectors/candidates/import',{method:'POST',body:JSON.stringify({limit:30})});setMsg(`✅ 已导入 keyword：${r.imported}/${r.selected}，clean rejected=${r.clean?.rejected||0}`);await load()}catch(e:any){setMsg(`❌ ${e.message}`)}finally{setBusy(false)}}
  async function runAdvanced(){setBusy(true);setMsg('运行 Advanced Search Collector...');try{const r=await api<any>('/api/collectors/advanced-search/run',{method:'POST',body:JSON.stringify({roots:advRoots.split(/[\n,]+/).map(x=>x.trim()).filter(Boolean),domains:advDomains.split(/[\n,]+/).map(x=>x.trim()).filter(Boolean),days:30,limit_per_query:8})});setMsg(`✅ Advanced Search: saved=${r.saved}, seen=${r.candidates_seen}, queries=${r.queries}`);await load()}catch(e:any){setMsg(`❌ ${e.message}`)}finally{setBusy(false)}}
  async function runRadar(){setBusy(true);setMsg('运行 Source Radar...');try{const r=await api<any>('/api/collectors/source-radar/run',{method:'POST',body:JSON.stringify({seeds:radarSeeds.split(/[\n,]+/).map(x=>x.trim()).filter(Boolean),limit_per_seed:10})});setMsg(`✅ Source Radar: saved=${r.saved}, seen=${r.candidates_seen}`);await load()}catch(e:any){setMsg(`❌ ${e.message}`)}finally{setBusy(false)}}
+ async function runCollectorAuto(){setBusy(true);setMsg('运行 Collector Autopilot...');try{const r=await api<any>('/api/collectors/autopilot/run',{method:'POST',body:JSON.stringify({limit:24})});setMsg(`✅ Collector Autopilot: imported=${r.import?.imported||0}, clean rejected=${r.clean?.rejected||0}, new=${r.summary?.by_status?.new||0}`);await load()}catch(e:any){setMsg(`❌ ${e.message}`)}finally{setBusy(false)}}
  return <div className="space-y-6">
   <section className="rounded-3xl border border-blue-500/20 bg-gradient-to-br from-blue-950/60 via-slate-950 to-slate-950 p-7 shadow-2xl">
    <p className="text-sm font-semibold uppercase tracking-[0.3em] text-blue-300">Collectors</p>
@@ -37,7 +38,7 @@ export default function Page(){
   </section>
 
   <section className="panel">
-   <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-bold">统一流转</h2><p className="mt-1 text-sm text-slate-400">词根 → 扩词 → 找站 → 反查词 → 监控新页面/新词 → SEO 验证 → 机会卡</p></div><div className="flex gap-2"><button className="btn-secondary" disabled={busy||!candidates.length} onClick={cleanCandidates}>清洗候选池</button><button className="btn" disabled={busy||!candidates.length} onClick={importCandidates}>导入候选到关键词流</button></div></div>
+   <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-bold">统一流转</h2><p className="mt-1 text-sm text-slate-400">词根 → 扩词 → 找站 → 反查词 → 监控新页面/新词 → SEO 验证 → 机会卡</p></div><div className="flex gap-2"><button className="btn-secondary" disabled={busy} onClick={runCollectorAuto}>跑 Collector Autopilot</button><button className="btn-secondary" disabled={busy||!candidates.length} onClick={cleanCandidates}>清洗候选池</button><button className="btn" disabled={busy||!candidates.length} onClick={importCandidates}>导入候选到关键词流</button></div></div>
    <div className="mt-4 grid gap-3 md:grid-cols-5">{['采集源','候选池','Four-Find 扩展','SEO 验证','机会卡'].map((x,i)=><div key={x} className="rounded-2xl border border-slate-800 bg-slate-950 p-4 text-center"><div className="text-xs text-slate-500">Step {i+1}</div><b className="text-slate-100">{x}</b></div>)}</div>
    {msg&&<div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-200">{msg}</div>}
   </section>

@@ -46,6 +46,15 @@ DEFAULT_SETTINGS = {
     "SERP_PROVIDER_ORDER": "searxng,serpapi,zenserp,scaleserp,brave,tavily",
     "SERP_PROVIDER_ATTEMPT_LIMIT": "3",
     "SERP_ROTATION_STRATEGY": "round_robin",
+    "COLLECTOR_AUTO_ENABLED": "true",
+    "COLLECTOR_AUTO_SEEDS": "invoice calculator,shopify tax app,woocommerce returns,compliance tracker,appointment reminder template",
+    "COLLECTOR_AUTO_DOMAINS": "",
+    "COLLECTOR_AUTO_LIMIT": "24",
+    "COLLECTOR_AUTO_IMPORT_LIMIT": "12",
+    "COLLECTOR_AUTO_ADVANCED_ENABLED": "true",
+    "COLLECTOR_AUTO_SOURCE_RADAR_ENABLED": "true",
+    "COLLECTOR_AUTO_SITEMAP_ENABLED": "true",
+    "COLLECTOR_AUTO_SUGGEST_ENABLED": "true",
 
     # Collector / SEO data provider credentials. Store multiple keys where providers support rotation.
     "BING_WEBMASTER_API_KEYS": "",
@@ -1177,6 +1186,18 @@ def select_old_keywords_for_recheck(db: Session, limit: int = 4) -> list[models.
             out.append(kw); seen.add(kw.id)
     return out
 
+def select_collector_keywords(db: Session, limit: int = 8) -> list[models.Keyword]:
+    if limit <= 0:
+        return []
+    return (
+        db.query(models.Keyword)
+        .filter(models.Keyword.source.like("collector:%"))
+        .filter(~models.Keyword.status.in_(["rejected", "serp_reject", "rewrite_exhausted", "imported"]))
+        .order_by(models.Keyword.score.desc(), models.Keyword.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
 def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = None, seeds: list[str] | None = None) -> models.RunHistory:
     # recover stale runs from previous crashes/restarts so dashboard does not stay "running" forever
     stale = db.query(models.RunHistory).filter(models.RunHistory.status == "running").all()
@@ -1189,14 +1210,32 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
     try:
         if use_four_find is None:
             use_four_find = (setting(db, "FOUR_FIND_AUTO_ENABLED") or "false").lower() in {"1", "true", "yes", "on"}
+        collector_summary = None
+        if (setting(db, "COLLECTOR_AUTO_ENABLED") or "false").lower() in {"1", "true", "yes", "on"}:
+            try:
+                from . import collectors as collector_service
+                try:
+                    collector_limit = int(setting(db, "COLLECTOR_AUTO_LIMIT") or "24")
+                except Exception:
+                    collector_limit = 24
+                try:
+                    collector_import_limit = int(setting(db, "COLLECTOR_AUTO_IMPORT_LIMIT") or "12")
+                except Exception:
+                    collector_import_limit = 12
+                run.summary=json.dumps({"phase":"collectors", "collector_limit": collector_limit, "collector_import_limit": collector_import_limit}, ensure_ascii=False)
+                db.commit()
+                collector_summary = collector_service.run_collector_autopilot(db, limit=collector_limit, import_limit=collector_import_limit)
+            except Exception as e:
+                collector_summary = {"enabled": True, "error": str(e)[:240]}
         try:
             recheck_limit = int(setting(db, "AUTO_RECHECK_LIMIT") or "4") if (setting(db, "AUTO_RECHECK_ENABLED") or "true").lower() in {"1","true","yes","on"} else 0
         except Exception:
             recheck_limit = 4
         old_kws = select_old_keywords_for_recheck(db, limit=min(recheck_limit, max(0, limit)))
-        new_limit = max(0, limit - len(old_kws))
+        collector_kws = select_collector_keywords(db, limit=max(0, min(limit - len(old_kws), int((limit or 1) * 0.5))))
+        new_limit = max(0, limit - len(old_kws) - len(collector_kws))
         if use_four_find:
-            kws = old_kws + discover_keywords_four_find(db, limit=new_limit, seeds=seeds)
+            kws = old_kws + collector_kws + discover_keywords_four_find(db, limit=new_limit, seeds=seeds)
             if len(kws) < limit:
                 existing = {kw.query for kw in kws}
                 for kw in discover_keywords(db, limit=limit, roots=roots):
@@ -1206,7 +1245,7 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
                     if len(kws) >= limit:
                         break
         else:
-            kws=old_kws + discover_keywords(db, limit=new_limit, roots=roots)
+            kws=old_kws + collector_kws + discover_keywords(db, limit=new_limit, roots=roots)
         cards=[]
         skipped=[]
         kws = [kw for kw in kws if kw.status not in {"rejected", "serp_reject", "rewrite_exhausted"}]
@@ -1243,6 +1282,8 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
             "new_keyword_budget": new_limit,
             "four_find_keywords": sum(1 for k in kws if k.source.startswith("four_find:")),
             "root_combo_keywords": sum(1 for k in kws if k.source == "root_combo"),
+            "collector_keywords": sum(1 for k in kws if k.source.startswith("collector:")),
+            "collector_summary": collector_summary,
             "skipped_low_quality_serp": len(skipped),
             "skipped_examples": skipped[:5],
             "rewrite_recovery": rewrite_summary,

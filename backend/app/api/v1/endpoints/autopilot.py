@@ -1,7 +1,7 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from app import models, services
+from app import collectors, models, services
 from app.core.security import require_auth
 from app.database import get_db
 from app.main_runtime import start_run_thread
@@ -32,6 +32,7 @@ def autopilot_status(_: bool = Depends(require_auth), db: Session = Depends(get_
     actions = db.query(models.OpportunityCard).filter(models.OpportunityCard.verdict == "Action").count()
     watch = db.query(models.OpportunityCard).filter(models.OpportunityCard.verdict == "Watch").count()
     discoveries = db.query(models.DiscoveryExpansion).count() + db.query(models.CompetitorKeyword).count() + db.query(models.CompetitorSite).count()
+    collector_summary = collectors.collector_pool_summary(db)
     last = auto.get("last_run")
     running = bool(last and last.get("status") == "running")
     ready_checks = [
@@ -39,6 +40,7 @@ def autopilot_status(_: bool = Depends(require_auth), db: Session = Depends(get_
         {"key": "seeds", "label": "自动 seeds 已配置", "ok": bool(seeds or domains), "detail": f"{len(seeds)} seeds · {len(domains)} domains"},
         {"key": "auto", "label": "自动循环已开启", "ok": bool(auto.get("enabled")), "detail": f"每 {auto.get('interval_minutes')} 分钟"},
         {"key": "four_find", "label": "四找闭环已开启", "ok": _bool_setting(db, "FOUR_FIND_AUTO_ENABLED"), "detail": "Discovery → Import → Card → Review feedback"},
+        {"key": "collectors", "label": "采集器候选池已开启", "ok": _bool_setting(db, "COLLECTOR_AUTO_ENABLED"), "detail": f"new {collector_summary.get('by_status',{}).get('new',0)} · imported {collector_summary.get('by_status',{}).get('imported',0)} · rejected {collector_summary.get('by_status',{}).get('rejected',0)}"},
     ]
     ready = all(x["ok"] for x in ready_checks)
     if running:
@@ -61,6 +63,7 @@ def autopilot_status(_: bool = Depends(require_auth), db: Session = Depends(get_
         "seeds": seeds,
         "domains": domains,
         "counts": {"discoveries": discoveries, "cards": cards, "pending_review": pending_review, "action": actions, "watch": watch},
+        "collectors": collector_summary,
         "auto": auto,
     }
 
@@ -70,6 +73,7 @@ def autopilot_start(_: bool = Depends(require_auth), db: Session = Depends(get_d
     services.init_defaults(db)
     _set_setting(db, "AUTO_RUN_ENABLED", "true")
     _set_setting(db, "FOUR_FIND_AUTO_ENABLED", "true")
+    _set_setting(db, "COLLECTOR_AUTO_ENABLED", "true")
     if not (services.setting(db, "FOUR_FIND_AUTO_SEEDS") or "").strip():
         _set_setting(db, "FOUR_FIND_AUTO_SEEDS", "invoice calculator,appointment template,compliance tracker")
     if not (services.setting(db, "AUTO_RUN_LIMIT") or "").strip():

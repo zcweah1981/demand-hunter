@@ -268,6 +268,55 @@ def import_candidates_to_keywords(db:Session, limit:int=30)->dict:
     db.commit()
     return {'ok':True,'selected':len(rows),'imported':imported,'skipped_existing':skipped_existing,'clean':clean}
 
+def collector_pool_summary(db:Session)->dict:
+    rows=db.query(models.CandidateKeyword.status, models.CandidateKeyword.source).all()
+    by_status={}; by_source={}
+    for status, source in rows:
+        by_status[status or 'unknown']=by_status.get(status or 'unknown',0)+1
+        by_source[source or 'unknown']=by_source.get(source or 'unknown',0)+1
+    top_new=db.query(models.CandidateKeyword).filter_by(status='new').order_by(models.CandidateKeyword.score.desc(), models.CandidateKeyword.created_at.desc()).limit(8).all()
+    top=[]
+    for r in top_new:
+        try: ev=json.loads(r.evidence_json or '{}')
+        except Exception: ev={}
+        top.append({'id':r.id,'keyword':r.keyword,'canonical_keyword':ev.get('canonical_keyword') or canonical_keyword(r.keyword),'source':r.source,'method':r.method,'score':r.score,'source_url':r.source_url})
+    return {'total':sum(by_status.values()),'by_status':by_status,'by_source':by_source,'top_new':top}
+
+def _split_setting_list(value:str)->list[str]:
+    return [x.strip() for x in re.split(r"[\n,]+", value or '') if x.strip()]
+
+def run_collector_autopilot(db:Session, limit:int=24, import_limit:int=12)->dict:
+    """Run the free-first collector layer before Four-Find/SEO.
+
+    This implements the article-group flow as automation, not a manual page:
+    new pages / suggest terms / advanced SERP variants / source radar all land
+    in candidate_keywords, then are cleaned and imported into keywords.
+    """
+    if (services.setting(db,'COLLECTOR_AUTO_ENABLED') or 'false').lower() not in {'1','true','yes','on'}:
+        return {'enabled':False,'skipped':'COLLECTOR_AUTO_ENABLED=false','summary':collector_pool_summary(db)}
+    seeds=_split_setting_list(services.setting(db,'COLLECTOR_AUTO_SEEDS'))
+    domains=_split_setting_list(services.setting(db,'COLLECTOR_AUTO_DOMAINS'))
+    results=[]
+    errors=[]
+    def enabled(key:str)->bool:
+        return (services.setting(db,key) or 'true').lower() in {'1','true','yes','on'}
+    if seeds and enabled('COLLECTOR_AUTO_SUGGEST_ENABLED'):
+        try: results.append(run_suggest_collector(db, seeds[:10]))
+        except Exception as e: errors.append({'collector':'suggest','error':str(e)[:180]})
+    if domains and enabled('COLLECTOR_AUTO_SITEMAP_ENABLED'):
+        try: results.append(run_sitemap_watcher(db, domains[:10], max_urls_per_domain=max(20,min(120,limit*4)), only_new=True))
+        except Exception as e: errors.append({'collector':'sitemap','error':str(e)[:180]})
+    if seeds and enabled('COLLECTOR_AUTO_ADVANCED_ENABLED'):
+        roots=seeds[:8]
+        try: results.append(run_advanced_search_collector(db, roots, domains[:6], days=45, limit_per_query=5))
+        except Exception as e: errors.append({'collector':'advanced_search','error':str(e)[:180]})
+    if seeds and enabled('COLLECTOR_AUTO_SOURCE_RADAR_ENABLED'):
+        try: results.append(run_source_radar(db, seeds[:8], limit_per_seed=6))
+        except Exception as e: errors.append({'collector':'source_radar','error':str(e)[:180]})
+    clean=clean_candidate_pool(db, limit=max(200, limit*10))
+    imported=import_candidates_to_keywords(db, limit=max(1, import_limit))
+    return {'enabled':True,'seeds':seeds,'domains':domains,'results':results,'errors':errors[:20],'clean':clean,'import':imported,'summary':collector_pool_summary(db)}
+
 from datetime import timedelta
 from . import services
 

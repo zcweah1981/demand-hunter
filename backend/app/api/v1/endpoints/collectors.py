@@ -23,6 +23,14 @@ def candidate_list(limit: int = 100, status: str = "new", _: bool = Depends(requ
         out.append(d)
     return out
 
+@router.get("/summary")
+def collector_summary(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    return collectors.collector_pool_summary(db)
+
+@router.post("/autopilot/run")
+def collector_autopilot_run(payload: schemas.CandidateImportIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    return collectors.run_collector_autopilot(db, limit=max(1, payload.limit), import_limit=max(1, payload.limit // 2 or 1))
+
 @router.post("/sitemap/run")
 def sitemap_run(payload: schemas.CollectorSitemapIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     domains=[d.strip() for d in payload.domains if d.strip()]
