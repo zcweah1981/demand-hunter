@@ -44,6 +44,10 @@ def source_radar_run(payload: schemas.CollectorSourceRadarIn, _: bool = Depends(
     seeds=[x.strip() for x in payload.seeds if x.strip()]
     return collectors.run_source_radar(db, seeds, payload.limit_per_seed)
 
+@router.post("/candidates/clean")
+def candidate_clean(payload: schemas.CandidateImportIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    return collectors.clean_candidate_pool(db, max(1, payload.limit))
+
 @router.post("/candidates/import")
 def candidate_import(payload: schemas.CandidateImportIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     return collectors.import_candidates_to_keywords(db, payload.limit)

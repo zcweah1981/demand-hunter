@@ -33,6 +33,70 @@ def normalize_keyword(text:str)->str:
     if len(terms)<2: return ''
     return ' '.join(terms[:8])
 
+
+NOISE_TERMS={"best","top","free","online","2024","2025","2026","review","reviews","download","apk","crack","coupon","promo","cheap"}
+CANONICAL_DROP_TERMS=NOISE_TERMS|{"tool","tools","app","apps","software","website","web","service","services"}
+
+def canonical_keyword(keyword:str)->str:
+    kw=normalize_keyword(keyword)
+    if not kw: return ''
+    terms=[t for t in kw.split() if t not in CANONICAL_DROP_TERMS]
+    # Preserve order, drop duplicates.
+    out=[]
+    for t in terms:
+        if t not in out: out.append(t)
+    if len(out)<2: return kw
+    return ' '.join(out[:8])
+
+def candidate_noise_reason(keyword:str, evidence:dict|None=None)->str:
+    kw=normalize_keyword(keyword)
+    if not kw: return 'empty_or_too_short'
+    terms=kw.split()
+    if len(terms)>9: return 'too_long'
+    if len(terms)<2: return 'too_short'
+    if len(set(terms)) < max(2, len(terms)-1): return 'repeated_terms'
+    if any(t in {"crack","apk","coupon","promo"} for t in terms): return 'low_commercial_quality'
+    if all(t in NOISE_TERMS for t in terms): return 'generic_noise'
+    return ''
+
+def clean_candidate_pool(db:Session, limit:int=1000)->dict:
+    """Canonicalize, suppress near-duplicates, and reject obvious noise.
+
+    We do not delete evidence. Lower quality variants are marked rejected with a
+    duplicate_of pointer in evidence_json; the highest-score freshest candidate
+    per canonical keyword remains new/importable.
+    """
+    rows=db.query(models.CandidateKeyword).filter(models.CandidateKeyword.status=='new').order_by(models.CandidateKeyword.score.desc(), models.CandidateKeyword.created_at.desc()).limit(limit).all()
+    groups={}; rejected=0; updated=0; kept=0
+    for r in rows:
+        try: ev=json.loads(r.evidence_json or '{}')
+        except Exception: ev={}
+        reason=candidate_noise_reason(r.keyword, ev)
+        canon=canonical_keyword(r.keyword)
+        ev['canonical_keyword']=canon
+        if reason:
+            ev['reject_reason']=reason
+            r.status='rejected'
+            r.evidence_json=json.dumps(ev, ensure_ascii=False)
+            db.merge(r); rejected+=1; continue
+        groups.setdefault(canon, []).append((r,ev))
+    for canon, items in groups.items():
+        items.sort(key=lambda x: (x[0].score, x[0].created_at), reverse=True)
+        keeper, keeper_ev=items[0]
+        keeper_ev['canonical_keyword']=canon
+        keeper_ev['cluster_size']=len(items)
+        keeper.evidence_json=json.dumps(keeper_ev, ensure_ascii=False)
+        db.merge(keeper); kept+=1; updated+=1
+        for dup, ev in items[1:]:
+            ev['canonical_keyword']=canon
+            ev['duplicate_of']=keeper.id
+            ev['reject_reason']='duplicate_variant'
+            dup.status='rejected'
+            dup.evidence_json=json.dumps(ev, ensure_ascii=False)
+            db.merge(dup); rejected+=1; updated+=1
+    db.commit()
+    return {'ok':True,'scanned':len(rows),'kept_clusters':kept,'rejected':rejected,'updated':updated}
+
 def score_candidate(keyword:str, source:str, evidence:dict|None=None, base:float=0.0)->float:
     """Free-first candidate scoring from article-method signals.
 
@@ -183,17 +247,26 @@ def run_suggest_collector(db:Session, seeds:list[str])->dict:
     return {'ok':True,'source':'suggest','seeds':len(seeds),'candidates_seen':seen,'saved':saved}
 
 def import_candidates_to_keywords(db:Session, limit:int=30)->dict:
+    # Clean first so the import step receives one representative per canonical keyword.
+    clean=clean_candidate_pool(db, limit=max(200, limit*5))
     rows=db.query(models.CandidateKeyword).filter_by(status='new').order_by(models.CandidateKeyword.score.desc(), models.CandidateKeyword.created_at.desc()).limit(limit).all()
-    imported=0
+    imported=0; skipped_existing=0
     for c in rows:
-        existing=db.query(models.Keyword).filter_by(query=c.keyword).first()
+        try: ev=json.loads(c.evidence_json or '{}')
+        except Exception: ev={}
+        query=ev.get('canonical_keyword') or canonical_keyword(c.keyword) or c.keyword
+        existing=db.query(models.Keyword).filter_by(query=query).first()
         if not existing:
-            db.add(models.Keyword(query=c.keyword, source=f'collector:{c.source}', root_terms='[]', score=c.score, status='new'))
+            db.add(models.Keyword(query=query, source=f'collector:{c.source}', root_terms='[]', score=c.score, status='new'))
             imported+=1
+        else:
+            skipped_existing+=1
         c.status='imported'
+        ev['imported_query']=query
+        c.evidence_json=json.dumps(ev, ensure_ascii=False)
         db.merge(c)
     db.commit()
-    return {'ok':True,'selected':len(rows),'imported':imported}
+    return {'ok':True,'selected':len(rows),'imported':imported,'skipped_existing':skipped_existing,'clean':clean}
 
 from datetime import timedelta
 from . import services
