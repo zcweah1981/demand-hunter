@@ -137,3 +137,18 @@ class RunHistory(Base):
     summary: Mapped[str] = mapped_column(Text, default="")
     started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+class CandidateKeyword(Base):
+    """Unified collector candidate pool before Four-Find / SEO validation."""
+    __tablename__ = "candidate_keywords"
+    __table_args__ = (UniqueConstraint("keyword", "source", "source_url", name="uq_candidate_keyword_source"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    keyword: Mapped[str] = mapped_column(String(260), index=True)
+    source: Mapped[str] = mapped_column(String(80), index=True)  # sitemap, suggest, related, hn, arxiv, etc.
+    source_url: Mapped[str] = mapped_column(Text, default="")
+    source_domain: Mapped[str] = mapped_column(String(255), default="")
+    method: Mapped[str] = mapped_column(String(80), default="")  # 词找词/站找词/信息溯源
+    evidence_json: Mapped[str] = mapped_column(Text, default="{}")
+    score: Mapped[float] = mapped_column(Float, default=0.0)
+    status: Mapped[str] = mapped_column(String(40), default="new")  # new, imported, rejected
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

@@ -100,3 +100,13 @@ class SettingKeyRevealIn(BaseModel):
 class ApiKeyEntryIn(BaseModel):
     type_id: str
     values: dict[str, Any]
+
+class CollectorSitemapIn(BaseModel):
+    domains: list[str]
+    max_urls_per_domain: int = 80
+
+class CollectorSuggestIn(BaseModel):
+    seeds: list[str]
+
+class CandidateImportIn(BaseModel):
+    limit: int = 30
