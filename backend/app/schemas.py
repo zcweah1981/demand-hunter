@@ -92,3 +92,7 @@ class LLMModelsIn(BaseModel):
 class SettingKeyRemoveIn(BaseModel):
     key: str
     index: int
+
+class SettingKeyRevealIn(BaseModel):
+    key: str
+    index: int | None = None

@@ -138,6 +138,26 @@ def secret_list_status(key: str, _: bool = Depends(require_auth), db: Session = 
     values = _split_secret_values(row.value if row else "")
     return {"key": key, "count": len(values), "items": [{"index": i, "masked": _mask_entry(v)} for i, v in enumerate(values)], "updated_at": row.updated_at if row else None}
 
+@router.post("/secret/reveal")
+def secret_reveal(payload: schemas.SettingKeyRevealIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    row = db.get(models.Setting, payload.key)
+    if not row or not row.value:
+        return {"ok": False, "value": "", "error": "not found"}
+    if payload.index is None:
+        return {"ok": True, "value": row.value}
+    values = _split_secret_values(row.value)
+    if 0 <= payload.index < len(values):
+        return {"ok": True, "value": values[payload.index]}
+    return {"ok": False, "value": "", "error": "index out of range"}
+
+@router.post("/searxng/reveal-token")
+def searxng_reveal_token(payload: schemas.SettingKeyRevealIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    rows = _searxng_rows_raw(db)
+    idx = payload.index if payload.index is not None else -1
+    if 0 <= idx < len(rows):
+        return {"ok": True, "value": rows[idx].get("api_token", "")}
+    return {"ok": False, "value": "", "error": "index out of range"}
+
 @router.post("/secret-list/append")
 def secret_list_append(payload: schemas.SettingKeyAppendIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     row = db.get(models.Setting, payload.key) or models.Setting(key=payload.key, value="", secret=True)
@@ -205,6 +225,16 @@ def _fallbacks_status(rows: list[dict]) -> dict:
 @router.get("/llm/fallbacks")
 def llm_fallbacks(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
     return _fallbacks_status(_fallbacks_raw(db))
+
+@router.post("/llm/reveal-key")
+def llm_reveal_key(payload: schemas.SettingKeyRevealIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    if payload.key == "LLM_PRIMARY_API_KEY":
+        return {"ok": True, "value": services.setting(db, "LLM_PRIMARY_API_KEY") or ""}
+    rows = _fallbacks_raw(db)
+    idx = payload.index if payload.index is not None else -1
+    if 0 <= idx < len(rows):
+        return {"ok": True, "value": rows[idx].get("api_key", "")}
+    return {"ok": False, "value": "", "error": "index out of range"}
 
 @router.post("/llm/fallbacks/append")
 def llm_fallbacks_append(payload: schemas.LLMFallbackAppendIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):

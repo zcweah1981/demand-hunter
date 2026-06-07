@@ -34,9 +34,27 @@ function splitList(v:string){return (v||'').split(/[\n,]+/).map(x=>x.trim()).fil
 function joinList(xs:string[]){return xs.map(x=>x.trim()).filter(Boolean).join('\n')}
 function masked(v:string){return v&&v.startsWith('***')}
 
-function SecretInput({value,placeholder,onChange,className='input font-mono text-sm'}:{value:string;placeholder?:string;onChange:(v:string)=>void;className?:string}){
+function SecretInput({value,placeholder,onChange,className='input font-mono text-sm',onReveal}:{value:string;placeholder?:string;onChange:(v:string)=>void;className?:string;onReveal?:()=>Promise<string>}){
  const [show,setShow]=useState(false)
- return <div className="flex gap-2"><input className={`${className} flex-1`} type={show?'text':'password'} value={value} placeholder={placeholder||''} onChange={e=>onChange(e.target.value)}/><button type="button" className="btn-secondary whitespace-nowrap" onClick={()=>setShow(!show)}>{show?'隐藏':'显示'}</button></div>
+ const [busy,setBusy]=useState(false)
+ async function toggle(){
+  if(show){setShow(false); return}
+  if(onReveal && !value){setBusy(true); try{const v=await onReveal(); if(v) onChange(v)} finally{setBusy(false)}}
+  setShow(true)
+ }
+ return <div className="flex gap-2"><input className={`${className} flex-1`} type={show?'text':'password'} value={value} placeholder={placeholder||''} onChange={e=>onChange(e.target.value)}/><button type="button" className="btn-secondary whitespace-nowrap" onClick={toggle}>{busy?'读取中...':show?'隐藏':'显示'}</button></div>
+}
+
+function RevealedSecretRow({settingKey,item,onRemove,busy}:{settingKey:string;item:any;onRemove:(index:number)=>void;busy:boolean}){
+ const [show,setShow]=useState(false)
+ const [value,setValue]=useState('')
+ async function toggle(){
+  if(show){setShow(false); return}
+  const r=await api<any>('/api/settings/secret/reveal',{method:'POST',body:JSON.stringify({key:settingKey,index:item.index})})
+  if(r.ok) setValue(r.value||'')
+  setShow(true)
+ }
+ return <div className="grid gap-2 rounded-xl bg-slate-950 px-3 py-2 text-sm md:grid-cols-[60px_1fr_auto_auto]"><span>#{item.index+1}</span><code>{show?value:item.masked}</code><button className="btn-secondary" disabled={busy} onClick={toggle}>{show?'隐藏':'显示'}</button><button className="btn-secondary" disabled={busy} onClick={()=>onRemove(item.index)}>{'删除'}</button></div>
 }
 
 function SearxngEndpointManager(){
@@ -64,7 +82,7 @@ function SearxngEndpointManager(){
     <div className="mb-3 flex items-center justify-between gap-3"><span className="text-sm text-slate-500">#{i+1}</span><button className="btn-secondary" onClick={()=>remove(i)}>{t('remove')}</button></div>
     <div className="grid gap-3 lg:grid-cols-2">
      <label className="block"><span className="mb-1 block text-xs text-slate-500">地址 URL</span><input className="input font-mono text-sm" value={row.url||''} placeholder="http://searxng:8080" onChange={e=>update(i,{url:e.target.value})}/></label>
-     <label className="block"><span className="mb-1 block text-xs text-slate-500">访问令牌 X-API-TOKEN</span><SecretInput value={row.api_token?.startsWith('***')?'':(row.api_token||'')} placeholder={row.api_token?.startsWith('***')?row.api_token:'可不填'} onChange={v=>update(i,{api_token:v})}/></label>
+     <label className="block"><span className="mb-1 block text-xs text-slate-500">访问令牌 X-API-TOKEN</span><SecretInput value={row.api_token?.startsWith('***')?'':(row.api_token||'')} placeholder={row.api_token?.startsWith('***')?row.api_token:'可不填'} onChange={v=>update(i,{api_token:v})} onReveal={async()=>{const r=await api<any>('/api/settings/searxng/reveal-token',{method:'POST',body:JSON.stringify({key:'SEARXNG_ENDPOINTS',index:i})}); return r.value||''}}/></label>
     </div>
     <div className="mt-3 rounded-xl border border-slate-800 bg-slate-900/60 p-3">
      <label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={row.use_builtin_engines!==false} onChange={e=>update(i,{use_builtin_engines:e.target.checked})}/> 搜索引擎采用内置</label>
@@ -95,7 +113,7 @@ function SecretListManager({settingKey}:{settingKey:string}){
  return <div className="space-y-3">
   <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
    <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><div><b>已配置 {status?.count||0} 条</b><p className="text-xs text-slate-500">{t('rotationHint')}</p></div><div className="flex gap-2"><button className="btn-secondary" disabled={busy||!(status?.count)} onClick={clear}>{t('clearAll')}</button><button className="btn" disabled={busy} onClick={save}>{busy?'保存中...':'保存密钥'}</button></div></div>
-   <div className="space-y-2">{status?.items?.length?status.items.map((it:any)=><div className="flex items-center justify-between rounded-xl bg-slate-950 px-3 py-2 text-sm" key={it.index}><span>#{it.index+1}</span><code>{it.masked}</code><button className="btn-secondary" disabled={busy} onClick={()=>remove(it.index)}>{t('remove')}</button></div>):<div className="text-sm text-slate-500">{t('noEntries')}</div>}</div>
+   <div className="space-y-2">{status?.items?.length?status.items.map((it:any)=><RevealedSecretRow key={it.index} settingKey={settingKey} item={it} busy={busy} onRemove={remove}/>):<div className="text-sm text-slate-500">{t('noEntries')}</div>}</div>
   </div>
   <div className="flex gap-2"><div className="flex-1"><SecretInput value={value} placeholder={t('pasteNewApiKey')} onChange={setValue}/></div><button className="btn" disabled={busy||!value.trim()} onClick={add}>保存新增密钥</button></div>
   {msg&&<div className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-200">{msg}</div>}
@@ -133,7 +151,7 @@ function LLMPrimaryManager({settingFor, update}:{settingFor:(key:string)=>Settin
   <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-bold text-slate-100">主模型配置</h3><p className="mt-1 text-xs text-slate-500">填写兼容 OpenAI 的 Base URL 和 Key，然后自动获取模型列表选择。</p></div><button className="btn" disabled={busy||!base.trim()||!model.trim()} onClick={savePrimary}>{busy?'处理中...':'保存主模型'}</button></div>
   <div className="grid gap-3 lg:grid-cols-2">
    <label className="block"><span className="mb-1 block text-xs text-slate-500">Base URL</span><input className="input font-mono text-sm" value={base} placeholder="https://api.openai.com/v1" onChange={e=>update('LLM_PRIMARY_BASE_URL',{value:e.target.value,secret:false})}/></label>
-   <label className="block"><span className="mb-1 block text-xs text-slate-500">API Key</span><SecretInput value={key.startsWith('***')?'':key} placeholder={key.startsWith('***')?key:'sk-...'} onChange={v=>update('LLM_PRIMARY_API_KEY',{value:v,secret:true})}/></label>
+   <label className="block"><span className="mb-1 block text-xs text-slate-500">API Key</span><SecretInput value={key.startsWith('***')?'':key} placeholder={key.startsWith('***')?key:'sk-...'} onChange={v=>update('LLM_PRIMARY_API_KEY',{value:v,secret:true})} onReveal={async()=>{const r=await api<any>('/api/settings/llm/reveal-key',{method:'POST',body:JSON.stringify({key:'LLM_PRIMARY_API_KEY'})}); return r.value||''}}/></label>
   </div>
   <div className="mt-3 flex flex-wrap gap-2"><button className="btn-secondary" disabled={busy||!base.trim()} onClick={loadModels}>{busy?'获取中...':'获取模型列表'}</button>{msg&&<span className="rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-300">{msg}</span>}</div>
   <label className="mt-4 block"><span className="mb-1 block text-xs text-slate-500">模型</span>{models.length?<select className="input w-full" value={model} onChange={e=>update('LLM_PRIMARY_MODEL',{value:e.target.value,secret:false})}><option value="">请选择模型</option>{models.map(m=><option key={m} value={m}>{m}</option>)}</select>:<input className="input w-full font-mono text-sm" value={model} placeholder="先获取模型列表；也可手动填写" onChange={e=>update('LLM_PRIMARY_MODEL',{value:e.target.value,secret:false})}/>}</label>
@@ -172,7 +190,7 @@ function LLMFallbackManager(){
    <div className="mb-3 flex items-center justify-between"><span className="text-sm text-slate-500">Fallback #{i+1}</span><button className="btn-secondary" onClick={()=>remove(i)}>删除</button></div>
    <div className="grid gap-3 lg:grid-cols-2">
     <label className="block"><span className="mb-1 block text-xs text-slate-500">Base URL</span><input className="input font-mono text-sm" value={row.base_url||row.provider||''} placeholder="https://api.openai.com/v1" onChange={e=>update(i,{base_url:e.target.value,provider:e.target.value})}/></label>
-    <label className="block"><span className="mb-1 block text-xs text-slate-500">API Key</span><SecretInput value={(row.api_key||'').startsWith('***')?'':(row.api_key||'')} placeholder={(row.api_key||'').startsWith('***')?row.api_key:'sk-...'} onChange={v=>update(i,{api_key:v})}/></label>
+    <label className="block"><span className="mb-1 block text-xs text-slate-500">API Key</span><SecretInput value={(row.api_key||'').startsWith('***')?'':(row.api_key||'')} placeholder={(row.api_key||'').startsWith('***')?row.api_key:'sk-...'} onChange={v=>update(i,{api_key:v})} onReveal={async()=>{const r=await api<any>('/api/settings/llm/reveal-key',{method:'POST',body:JSON.stringify({key:'LLM_FALLBACKS',index:i})}); return r.value||''}}/></label>
    </div>
    <div className="mt-3 flex flex-wrap gap-2"><button className="btn-secondary" disabled={busy||!(row.base_url||row.provider||'').trim()} onClick={()=>loadModels(i)}>获取模型列表</button></div>
    <label className="mt-3 block"><span className="mb-1 block text-xs text-slate-500">模型</span>{list.length?<select className="input w-full" value={row.model||''} onChange={e=>update(i,{model:e.target.value})}><option value="">请选择模型</option>{list.map(m=><option key={m} value={m}>{m}</option>)}</select>:<input className="input font-mono text-sm" value={row.model||''} placeholder="先获取模型列表；也可手动填写" onChange={e=>update(i,{model:e.target.value})}/>}</label>
