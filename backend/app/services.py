@@ -46,6 +46,27 @@ DEFAULT_SETTINGS = {
     "SERP_PROVIDER_ORDER": "searxng,brave,tavily",
     "SERP_PROVIDER_ATTEMPT_LIMIT": "3",
     "SERP_ROTATION_STRATEGY": "failover",
+
+    # Collector / SEO data provider credentials. Store multiple keys where providers support rotation.
+    "GOOGLE_CSE_API_KEYS": "",
+    "GOOGLE_CSE_CX": "",
+    "BING_API_KEYS": "",
+    "BING_WEBMASTER_API_KEYS": "",
+    "DATAFORSEO_CREDENTIALS": "",
+    "SEMRUSH_API_KEYS": "",
+    "AHREFS_API_KEYS": "",
+    "SIMILARWEB_API_KEYS": "",
+    "SERPAPI_API_KEYS": "",
+    "ZENSERP_API_KEYS": "",
+    "SCALESERP_API_KEYS": "",
+    "YOUTUBE_API_KEYS": "",
+    "REDDIT_CREDENTIALS": "",
+    "PRODUCTHUNT_TOKENS": "",
+    "GITHUB_TOKENS": "",
+    "HUGGINGFACE_TOKENS": "",
+    "X_BEARER_TOKENS": "",
+    "WAPPALYZER_API_KEYS": "",
+    "BUILTWITH_API_KEYS": "",
 }
 DEFAULT_ROOTS = [
     ("invoice", "function"), ("shopify", "vertical"), ("woocommerce", "vertical"), ("quickbooks", "vertical"),
