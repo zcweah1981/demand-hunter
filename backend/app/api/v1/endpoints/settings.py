@@ -327,3 +327,44 @@ def provider_health(_: bool = Depends(require_auth), db: Session = Depends(get_d
     health["rotation_strategy"] = services.serp_rotation_strategy(db)
     health["available"] = services.available_serp_providers(db)
     return health
+
+@router.get("/api-key-types")
+def api_key_types(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    services.init_defaults(db)
+    out = []
+    for t in services.API_KEY_TYPES:
+        key = t["setting_key"]
+        row = db.get(models.Setting, key)
+        values = _split_secret_values(row.value if row else "")
+        pool = services.provider_key_pool_status(db, key) if key in {"BRAVE_API_KEYS","TAVILY_API_KEYS","SERPAPI_API_KEYS","ZENSERP_API_KEYS","SCALESERP_API_KEYS"} else None
+        out.append({**t, "count": len(values), "items": [{"index": i, "masked": _mask_entry(v)} for i, v in enumerate(values)], "pool": pool})
+    return {"types": out, "rotation_strategy": services.serp_rotation_strategy(db), "available_providers": services.available_serp_providers(db)}
+
+@router.get("/api-key-types/{type_id}")
+def api_key_type(type_id: str, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    services.init_defaults(db)
+    t = services.api_key_type_by_id(type_id)
+    if not t:
+        return {"ok": False, "error": "unknown type"}
+    row = db.get(models.Setting, t["setting_key"])
+    values = _split_secret_values(row.value if row else "")
+    pool = services.provider_key_pool_status(db, t["setting_key"]) if t["setting_key"] in {"BRAVE_API_KEYS","TAVILY_API_KEYS","SERPAPI_API_KEYS","ZENSERP_API_KEYS","SCALESERP_API_KEYS"} else None
+    return {"ok": True, "type": {**t, "count": len(values), "items": [{"index": i, "masked": _mask_entry(v)} for i, v in enumerate(values)], "pool": pool}}
+
+@router.post("/api-keys")
+def api_key_add(payload: schemas.ApiKeyEntryIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    t = services.api_key_type_by_id(payload.type_id)
+    if not t:
+        return {"ok": False, "error": "unknown type"}
+    value = services.format_api_key_entry(t, payload.values or {})
+    if not value:
+        return {"ok": False, "error": "empty credential"}
+    key = t["setting_key"]
+    row = db.get(models.Setting, key) or models.Setting(key=key, value="", secret=True)
+    values = _split_secret_values(row.value)
+    values.append(value)
+    row.value = "\n".join(values)
+    row.secret = True
+    db.merge(row)
+    db.commit()
+    return api_key_type(payload.type_id, True, db)

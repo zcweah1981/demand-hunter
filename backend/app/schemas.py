@@ -96,3 +96,7 @@ class SettingKeyRemoveIn(BaseModel):
 class SettingKeyRevealIn(BaseModel):
     key: str
     index: int | None = None
+
+class ApiKeyEntryIn(BaseModel):
+    type_id: str
+    values: dict[str, Any]

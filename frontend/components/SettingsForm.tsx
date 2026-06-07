@@ -6,6 +6,7 @@ import {useLang} from '../lib/i18n'
 import {ProviderHealthPanel} from './ProviderHealthPanel'
 
 const GROUPS:any[]=[
+ {id:'api-keys',title:'API Key 管理中心',desc:'统一管理所有采集器和搜索 API Key',keys:[]},
  {id:'search',titleKey:'searchProviders',descKey:'searchDesc',keys:['SERP_PROVIDER_ORDER','SERP_ROTATION_STRATEGY','SERP_PROVIDER_ATTEMPT_LIMIT','FOUR_FIND_SERP_STRATEGY_ENABLED','FOUR_FIND_SERP_VARIANT_LIMIT']},
  {id:'searxng',title:'SearXNG',descKey:'searxngDesc',keys:['SEARXNG_ENDPOINTS']},
  {id:'brave',title:'Brave',descKey:'braveDesc',keys:['BRAVE_API_KEYS']},
@@ -230,7 +231,7 @@ export function SettingsForm({rows, initialGroup='search'}:{rows:any[]; initialG
   <aside className="panel h-fit xl:sticky xl:top-6">
    <div className="mb-3 px-2 text-xs font-bold uppercase tracking-[0.25em] text-slate-500">{t('settingsMenu')}</div>
    <nav className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:block xl:space-y-2">
-   {GROUPS.map(g=><Link href={`/settings/${g.id}`} key={g.id} onClick={()=>setActive(g.id)} className={`block w-full rounded-2xl px-4 py-3 text-left no-underline transition ${active===g.id?'bg-blue-600/20 text-blue-100 ring-1 ring-blue-500/50':'bg-slate-950/50 text-slate-300 hover:bg-slate-900'}`}><div className="font-bold">{g.title||t(g.titleKey)}</div><div className="mt-1 text-xs leading-5 text-slate-500">{g.desc||t(g.descKey)}</div></Link>)}
+   {GROUPS.map(g=><Link href={g.id==='api-keys'?'/settings/api-keys':`/settings/${g.id}`} key={g.id} onClick={()=>setActive(g.id)} className={`block w-full rounded-2xl px-4 py-3 text-left no-underline transition ${active===g.id?'bg-blue-600/20 text-blue-100 ring-1 ring-blue-500/50':'bg-slate-950/50 text-slate-300 hover:bg-slate-900'}`}><div className="font-bold">{g.title||t(g.titleKey)}</div><div className="mt-1 text-xs leading-5 text-slate-500">{g.desc||t(g.descKey)}</div></Link>)}
    </nav>
   </aside>
   <main className="space-y-5">

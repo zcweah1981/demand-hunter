@@ -65,6 +65,37 @@ DEFAULT_SETTINGS = {
     "WAPPALYZER_API_KEYS": "",
     "BUILTWITH_API_KEYS": "",
 }
+
+API_KEY_TYPES = [
+    {"id":"brave", "setting_key":"BRAVE_API_KEYS", "title":"Brave Search API", "category":"SERP", "price":"free_quota", "free_quota":"2,000 queries/month", "fields":[{"name":"api_key","label":"API Key","secret":True,"kind":"text"}], "enabled":True, "provider":"brave"},
+    {"id":"tavily", "setting_key":"TAVILY_API_KEYS", "title":"Tavily Search API", "category":"SERP / Web Research", "price":"free_quota", "free_quota":"1,000 credits/month", "fields":[{"name":"api_key","label":"API Key","secret":True,"kind":"text"}], "enabled":True, "provider":"tavily"},
+    {"id":"serpapi", "setting_key":"SERPAPI_API_KEYS", "title":"SerpApi", "category":"Google SERP", "price":"free_quota", "free_quota":"100 searches/month/account", "fields":[{"name":"api_key","label":"API Key","secret":True,"kind":"text"}], "enabled":True, "provider":"serpapi"},
+    {"id":"zenserp", "setting_key":"ZENSERP_API_KEYS", "title":"Zenserp", "category":"Google SERP", "price":"free_quota", "free_quota":"limited free quota", "fields":[{"name":"api_key","label":"API Key","secret":True,"kind":"text"}], "enabled":True, "provider":"zenserp"},
+    {"id":"scaleserp", "setting_key":"SCALESERP_API_KEYS", "title":"Scale SERP", "category":"Google SERP", "price":"free_quota", "free_quota":"limited free quota", "fields":[{"name":"api_key","label":"API Key","secret":True,"kind":"text"}], "enabled":True, "provider":"scaleserp"},
+    {"id":"dataforseo", "setting_key":"DATAFORSEO_CREDENTIALS", "title":"DataForSEO", "category":"SEO / SERP", "price":"paid_free_trial", "free_quota":"trial/paid credits", "fields":[{"name":"login","label":"Login / Email","secret":False,"kind":"text"},{"name":"password","label":"Password / API Secret","secret":True,"kind":"password"}], "enabled":False, "provider":"dataforseo"},
+    {"id":"bing_webmaster", "setting_key":"BING_WEBMASTER_API_KEYS", "title":"Bing Webmaster API", "category":"Webmaster Keyword Data", "price":"free", "free_quota":"free with Bing Webmaster", "fields":[{"name":"api_key","label":"API Key","secret":True,"kind":"text"}], "enabled":False, "provider":"bing_webmaster"},
+    {"id":"semrush", "setting_key":"SEMRUSH_API_KEYS", "title":"Semrush API", "category":"SEO", "price":"paid", "free_quota":"paid only / account dependent", "fields":[{"name":"api_key","label":"API Key","secret":True,"kind":"text"}], "enabled":False, "provider":"semrush"},
+    {"id":"ahrefs", "setting_key":"AHREFS_API_KEYS", "title":"Ahrefs API", "category":"SEO", "price":"paid", "free_quota":"paid only / account dependent", "fields":[{"name":"api_key","label":"API Key","secret":True,"kind":"text"}], "enabled":False, "provider":"ahrefs"},
+    {"id":"similarweb", "setting_key":"SIMILARWEB_API_KEYS", "title":"SimilarWeb API", "category":"Traffic / Competitor", "price":"paid", "free_quota":"paid/trial dependent", "fields":[{"name":"api_key","label":"API Key","secret":True,"kind":"text"}], "enabled":False, "provider":"similarweb"},
+    {"id":"youtube", "setting_key":"YOUTUBE_API_KEYS", "title":"YouTube Data API", "category":"Content / Trends", "price":"free_quota", "free_quota":"Google quota based", "fields":[{"name":"api_key","label":"API Key","secret":True,"kind":"text"}], "enabled":False, "provider":"youtube"},
+    {"id":"github", "setting_key":"GITHUB_TOKENS", "title":"GitHub Token", "category":"Repo Ecosystem", "price":"free_optional", "free_quota":"higher rate limit with token", "fields":[{"name":"token","label":"Token","secret":True,"kind":"text"}], "enabled":False, "provider":"github"},
+    {"id":"huggingface", "setting_key":"HUGGINGFACE_TOKENS", "title":"Hugging Face Token", "category":"AI Model Ecosystem", "price":"free_optional", "free_quota":"higher rate/auth with token", "fields":[{"name":"token","label":"Token","secret":True,"kind":"text"}], "enabled":False, "provider":"huggingface"},
+    {"id":"producthunt", "setting_key":"PRODUCTHUNT_TOKENS", "title":"ProductHunt Token", "category":"Launch / Products", "price":"free_limited", "free_quota":"token required", "fields":[{"name":"token","label":"Bearer Token","secret":True,"kind":"text"}], "enabled":False, "provider":"producthunt"},
+    {"id":"reddit", "setting_key":"REDDIT_CREDENTIALS", "title":"Reddit API Credentials", "category":"Community", "price":"free_limited", "free_quota":"API policy dependent", "fields":[{"name":"client_id","label":"Client ID","secret":False,"kind":"text"},{"name":"client_secret","label":"Client Secret","secret":True,"kind":"password"},{"name":"user_agent","label":"User Agent","secret":False,"kind":"text"}], "enabled":False, "provider":"reddit"},
+    {"id":"x", "setting_key":"X_BEARER_TOKENS", "title":"X / Twitter Bearer Token", "category":"Social", "price":"paid_limited", "free_quota":"limited/paid", "fields":[{"name":"bearer_token","label":"Bearer Token","secret":True,"kind":"text"}], "enabled":False, "provider":"x"},
+    {"id":"wappalyzer", "setting_key":"WAPPALYZER_API_KEYS", "title":"Wappalyzer API", "category":"Technology Lookup", "price":"paid_free_trial", "free_quota":"trial dependent", "fields":[{"name":"api_key","label":"API Key","secret":True,"kind":"text"}], "enabled":False, "provider":"wappalyzer"},
+    {"id":"builtwith", "setting_key":"BUILTWITH_API_KEYS", "title":"BuiltWith API", "category":"Technology Lookup", "price":"paid", "free_quota":"paid/trial dependent", "fields":[{"name":"api_key","label":"API Key","secret":True,"kind":"text"}], "enabled":False, "provider":"builtwith"},
+]
+
+def api_key_type_by_id(type_id: str) -> dict | None:
+    return next((x for x in API_KEY_TYPES if x["id"] == type_id), None)
+
+def format_api_key_entry(type_def: dict, payload: dict) -> str:
+    fields = type_def.get("fields") or []
+    if len(fields) == 1:
+        return str(payload.get(fields[0]["name"], "")).strip()
+    return json.dumps({f["name"]: str(payload.get(f["name"], "")).strip() for f in fields}, ensure_ascii=False, separators=(",",":"))
+
 DEFAULT_ROOTS = [
     ("invoice", "function"), ("shopify", "vertical"), ("woocommerce", "vertical"), ("quickbooks", "vertical"),
     ("reconciliation", "pain"), ("appointment", "vertical"), ("compliance", "pain"),
