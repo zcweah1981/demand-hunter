@@ -100,6 +100,18 @@ function LLMPrimaryManager({settingFor, update}:{settingFor:(key:string)=>Settin
  const base=settingFor('LLM_PRIMARY_BASE_URL').value||''
  const key=settingFor('LLM_PRIMARY_API_KEY').value||''
  const model=settingFor('LLM_PRIMARY_MODEL').value||''
+ async function savePrimary(){
+  setBusy(true); setMsg('正在保存主模型...')
+  try{
+   const rows=[
+    {key:'LLM_PRIMARY_BASE_URL',value:base,secret:false},
+    {key:'LLM_PRIMARY_MODEL',value:model,secret:false},
+    {key:'LLM_PRIMARY_API_KEY',value:key,secret:true},
+   ]
+   for(const row of rows){if(row.secret&&String(row.value||'').startsWith('***')) continue; await api('/api/settings',{method:'POST',body:JSON.stringify(row)})}
+   setMsg('✅ 主模型已保存')
+  }catch(e:any){setMsg(`❌ ${e.message}`)} finally{setBusy(false)}
+ }
  async function loadModels(){
   setBusy(true); setMsg('正在获取模型列表...')
   try{
@@ -108,7 +120,7 @@ function LLMPrimaryManager({settingFor, update}:{settingFor:(key:string)=>Settin
   }catch(e:any){setMsg(`❌ ${e.message}`)} finally{setBusy(false)}
  }
  return <div className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5 shadow-xl shadow-black/10">
-  <div className="mb-4"><h3 className="font-bold text-slate-100">主模型配置</h3><p className="mt-1 text-xs text-slate-500">填写兼容 OpenAI 的 Base URL 和 Key，然后自动获取模型列表选择。</p></div>
+  <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-bold text-slate-100">主模型配置</h3><p className="mt-1 text-xs text-slate-500">填写兼容 OpenAI 的 Base URL 和 Key，然后自动获取模型列表选择。</p></div><button className="btn" disabled={busy||!base.trim()||!model.trim()} onClick={savePrimary}>{busy?'处理中...':'保存主模型'}</button></div>
   <div className="grid gap-3 lg:grid-cols-2">
    <label className="block"><span className="mb-1 block text-xs text-slate-500">Base URL</span><input className="input font-mono text-sm" value={base} placeholder="https://api.openai.com/v1" onChange={e=>update('LLM_PRIMARY_BASE_URL',{value:e.target.value,secret:false})}/></label>
    <label className="block"><span className="mb-1 block text-xs text-slate-500">API Key</span><input className="input font-mono text-sm" type="password" value={key.startsWith('***')?'':key} placeholder={key.startsWith('***')?key:'sk-...'} onChange={e=>update('LLM_PRIMARY_API_KEY',{value:e.target.value,secret:true})}/></label>
@@ -191,7 +203,7 @@ export function SettingsForm({rows, initialGroup='search'}:{rows:any[]; initialG
   </aside>
   <main className="space-y-5">
    <section className="rounded-3xl border border-blue-500/20 bg-gradient-to-br from-slate-950 to-blue-950/40 p-6 shadow-2xl">
-    <div className="flex flex-wrap items-center justify-between gap-3"><div><div className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-300">{t('configuration')}</div><h2 className="mt-2 text-3xl font-black">{group.title||t(group.titleKey)}</h2><p className="mt-1 text-sm text-slate-400">{group.desc||t(group.descKey)}</p></div><div className="flex gap-2">{['search','searxng'].includes(active)&&<><button className="btn-secondary" disabled={testing} onClick={test}>{testing?t('testing'):t('testProviders')}</button></>}{group.keys.filter((k:string)=>k!=='SEARXNG_ENDPOINTS').length>0&&<><span className={`badge ${dirty?'badge-watch':'badge-action'}`}>{saving?t('saving'):(dirty?t('unsaved'):t('savedState'))}</span><button className="btn" disabled={saving||!dirty} onClick={()=>saveGroup(group.keys)}>{t('saveGroup')}</button></>}</div></div>
+    <div className="flex flex-wrap items-center justify-between gap-3"><div><div className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-300">{t('configuration')}</div><h2 className="mt-2 text-3xl font-black">{group.title||t(group.titleKey)}</h2><p className="mt-1 text-sm text-slate-400">{group.desc||t(group.descKey)}</p></div><div className="flex gap-2">{['search','searxng'].includes(active)&&<><button className="btn-secondary" disabled={testing} onClick={test}>{testing?t('testing'):t('testProviders')}</button></>}{!['searxng','llm'].includes(active)&&group.keys.length>0&&<><span className={`badge ${dirty?'badge-watch':'badge-action'}`}>{saving?t('saving'):(dirty?t('unsaved'):t('savedState'))}</span><button className="btn" disabled={saving||!dirty} onClick={()=>saveGroup(group.keys)}>{t('saveGroup')}</button></>}</div></div>
     {msg&&<div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-200">{msg}</div>}{['search','searxng'].includes(active)&&<div className="mt-5"><ProviderHealthPanel/></div>}
    </section>
    {active==='security'?<section className="panel space-y-4"><h3 className="text-xl font-bold">{t('changePassword')}</h3><div className="grid gap-3 md:grid-cols-2"><input className="input" type="password" placeholder={t('currentPassword')} value={currentPassword} onChange={e=>setCurrentPassword(e.target.value)}/><input className="input" type="password" placeholder={t('newPassword')} value={newPassword} onChange={e=>setNewPassword(e.target.value)}/></div><button className="btn" disabled={!newPassword||newPassword.length<8} onClick={changePassword}>{t('updatePassword')}</button></section>:active==='llm'?<section className="space-y-4"><LLMPrimaryManager settingFor={settingFor} update={update}/><LLMFallbackManager/></section>:<section className="space-y-4">{group.keys.map((key:string)=>renderSetting(key))}</section>}
