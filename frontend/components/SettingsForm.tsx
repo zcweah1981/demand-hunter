@@ -187,10 +187,12 @@ export function SettingsForm({rows, initialGroup='search'}:{rows:any[]; initialG
  const [pendingAdd,setPendingAdd]=useState<Record<string,string>>({})
  const byKey=useMemo(()=>Object.fromEntries(items.map((x:any)=>[x.key,x])),[items])
  useEffect(()=>{setActive(initialGroup||'search')},[initialGroup])
+ useEffect(()=>{setItems(rows)},[rows])
  const group=GROUPS.find(g=>g.id===active)||GROUPS[0]
  function settingFor(key:string):Setting{return byKey[key]||{key,value:'',secret:SECRET_KEYS.includes(key)}}
  function update(key:string, patch:Partial<Setting>){setDirty(true); setItems(items.map((x:any)=>x.key===key?{...x,...patch}:x).concat(byKey[key]?[]:[{key,value:'',secret:SECRET_KEYS.includes(key),...patch} as Setting]))}
- async function saveGroup(keys:string[]){setSaving(true); try{for(const k of keys){if(k==='SEARXNG_ENDPOINTS') continue; const s=settingFor(k); if(s.secret&&masked(s.value)) continue; await api('/api/settings',{method:'POST',body:JSON.stringify(s)})} setDirty(false); setMsg(`${t('saved')} ${group.title||t(group.titleKey)}`)} finally{setSaving(false)}}
+ async function reloadSettings(){setItems(await api<Setting[]>('/api/settings'))}
+ async function saveGroup(keys:string[]){setSaving(true); try{for(const k of keys){if(k==='SEARXNG_ENDPOINTS') continue; const s=settingFor(k); if(s.secret&&masked(s.value)) continue; await api('/api/settings',{method:'POST',body:JSON.stringify(s)})} await reloadSettings(); setDirty(false); setMsg(`${t('saved')} ${group.title||t(group.titleKey)}`)} finally{setSaving(false)}}
   async function test(){setTesting(true);setMsg(t('testing')); try{const r=await api<any>('/api/settings/test-search',{method:'POST'}); const p=r.providers||{}; setMsg(r.ok?`✅ ${t('searchOk')}: ${r.result_count} results, ${r.elapsed_ms}ms · providers=${(p.available||[]).join(',')||'none'} · searxng=${p.searxng_urls||0} · braveKeys=${p.brave_keys||0} · tavilyKeys=${p.tavily_keys||0}`:`❌ ${t('searchFailed')}: ${r.error}`)}catch(e:any){setMsg(`❌ ${e.message}`)} finally{setTesting(false)}}
  async function changePassword(){setMsg(t('changingPassword')); try{await api('/api/auth/password',{method:'POST',body:JSON.stringify({current_password:currentPassword,new_password:newPassword})}); setCurrentPassword(''); setNewPassword(''); setMsg(`✅ ${t('passwordChanged')}`)}catch(e:any){setMsg(`❌ ${e.message}`)}}
  function setListItem(key:string, idx:number, value:string){const xs=splitList(settingFor(key).value); xs[idx]=value; update(key,{value:joinList(xs)})}
