@@ -12,7 +12,7 @@ export default async function Page(){
   </div>
   {groups.map(g=>{const list=rows.filter(r=>r.verdict===g);return <section className="panel" key={g}>
    <div className="mb-4 flex items-center justify-between"><h2 className="text-xl font-bold">{verdictLabel(g)}</h2><span className="badge">{list.length}</span></div>
-   <OpportunityList cards={list} empty={`暂无${verdictLabel(g)}卡片。`} />
+   <OpportunityList cards={list} empty={`暂无${verdictLabel(g)}卡片。`} showVerdictFilter={false} />
   </section>})}
  </div>
 }
