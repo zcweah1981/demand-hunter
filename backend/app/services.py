@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 import requests
 from sqlalchemy.orm import Session
 from . import models
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(os.environ.get("DEMAND_HUNTER_ROOT", str(Path(__file__).resolve().parents[2])))
 
 DEFAULT_SETTINGS = {
     "SEARXNG_URL": "http://127.0.0.1:8080",
