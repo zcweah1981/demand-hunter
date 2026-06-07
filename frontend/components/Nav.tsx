@@ -8,9 +8,6 @@ const items = [
   ['/', 'autopilot'],
   ['/review', 'review'],
   ['/cards', 'cards'],
-  ['/overview', 'overview'],
-  ['/discovery', 'discovery'],
-  ['/runs', 'runs'],
   ['/settings', 'settings'],
 ]
 
@@ -37,10 +34,15 @@ export function Nav() {
         ))}
       </nav>
 
-      <div className="mt-5 hidden rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-xs text-slate-400 md:block">
-        <div className="mb-2 font-semibold text-slate-200">{t('qualityFormula')}</div>
-        <p>{t('formula')}</p>
-      </div>
+      <details className="mt-5 hidden rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-xs text-slate-400 md:block">
+        <summary className="cursor-pointer font-semibold text-slate-300">{t('advanced')}</summary>
+        <div className="mt-3 space-y-2">
+          <Link className="block hover:text-white" href="/discovery">{t('discovery')}</Link>
+          <Link className="block hover:text-white" href="/runs">{t('runs')}</Link>
+          <Link className="block hover:text-white" href="/keywords">{t('keywords')}</Link>
+          <Link className="block hover:text-white" href="/roots">{t('roots')}</Link>
+        </div>
+      </details>
       <div className="mt-4 md:mt-8"><LogoutButton /></div>
     </aside>
   )
