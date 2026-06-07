@@ -8,6 +8,7 @@ const items = [
   ['/', 'autopilot'],
   ['/review', 'review'],
   ['/cards', 'cards'],
+  ['/collectors', 'collectors'],
   ['/settings', 'settings'],
 ]
 
