@@ -75,6 +75,10 @@ class LLMFallbackAppendIn(BaseModel):
 class LLMFallbackRemoveIn(BaseModel):
     index: int
 
+class LLMModelsIn(BaseModel):
+    base_url: str
+    api_key: str = ""
+
 class SettingKeyRemoveIn(BaseModel):
     key: str
     index: int

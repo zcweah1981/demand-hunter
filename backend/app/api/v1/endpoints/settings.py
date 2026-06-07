@@ -34,6 +34,37 @@ def test_search(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
     return services.test_search_provider(db)
 
 
+@router.post("/llm/models")
+def llm_models(payload: schemas.LLMModelsIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    import requests
+    base = (payload.base_url.strip() or services.setting(db, "LLM_PRIMARY_BASE_URL")).rstrip("/")
+    if not base:
+        return {"ok": False, "models": [], "error": "Base URL 不能为空"}
+    url = base if base.endswith("/models") else f"{base}/models"
+    headers = {"Accept": "application/json"}
+    api_key = payload.api_key.strip()
+    if not api_key or api_key.startswith("***"):
+        api_key = services.setting(db, "LLM_PRIMARY_API_KEY")
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    try:
+        r = requests.get(url, headers=headers, timeout=20)
+        r.raise_for_status()
+        data = r.json()
+        raw = data.get("data", data if isinstance(data, list) else [])
+        models = []
+        for item in raw:
+            if isinstance(item, dict):
+                mid = item.get("id") or item.get("name") or item.get("model")
+            else:
+                mid = str(item)
+            if mid:
+                models.append(str(mid))
+        return {"ok": True, "models": sorted(set(models)), "count": len(set(models))}
+    except Exception as e:
+        return {"ok": False, "models": [], "error": str(e)}
+
+
 def _split_secret_values(value: str) -> list[str]:
     import re
     return [x.strip() for x in re.split(r"[\n,]+", value or "") if x.strip()]

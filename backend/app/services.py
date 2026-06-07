@@ -21,6 +21,7 @@ DEFAULT_SETTINGS = {
     "TAVILY_API_KEYS": "",
     "LLM_PROVIDER": "",
     "LLM_API_KEY": "",
+    "LLM_PRIMARY_BASE_URL": "",
     "LLM_PRIMARY_PROVIDER": "",
     "LLM_PRIMARY_MODEL": "",
     "LLM_PRIMARY_API_KEY": "",

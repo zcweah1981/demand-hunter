@@ -10,7 +10,7 @@ const GROUPS:any[]=[
  {id:'searxng',title:'SearXNG',descKey:'searxngDesc',keys:['SEARXNG_ENDPOINTS']},
  {id:'brave',title:'Brave',descKey:'braveDesc',keys:['BRAVE_API_KEYS']},
  {id:'tavily',title:'Tavily',descKey:'tavilyDesc',keys:['TAVILY_API_KEYS']},
- {id:'llm',title:'LLM',descKey:'llmDesc',keys:['LLM_PRIMARY_PROVIDER','LLM_PRIMARY_MODEL','LLM_PRIMARY_API_KEY','LLM_FALLBACKS']},
+ {id:'llm',title:'LLM',descKey:'llmDesc',keys:['LLM_PRIMARY_BASE_URL','LLM_PRIMARY_API_KEY','LLM_PRIMARY_MODEL','LLM_FALLBACKS']},
  {id:'automation',titleKey:'automation',descKey:'automationDesc',keys:['AUTO_RUN_ENABLED','AUTO_RUN_INTERVAL_MINUTES','AUTO_RUN_LIMIT','FOUR_FIND_AUTO_ENABLED','FOUR_FIND_AUTO_SEEDS','FOUR_FIND_AUTO_DOMAINS','FOUR_FIND_IMPORT_LIMIT','FOUR_FIND_REWRITE_ON_SERP_REJECT','FOUR_FIND_REWRITE_LIMIT']},
  {id:'quality',titleKey:'quality',descKey:'qualityDesc',keys:['MIN_ACTION_SCORE','REQUIRE_SOCIAL_FOR_ACTION','COLLECT_SOCIAL_EVIDENCE','BLOCKED_TERMS']},
  {id:'security',titleKey:'security',descKey:'securityDesc',keys:[]},
@@ -24,7 +24,7 @@ const KEY_LABELS:Record<string,string>={
  SERP_PROVIDER_ORDER:'搜索源顺序', SERP_PROVIDER_ATTEMPT_LIMIT:'搜索源尝试次数', FOUR_FIND_SERP_STRATEGY_ENABLED:'启用 SERP 自动策略', FOUR_FIND_SERP_VARIANT_LIMIT:'SERP 查询变体数量',
  SEARXNG_ENDPOINTS:'SearXNG 实例', SEARXNG_ROTATION_STRATEGY:'轮询策略', SEARXNG_ENGINES:'默认搜索引擎（旧配置）',
  BRAVE_API_KEYS:'Brave 密钥列表', TAVILY_API_KEYS:'Tavily 密钥列表',
- LLM_PRIMARY_PROVIDER:'主模型提供商', LLM_PRIMARY_MODEL:'主模型', LLM_PRIMARY_API_KEY:'主模型密钥', LLM_FALLBACKS:'备用模型',
+ LLM_PRIMARY_BASE_URL:'Base URL', LLM_PRIMARY_PROVIDER:'主模型提供商', LLM_PRIMARY_MODEL:'主模型', LLM_PRIMARY_API_KEY:'主模型密钥', LLM_FALLBACKS:'备用模型',
  AUTO_RUN_ENABLED:'启用自动运行', AUTO_RUN_INTERVAL_MINUTES:'自动运行间隔（分钟）', AUTO_RUN_LIMIT:'每轮处理数量', FOUR_FIND_AUTO_ENABLED:'启用四找闭环', FOUR_FIND_AUTO_SEEDS:'自动种子词', FOUR_FIND_AUTO_DOMAINS:'自动竞品域名', FOUR_FIND_IMPORT_LIMIT:'四找导入数量', FOUR_FIND_REWRITE_ON_SERP_REJECT:'SERP 失败后自动改写', FOUR_FIND_REWRITE_LIMIT:'改写恢复数量',
  MIN_ACTION_SCORE:'Action 最低分', REQUIRE_SOCIAL_FOR_ACTION:'Action 必须有社媒证据', COLLECT_SOCIAL_EVIDENCE:'采集社媒证据', BLOCKED_TERMS:'屏蔽词',
 }
@@ -93,6 +93,31 @@ function SecretListManager({settingKey}:{settingKey:string}){
 }
 
 
+function LLMPrimaryManager({settingFor, update}:{settingFor:(key:string)=>Setting; update:(key:string,patch:Partial<Setting>)=>void}){
+ const [models,setModels]=useState<string[]>([])
+ const [busy,setBusy]=useState(false)
+ const [msg,setMsg]=useState('')
+ const base=settingFor('LLM_PRIMARY_BASE_URL').value||''
+ const key=settingFor('LLM_PRIMARY_API_KEY').value||''
+ const model=settingFor('LLM_PRIMARY_MODEL').value||''
+ async function loadModels(){
+  setBusy(true); setMsg('正在获取模型列表...')
+  try{
+   const r=await api<any>('/api/settings/llm/models',{method:'POST',body:JSON.stringify({base_url:base,api_key:key.startsWith('***')?'':key})})
+   if(r.ok){setModels(r.models||[]); setMsg(`✅ 获取到 ${r.count||0} 个模型`)} else {setMsg(`❌ ${r.error||'获取失败'}`)}
+  }catch(e:any){setMsg(`❌ ${e.message}`)} finally{setBusy(false)}
+ }
+ return <div className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5 shadow-xl shadow-black/10">
+  <div className="mb-4"><h3 className="font-bold text-slate-100">主模型配置</h3><p className="mt-1 text-xs text-slate-500">填写兼容 OpenAI 的 Base URL 和 Key，然后自动获取模型列表选择。</p></div>
+  <div className="grid gap-3 lg:grid-cols-2">
+   <label className="block"><span className="mb-1 block text-xs text-slate-500">Base URL</span><input className="input font-mono text-sm" value={base} placeholder="https://api.openai.com/v1" onChange={e=>update('LLM_PRIMARY_BASE_URL',{value:e.target.value,secret:false})}/></label>
+   <label className="block"><span className="mb-1 block text-xs text-slate-500">API Key</span><input className="input font-mono text-sm" type="password" value={key.startsWith('***')?'':key} placeholder={key.startsWith('***')?key:'sk-...'} onChange={e=>update('LLM_PRIMARY_API_KEY',{value:e.target.value,secret:true})}/></label>
+  </div>
+  <div className="mt-3 flex flex-wrap gap-2"><button className="btn-secondary" disabled={busy||!base.trim()} onClick={loadModels}>{busy?'获取中...':'获取模型列表'}</button>{msg&&<span className="rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-sm text-slate-300">{msg}</span>}</div>
+  <label className="mt-4 block"><span className="mb-1 block text-xs text-slate-500">模型</span>{models.length?<select className="input w-full" value={model} onChange={e=>update('LLM_PRIMARY_MODEL',{value:e.target.value,secret:false})}><option value="">请选择模型</option>{models.map(m=><option key={m} value={m}>{m}</option>)}</select>:<input className="input w-full font-mono text-sm" value={model} placeholder="先获取模型列表；也可手动填写" onChange={e=>update('LLM_PRIMARY_MODEL',{value:e.target.value,secret:false})}/>}</label>
+ </div>
+}
+
 function LLMFallbackManager(){
  const {t}=useLang()
  const [status,setStatus]=useState<any>(null)
@@ -148,7 +173,7 @@ export function SettingsForm({rows, initialGroup='search'}:{rows:any[]; initialG
     <div className="flex flex-wrap items-center justify-between gap-3"><div><div className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-300">{t('configuration')}</div><h2 className="mt-2 text-3xl font-black">{group.title||t(group.titleKey)}</h2><p className="mt-1 text-sm text-slate-400">{group.desc||t(group.descKey)}</p></div><div className="flex gap-2">{['search','searxng'].includes(active)&&<><button className="btn-secondary" disabled={testing} onClick={test}>{testing?t('testing'):t('testProviders')}</button></>}{group.keys.filter((k:string)=>k!=='SEARXNG_ENDPOINTS').length>0&&<><span className={`badge ${dirty?'badge-watch':'badge-action'}`}>{saving?t('saving'):(dirty?t('unsaved'):t('savedState'))}</span><button className="btn" disabled={saving||!dirty} onClick={()=>saveGroup(group.keys)}>{t('saveGroup')}</button></>}</div></div>
     {msg&&<div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-200">{msg}</div>}{['search','searxng'].includes(active)&&<div className="mt-5"><ProviderHealthPanel/></div>}
    </section>
-   {active==='security'?<section className="panel space-y-4"><h3 className="text-xl font-bold">{t('changePassword')}</h3><div className="grid gap-3 md:grid-cols-2"><input className="input" type="password" placeholder={t('currentPassword')} value={currentPassword} onChange={e=>setCurrentPassword(e.target.value)}/><input className="input" type="password" placeholder={t('newPassword')} value={newPassword} onChange={e=>setNewPassword(e.target.value)}/></div><button className="btn" disabled={!newPassword||newPassword.length<8} onClick={changePassword}>{t('updatePassword')}</button></section>:<section className="space-y-4">{group.keys.map((key:string)=>renderSetting(key))}</section>}
+   {active==='security'?<section className="panel space-y-4"><h3 className="text-xl font-bold">{t('changePassword')}</h3><div className="grid gap-3 md:grid-cols-2"><input className="input" type="password" placeholder={t('currentPassword')} value={currentPassword} onChange={e=>setCurrentPassword(e.target.value)}/><input className="input" type="password" placeholder={t('newPassword')} value={newPassword} onChange={e=>setNewPassword(e.target.value)}/></div><button className="btn" disabled={!newPassword||newPassword.length<8} onClick={changePassword}>{t('updatePassword')}</button></section>:active==='llm'?<section className="space-y-4"><LLMPrimaryManager settingFor={settingFor} update={update}/><LLMFallbackManager/></section>:<section className="space-y-4">{group.keys.map((key:string)=>renderSetting(key))}</section>}
   </main>
  </div>
 
