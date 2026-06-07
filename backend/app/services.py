@@ -643,10 +643,10 @@ def analyze_competitors(db: Session, keyword: models.Keyword) -> list[models.Com
 
 def monetization(query: str, intent: str) -> tuple[str, float]:
     q=query.lower()
-    if any(w in q for w in ["calculator","template","generator"]): return "SEO tool + ads/affiliate/lead magnet", 0.75
-    if any(w in q for w in ["integration","sync","automation","dashboard","reconciliation"]): return "micro-SaaS subscription", 0.8
-    if "compliance" in q: return "leadgen + paid report", 0.65
-    return "content/tool affiliate", 0.5
+    if any(w in q for w in ["calculator","template","generator"]): return "SEO 工具 + 广告/联盟/线索捕获", 0.75
+    if any(w in q for w in ["integration","sync","automation","dashboard","reconciliation"]): return "垂直微型 SaaS 订阅", 0.8
+    if "compliance" in q: return "线索捕获 + 付费报告", 0.65
+    return "内容/工具站 + 联盟变现", 0.5
 
 def business_profile(query: str, intent: str, monetization_type: str) -> dict:
     """Business-layer interpretation for opportunity cards.
@@ -655,59 +655,59 @@ def business_profile(query: str, intent: str, monetization_type: str) -> dict:
     who cares, what triggers payment, the wedge, and the first validation step.
     """
     q = query.lower()
-    icp = "SEO traffic operator / niche tool builder"
-    pain = "User wants a faster self-serve answer than generic search results."
-    pay_trigger = "Pays when the output saves time, avoids mistakes, or can be reused in workflow."
-    wedge = "Single-purpose tool with clearer UX and better long-tail coverage than generic content pages."
-    revenue_path = "SEO entry → free utility → email capture → paid template/tool bundle."
-    pricing = "$9-$29 one-time template/tool pack, or affiliate/leadgen if purchase intent is weak."
-    commercial_mvp = "A focused landing page with one paid/exportable output that tests purchase intent before product depth."
+    icp = "SEO 流量运营者 / 垂直工具站建设者"
+    pain = "用户想要比通用搜索结果更快、更可操作的自助答案。"
+    pay_trigger = "当输出能节省时间、避免错误，或可复用于工作流时，用户才有付费动机。"
+    wedge = "做一个单一用途工具，用更清晰的体验和更好的长尾覆盖，避开泛内容页。"
+    revenue_path = "SEO 入口 → 免费工具 → 邮箱捕获 → 付费模板/工具包。"
+    pricing = "一次性 $9-$29 模板/工具包；如果购买意图弱，则走联盟或线索变现。"
+    commercial_mvp = "先做聚焦落地页和一个可付费/可导出的结果，在深入开发前验证购买意图。"
     first_sale_test = [
-        "Publish the exact commercial offer on the landing page.",
-        "Add a checkout/waitlist button before building extra product depth.",
-        "Measure purchase intent: checkout clicks, email capture, reply rate, or paid preorders.",
+        "在落地页上直接放明确的付费 offer。",
+        "在继续做深产品前，先放 checkout / waitlist 按钮。",
+        "衡量购买意图：结账点击、邮箱留资、回复率或付费预订。",
     ]
-    gtm = "Long-tail SEO + comparison pages + template/tool directories."
+    gtm = "长尾 SEO + 对比页 + 模板/工具目录分发。"
     commercial_score = 0.55
-    business_type = "content/tool affiliate"
+    business_type = "内容/工具站 + 联盟变现"
     if any(w in q for w in ["appointment", "patient", "clinic", "dental", "salon"]):
-        icp = "Small clinic / appointment-heavy local service operator"
-        pain = "They need repeatable appointment templates, reminders, cancellation/reschedule flows, or intake forms."
-        pay_trigger = "Pays when no-shows, admin time, or inconsistent communication create visible cost."
-        wedge = "Template + workflow pack for a narrow vertical, not a generic scheduling blog post."
-        business_type = "template pack → leadgen → lightweight SaaS"
-        commercial_mvp = "A vertical template/workflow pack with download gate and paid customization CTA."
-        revenue_path = "Free template → email capture → paid workflow pack → setup/service upsell."
-        pricing = "$19-$79 template/workflow pack; $199-$499 setup service if vertical pain is strong."
-        first_sale_test = ["Sell a 3-template vertical pack", "Add setup call CTA", "Ask downloaders to pay for customization before building SaaS"]
-        gtm = "Vertical SEO pages + local service communities + cold outreach to small clinics/services."
+        icp = "小诊所 / 预约密集型本地服务商"
+        pain = "他们需要可复用的预约模板、提醒、取消/改期流程或 intake 表单。"
+        pay_trigger = "当爽约、行政时间和沟通不一致造成可见成本时，才会付费。"
+        wedge = "针对窄垂直行业做模板 + 工作流包，而不是泛预约博客文章。"
+        business_type = "模板包 → 线索捕获 → 轻量 SaaS"
+        commercial_mvp = "做垂直模板/工作流包，用下载门槛和付费定制 CTA 验证需求。"
+        revenue_path = "免费模板 → 邮箱捕获 → 付费工作流包 → 设置/服务加售。"
+        pricing = "$19-$79 模板/工作流包；如果垂直痛点强，可卖 $199-$499 设置服务。"
+        first_sale_test = ["销售一个 3 件套垂直模板包", "增加设置咨询 CTA", "在做 SaaS 前，先让下载用户为定制付费"]
+        gtm = "垂直 SEO 页面 + 本地服务社区 + 对小诊所/服务商冷启动触达。"
         commercial_score = 0.68
     elif any(w in q for w in ["invoice", "late fee", "payment", "estimate", "tax", "calculator"]):
-        icp = "Freelancer / contractor / small business finance operator"
-        pain = "They need quick, defensible calculations for invoices, fees, estimates, or payment reminders."
-        pay_trigger = "Pays when calculation accuracy or professional output directly affects cash collection."
-        wedge = "Calculator plus printable/exportable invoice/payment artifact, not just a generic calculator."
-        business_type = "SEO calculator → affiliate/lead magnet → paid templates"
-        commercial_mvp = "A calculator with export/print output and a paid bundle or affiliate CTA at the result step."
-        revenue_path = "Calculator traffic → export/paywall CTA → paid bundle or accounting affiliate."
-        pricing = "$9-$29 one-time bundle; affiliate CPA if accounting/payment intent appears."
-        first_sale_test = ["Add paid export/template CTA", "Track calculate→export→checkout clicks", "Test affiliate CTA vs paid bundle CTA"]
-        gtm = "SEO calculator pages + long-tail fee/tax/payment queries + finance template directories."
+        icp = "自由职业者 / 承包商 / 小企业财务负责人"
+        pain = "他们需要快速、可解释的发票、费用、报价或付款提醒计算。"
+        pay_trigger = "当计算准确性或专业输出直接影响收款时，才会付费。"
+        wedge = "不是普通计算器，而是带可打印/可导出的发票或付款结果。"
+        business_type = "SEO 计算器 → 联盟/线索磁铁 → 付费模板"
+        commercial_mvp = "做一个带导出/打印结果的计算器，并在结果页测试付费包或联盟 CTA。"
+        revenue_path = "计算器流量 → 导出/付费墙 CTA → 付费包或会计工具联盟。"
+        pricing = "$9-$29 一次性工具包；如果出现会计/支付意图，可测试 CPA 联盟。"
+        first_sale_test = ["增加付费导出/模板 CTA", "跟踪“计算 → 导出 → 结账”点击", "测试联盟 CTA 和付费包 CTA 哪个更强"]
+        gtm = "SEO 计算器页 + 长尾费用/税务/付款查询 + 财务模板目录。"
         commercial_score = 0.62
     elif any(w in q for w in ["compliance", "audit", "vendor", "training", "permit", "renewal"]):
-        icp = "Operations / compliance owner in a small regulated business"
-        pain = "They need to avoid missed deadlines, audits, renewals, or vendor compliance gaps."
-        pay_trigger = "Pays when missed compliance creates financial, legal, or operational risk."
-        wedge = "Deadline/checklist tracker for one narrow regulation or workflow, not a broad compliance platform."
-        business_type = "leadgen + paid report/template → vertical micro-SaaS"
-        commercial_mvp = "A checklist/tracker that produces an exportable compliance artifact and tests paid report/subscription intent."
-        revenue_path = "Free checklist/tracker → paid compliance packet/report → leadgen or subscription workflow."
-        pricing = "$49-$199 paid packet/report; $29-$99/mo tracker if recurring deadline pain is validated."
-        first_sale_test = ["Sell one compliance checklist/report", "Gate export behind work email", "Interview users before building recurring software"]
-        gtm = "Narrow compliance SEO + professional communities + partnerships with consultants."
+        icp = "小型监管行业的运营/合规负责人"
+        pain = "他们需要避免错过截止日期、审计、续期或供应商合规缺口。"
+        pay_trigger = "当合规遗漏带来财务、法律或运营风险时，才会付费。"
+        wedge = "针对一个窄法规/流程做截止日期和清单追踪，而不是泛合规平台。"
+        business_type = "线索捕获 + 付费报告/模板 → 垂直微型 SaaS"
+        commercial_mvp = "做一个能导出合规材料的清单/追踪器，用来测试付费报告或订阅意图。"
+        revenue_path = "免费清单/追踪器 → 付费合规包/报告 → 线索或订阅工作流。"
+        pricing = "$49-$199 付费合规包/报告；如果验证出重复截止日期痛点，再做 $29-$99/月追踪器。"
+        first_sale_test = ["卖出一份合规清单/报告", "导出前要求工作邮箱", "在做订阅软件前先访谈用户"]
+        gtm = "窄合规 SEO + 专业社区 + 与顾问合作。"
         commercial_score = 0.72
     go_no_go = "Go" if commercial_score >= 0.68 else ("Watch" if commercial_score >= 0.58 else "No-Go")
-    key_assumption = "Users will pay for a more specific, workflow-ready output rather than consuming generic free content."
+    key_assumption = "用户会为更具体、可直接用于工作流的输出付费，而不只是消费免费泛内容。"
     return {"type":"business", "business_type": business_type, "icp": icp, "pain": pain, "pay_trigger": pay_trigger, "wedge": wedge, "commercial_mvp": commercial_mvp, "revenue_path": revenue_path, "pricing": pricing, "gtm": gtm, "first_sale_test": first_sale_test, "commercial_score": commercial_score, "go_no_go": go_no_go, "key_assumption": key_assumption, "monetization": monetization_type}
 
 def make_card(db: Session, keyword: models.Keyword) -> models.OpportunityCard:
@@ -740,7 +740,7 @@ def make_card(db: Session, keyword: models.Keyword) -> models.OpportunityCard:
     if mismatch_count >= max(2, len(serp)//2): risks.append("SERP 查询意图不匹配，搜索入口不可靠")
     if gap<.5: risks.append("SERP 缺口不明显")
     plan = f"商业目标：{biz['business_type']}。快速商业 MVP：{biz['commercial_mvp']} 商业化路径：{biz['revenue_path']} 定价：{biz['pricing']} 获客：{biz['gtm']} 第一笔钱测试：{' / '.join(biz['first_sale_test'])}。关键假设：{biz['key_assumption']}"
-    card=models.OpportunityCard(keyword_id=keyword.id,title=f"{keyword.query} opportunity", verdict=verdict, score=total, demand_score=round(demand,2), serp_gap_score=round(gap,2), competitor_weakness_score=round(comp,2), mvp_score=commercial, monetization_score=mscore, monetization_type=mtype, mvp_plan=plan, evidence_json=json.dumps(evidence,ensure_ascii=False), risks=json.dumps(risks,ensure_ascii=False))
+    card=models.OpportunityCard(keyword_id=keyword.id,title=f"{keyword.query} 机会", verdict=verdict, score=total, demand_score=round(demand,2), serp_gap_score=round(gap,2), competitor_weakness_score=round(comp,2), mvp_score=commercial, monetization_score=mscore, monetization_type=mtype, mvp_plan=plan, evidence_json=json.dumps(evidence,ensure_ascii=False), risks=json.dumps(risks,ensure_ascii=False))
     db.add(card); keyword.score=total; keyword.status=verdict.lower(); db.commit(); db.refresh(card); return card
 
 def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = None, seeds: list[str] | None = None) -> models.RunHistory:
