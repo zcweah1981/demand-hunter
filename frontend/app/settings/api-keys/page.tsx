@@ -34,7 +34,7 @@ export default async function Page(){
     <div className="mb-4 flex items-start justify-between gap-3"><div><h3 className="text-lg font-black text-slate-100">{t.title}</h3><p className="mt-1 text-xs text-slate-500">{t.category}</p></div><span className={badgeClass(t.price)}>{priceLabel(t.price)}</span></div>
     <div className="space-y-2 text-sm text-slate-300"><div>已保存：<b>{t.count||0}</b> 条</div><div className="text-xs text-slate-500">免费/额度：{t.free_quota||'—'}</div><div className="font-mono text-xs text-slate-600">{t.setting_key}</div></div>
     {t.pool?.items?.length>0&&<div className="mt-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-3"><div className="mb-2 text-xs font-bold text-slate-400">轮询状态</div><div className="space-y-1">{t.pool.items.slice(0,4).map((it:any)=><div key={it.index} className="flex justify-between gap-2 text-xs text-slate-400"><code>{it.masked}</code><span>ok {it.stats?.ok||0} / fail {it.stats?.fail||0}</span></div>)}</div></div>}
-    <div className="mt-4 flex gap-2"><Link className="btn flex-1 text-center no-underline" href={`/settings/api-keys/new?type=${t.id}`}>新增</Link><Link className="btn-secondary flex-1 text-center no-underline" href={`/settings/${t.id==='brave'||t.id==='tavily'?t.id:'collector-api'}`}>旧设置</Link></div>
+    <div className="mt-4 flex gap-2"><Link className="btn flex-1 text-center no-underline" href={`/settings/api-keys/new?type=${t.id}`}>新增</Link></div>
    </div>)}
   </section>
  </div>

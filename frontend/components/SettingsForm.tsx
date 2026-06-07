@@ -9,10 +9,7 @@ const GROUPS:any[]=[
  {id:'api-keys',title:'API Key 管理中心',desc:'统一管理所有采集器和搜索 API Key',keys:[]},
  {id:'search',titleKey:'searchProviders',descKey:'searchDesc',keys:['SERP_PROVIDER_ORDER','SERP_ROTATION_STRATEGY','SERP_PROVIDER_ATTEMPT_LIMIT','FOUR_FIND_SERP_STRATEGY_ENABLED','FOUR_FIND_SERP_VARIANT_LIMIT']},
  {id:'searxng',title:'SearXNG',descKey:'searxngDesc',keys:['SEARXNG_ENDPOINTS']},
- {id:'brave',title:'Brave',descKey:'braveDesc',keys:['BRAVE_API_KEYS']},
- {id:'tavily',title:'Tavily',descKey:'tavilyDesc',keys:['TAVILY_API_KEYS']},
  {id:'llm',title:'LLM',descKey:'llmDesc',keys:['LLM_PRIMARY_BASE_URL','LLM_PRIMARY_API_KEY','LLM_PRIMARY_MODEL','LLM_FALLBACKS']},
- {id:'collector-api',title:'采集器 API',desc:'统一管理采集器需要的 Key / Token / API 凭证',keys:['BING_WEBMASTER_API_KEYS','DATAFORSEO_CREDENTIALS','SEMRUSH_API_KEYS','AHREFS_API_KEYS','SIMILARWEB_API_KEYS','SERPAPI_API_KEYS','ZENSERP_API_KEYS','SCALESERP_API_KEYS','YOUTUBE_API_KEYS','REDDIT_CREDENTIALS','PRODUCTHUNT_TOKENS','GITHUB_TOKENS','HUGGINGFACE_TOKENS','X_BEARER_TOKENS','WAPPALYZER_API_KEYS','BUILTWITH_API_KEYS']},
  {id:'automation',titleKey:'automation',descKey:'automationDesc',keys:['AUTO_RUN_ENABLED','AUTO_RUN_INTERVAL_MINUTES','AUTO_RUN_LIMIT','AUTO_RECHECK_ENABLED','AUTO_RECHECK_LIMIT','FOUR_FIND_AUTO_ENABLED','FOUR_FIND_AUTO_SEEDS','FOUR_FIND_AUTO_DOMAINS','FOUR_FIND_IMPORT_LIMIT','FOUR_FIND_REWRITE_ON_SERP_REJECT','FOUR_FIND_REWRITE_LIMIT']},
  {id:'quality',titleKey:'quality',descKey:'qualityDesc',keys:['MIN_ACTION_SCORE','REQUIRE_SOCIAL_FOR_ACTION','COLLECT_SOCIAL_EVIDENCE','BLOCKED_TERMS']},
  {id:'security',titleKey:'security',descKey:'securityDesc',keys:[]},
@@ -99,7 +96,7 @@ function SearxngEndpointManager(){
  </div>
 }
 
-const SPECIAL_SAVE_GROUPS=['searxng','brave','tavily','llm','collector-api']
+const SPECIAL_SAVE_GROUPS=['searxng','llm','api-keys']
 
 function SecretListManager({settingKey}:{settingKey:string}){
  const {t}=useLang()
