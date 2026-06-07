@@ -30,7 +30,7 @@ Collectors → Candidate Pool → Four-Find Expansion → SEO Validation → LLM
 
 需要 Key：
 - 可无 key：部分 suggest 可直接请求或走 SearXNG。
-- 可选：Google Programmable Search API Key + CX。
+- Google Custom Search / Programmable Search 不使用。
 - 可选：SerpApi / Zenserp / Scale SERP / DataForSEO。
 
 ### 2. Trends Collector
@@ -220,8 +220,6 @@ Collectors → Candidate Pool → Four-Find Expansion → SEO Validation → LLM
 
 当前配置项：
 
-- GOOGLE_CSE_API_KEYS
-- GOOGLE_CSE_CX
 - - BING_WEBMASTER_API_KEYS
 - DATAFORSEO_CREDENTIALS
 - SEMRUSH_API_KEYS
@@ -246,8 +244,8 @@ Collectors → Candidate Pool → Four-Find Expansion → SEO Validation → LLM
    - 覆盖 SERP / keyword volume / CPC / KD / trends / suggest。
 2. SIMILARWEB_API_KEYS
    - 站找词、站找站、着陆页、出站流量。
-3. GOOGLE_CSE_API_KEYS + GOOGLE_CSE_CX 或 SERPAPI_API_KEYS
-   - Google SERP / related / PAA。
+3. SERPAPI_API_KEYS / DATAFORSEO_CREDENTIALS / ZENSERP_API_KEYS / SCALESERP_API_KEYS
+   - 如需稳定 Google SERP / related / PAA，使用明确付费源。
 
 ### P1
 4. SEMRUSH_API_KEYS 或 AHREFS_API_KEYS
@@ -280,4 +278,10 @@ Collectors → Candidate Pool → Four-Find Expansion → SEO Validation → LLM
 
 - Bing Search APIs：已于 2025-08-11 退役，不再作为配置项。
 - Bing Webmaster API：保留，但只用于 Bing Webmaster/Keyword Research，不作为通用搜索 API。
-- Google Custom Search JSON API：普通 API 仍有文档，但 Site Restricted JSON API 已于 2025-01-08 停止；新 PSE 范围限制较多，作为可选而非核心依赖。
+- Google Custom Search / Programmable Search：不使用，限制多且与本系统通用找词/SERP 入口不匹配。
+
+
+## API 可用性校验补充
+
+- Google Custom Search / Programmable Search：不使用。原因：PSE/CX 配置和搜索范围限制较多，不适合作为本系统通用找词/SERP 入口。
+- 如需稳定 Google SERP / PAA / Related Search，后续使用明确付费源：DataForSEO / SerpApi / Zenserp / Scale SERP。

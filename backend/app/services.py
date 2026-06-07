@@ -48,8 +48,6 @@ DEFAULT_SETTINGS = {
     "SERP_ROTATION_STRATEGY": "failover",
 
     # Collector / SEO data provider credentials. Store multiple keys where providers support rotation.
-    "GOOGLE_CSE_API_KEYS": "",
-    "GOOGLE_CSE_CX": "",
     "BING_WEBMASTER_API_KEYS": "",
     "DATAFORSEO_CREDENTIALS": "",
     "SEMRUSH_API_KEYS": "",
