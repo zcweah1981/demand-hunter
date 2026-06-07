@@ -1,11 +1,11 @@
 const collectors = [
- {id:'suggest',name:'搜索联想 / 相关搜索',tag:'词找词',status:'待接入',desc:'从 Google/Bing/SearXNG suggest、related searches、PAA 中扩展长尾搜索词。',feeds:['Google Suggest','Related Search','People Also Ask','SearchSuggest.tips'],output:'candidate_keyword → Four-Find → SEO 验证'},
- {id:'trends',name:'趋势词 / 新词',tag:'新词发现',status:'待接入',desc:'从 Google Trends、rising queries、AI suggested terms 中发现上升词和新词。',feeds:['Google Trends','pytrends','Exploding Topics','Glimpse'],output:'rising keyword + country/trend → Four-Find → SEO 验证'},
- {id:'sitemap',name:'Sitemap 监控',tag:'站找词',status:'优先开发',desc:'监控竞品 sitemap 新增 URL，从路径和标题抽取新页面、新工具、新长尾词。',feeds:['robots.txt','sitemap.xml','competitor domains'],output:'new URL/page → keyword extraction → Four-Find → SEO 验证'},
- {id:'similarweb',name:'SimilarWeb 采集',tag:'站找词 / 站找站',status:'需 API',desc:'获取站点关键词、相似站、出站流量、着陆页新点击量，发现正在涨的页面和产品。',feeds:['SimilarWeb keywords','Similar sites','Outgoing traffic','Landing pages'],output:'site/page/keyword → Four-Find → SEO 验证'},
- {id:'extensions',name:'插件差评挖掘',tag:'抱怨找需求',status:'独立模块',desc:'找高下载、低评分、差评多的浏览器插件，从用户抱怨抽取具体需求词。',feeds:['Chrome Web Store','Firefox Add-ons','Edge Add-ons'],output:'complaint topic → candidate keyword → SEO 验证'},
- {id:'requests',name:'AI 工具请求',tag:'请求找需求',status:'独立模块',desc:'抓取 AI 工具请求/愿望单，按最新、投票数、重复诉求提取候选词。',feeds:['TheresAnAIForThat Requests','ProductHunt discussions','AI directories'],output:'request text → keyword → Four-Find → SEO 验证'},
- {id:'source-radar',name:'一手信息源雷达',tag:'信息溯源',status:'独立模块',desc:'监控 Hugging Face、arXiv、GitHub、HN、X 早期发布者，捕捉新模型/新技术/新词。',feeds:['Hugging Face','arXiv','GitHub Trending','Hacker News','X accounts'],output:'early signal → new keyword → Trends/SERP/SEO 验证'},
+ {id:'suggest',name:'搜索联想 / 相关搜索',tag:'词找词',status:'免费优先',desc:'从 Google/Bing/SearXNG suggest、related searches、PAA 中扩展长尾搜索词。多数可免费或通过现有 SearXNG 先跑。',feeds:['Google Suggest','Related Search','People Also Ask','SearchSuggest.tips'],output:'candidate_keyword → Four-Find → SEO 验证'},
+ {id:'trends',name:'趋势词 / 新词',tag:'新词发现',status:'免费/可选Token',desc:'从 Google Trends、rising queries、AI suggested terms 中发现上升词和新词。pytrends 可先免费尝试，商业数据源后接。',feeds:['Google Trends','pytrends','Exploding Topics','Glimpse'],output:'rising keyword + country/trend → Four-Find → SEO 验证'},
+ {id:'sitemap',name:'Sitemap 监控',tag:'站找词',status:'免费优先',desc:'监控竞品 sitemap 新增 URL，从路径和标题抽取新页面、新工具、新长尾词。不需要 Key，优先开发。',feeds:['robots.txt','sitemap.xml','competitor domains'],output:'new URL/page → keyword extraction → Four-Find → SEO 验证'},
+ {id:'similarweb',name:'SimilarWeb 采集',tag:'站找词 / 站找站',status:'付费API',desc:'获取站点关键词、相似站、出站流量、着陆页新点击量，发现正在涨的页面和产品。通常需要 SimilarWeb API。',feeds:['SimilarWeb keywords','Similar sites','Outgoing traffic','Landing pages'],output:'site/page/keyword → Four-Find → SEO 验证'},
+ {id:'extensions',name:'插件差评挖掘',tag:'抱怨找需求',status:'免费优先',desc:'找高下载、低评分、差评多的浏览器插件，从用户抱怨抽取具体需求词。Firefox 可公开 API，Chrome 先限速抓取。',feeds:['Chrome Web Store','Firefox Add-ons','Edge Add-ons'],output:'complaint topic → candidate keyword → SEO 验证'},
+ {id:'requests',name:'AI 工具请求',tag:'请求找需求',status:'免费优先',desc:'抓取 AI 工具请求/愿望单，按最新、投票数、重复诉求提取候选词。公开页面先跑，ProductHunt Token 可选。',feeds:['TheresAnAIForThat Requests','ProductHunt discussions','AI directories'],output:'request text → keyword → Four-Find → SEO 验证'},
+ {id:'source-radar',name:'一手信息源雷达',tag:'信息溯源',status:'免费/可选Token',desc:'监控 Hugging Face、arXiv、GitHub、HN、X 早期发布者，捕捉新模型/新技术/新词。HN/arXiv 免费，GitHub/HF Token 可选，X 多半付费。',feeds:['Hugging Face','arXiv','GitHub Trending','Hacker News','X accounts'],output:'early signal → new keyword → Trends/SERP/SEO 验证'},
 ]
 
 export default function Page(){
@@ -28,7 +28,7 @@ export default function Page(){
    {collectors.map(c=><article key={c.id} id={c.id} className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5 shadow-xl">
     <div className="flex flex-wrap items-start justify-between gap-3">
      <div><div className="text-xs uppercase tracking-[0.25em] text-blue-300">{c.tag}</div><h2 className="mt-2 text-xl font-bold text-white">{c.name}</h2></div>
-     <span className={c.status==='优先开发'?'badge badge-action':c.status==='需 API'?'badge badge-watch':'badge'}>{c.status}</span>
+     <span className={['免费优先','免费/可选Token'].includes(c.status)?'badge badge-action':c.status==='付费API'?'badge badge-watch':'badge'}>{c.status}</span>
     </div>
     <p className="mt-3 text-sm leading-6 text-slate-300">{c.desc}</p>
     <div className="mt-4"><div className="mb-2 text-xs font-semibold text-slate-500">数据源</div><div className="flex flex-wrap gap-2">{c.feeds.map(f=><span key={f} className="rounded-lg bg-slate-900 px-2 py-1 text-xs text-slate-300">{f}</span>)}</div></div>
