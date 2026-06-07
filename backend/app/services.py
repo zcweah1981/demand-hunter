@@ -46,12 +46,12 @@ DEFAULT_SETTINGS = {
     "SERP_ROTATION_STRATEGY": "failover",
 }
 DEFAULT_ROOTS = [
-    ("invoice", "function"), ("calculator", "tool"), ("template", "tool"),
-    ("shopify", "vertical"), ("woocommerce", "vertical"), ("quickbooks", "vertical"),
-    ("reconciliation", "pain"), ("tracker", "tool"), ("generator", "tool"),
-    ("appointment", "vertical"), ("compliance", "pain"), ("dashboard", "tool"),
+    ("invoice", "function"), ("shopify", "vertical"), ("woocommerce", "vertical"), ("quickbooks", "vertical"),
+    ("reconciliation", "pain"), ("appointment", "vertical"), ("compliance", "pain"),
     ("contractor", "vertical"), ("clinic", "vertical"), ("rental", "vertical"),
 ]
+DEFAULT_TOOL_ROOT_TERMS = ['action', 'advisor', 'agent', 'ai', 'analyzer', 'anime', 'answer', 'art', 'assistant', 'audio', 'avatar', 'best', 'builder', 'calculator', 'cartoon', 'cataloger', 'character', 'chart', 'chat', 'cheat', 'checker', 'clue', 'code', 'coloring page', 'comparator', 'compiler', 'composer', 'connector', 'constructor', 'convert', 'converter', 'crawler', 'creator', 'dashboard', 'designer', 'detector', 'diagram', 'directory', 'downloader', 'editor', 'emoji', 'enhancer', 'evaluator', 'example', 'explorer', 'extractor', 'face', 'faq', 'figure', 'filter', 'finder', 'font', 'format', 'generator', 'graph', 'guide', 'helper', 'hint', 'how to', 'humanizer', 'icon', 'ideas', 'illustration', 'image', 'interior design', 'interpreter', 'layout', 'list', 'logo', 'maker', 'manager', 'meme', 'model', 'modifier', 'monitor', 'music', 'navigator', 'notifier', 'online', 'optimizer', 'paraphraser', 'pattern', 'photo', 'picture', 'planner', 'portal', 'portrait', 'processor', 'product photo', 'receiver', 'recommend', 'recorder', 'resources', 'responder', 'restorer', 'review', 'sample', 'scheduler', 'scraper', 'sender', 'simulator', 'solver', 'song', 'sound', 'speech', 'starter', 'studio', 'style', 'summarizer', 'summary', 'syncer', 'tattoo', 'template', 'tester', 'text']
+DEFAULT_ROOTS += [(term, "tool") for term in DEFAULT_TOOL_ROOT_TERMS if term not in {t for t, _ in DEFAULT_ROOTS}]
 INTENT_WORDS = {"template":"seo_tool", "calculator":"seo_tool", "generator":"seo_tool", "tracker":"workflow_tool", "dashboard":"workflow_saas", "integration":"workflow_saas", "automation":"workflow_saas", "reconciliation":"workflow_saas"}
 STRONG_DOMAINS = ("google.com","microsoft.com","adobe.com","shopify.com","intuit.com","hubspot.com","salesforce.com","wikipedia.org","amazon.com","booking.com","expedia.com","kayak.com")
 FORUM_DOMAINS = ("reddit.com","news.ycombinator.com","stackoverflow.com","quora.com","community.","forum.")
