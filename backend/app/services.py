@@ -25,6 +25,7 @@ DEFAULT_SETTINGS = {
     "LLM_PRIMARY_MODEL": "",
     "LLM_PRIMARY_API_KEY": "",
     "LLM_FALLBACKS": "[]",
+    "LLM_CARD_ANALYSIS_ENABLED": "true",
     "AUTO_RUN_ENABLED": "true",
     "AUTO_RUN_INTERVAL_MINUTES": "360",
     "AUTO_RUN_LIMIT": "6",
@@ -348,6 +349,72 @@ def provider_search(db: Session, provider: str, query: str, limit=10) -> list[di
 def domain(url: str) -> str:
     try: return urlparse(url).netloc.lower().removeprefix("www.")
     except Exception: return ""
+
+def _llm_candidates(db: Session) -> list[dict]:
+    rows=[]
+    primary_base=(setting(db,"LLM_PRIMARY_BASE_URL") or "").strip().rstrip("/")
+    primary_model=(setting(db,"LLM_PRIMARY_MODEL") or "").strip()
+    primary_key=(setting(db,"LLM_PRIMARY_API_KEY") or "").strip()
+    if primary_base and primary_model:
+        rows.append({"base_url": primary_base, "model": primary_model, "api_key": primary_key, "name": "primary"})
+    try:
+        fallbacks=json.loads(setting(db,"LLM_FALLBACKS") or "[]")
+        if isinstance(fallbacks,list):
+            for i,row in enumerate(fallbacks):
+                if not isinstance(row,dict): continue
+                base=(row.get("base_url") or row.get("provider") or "").strip().rstrip("/")
+                model=(row.get("model") or "").strip()
+                if base and model:
+                    rows.append({"base_url": base, "model": model, "api_key": (row.get("api_key") or "").strip(), "name": f"fallback_{i+1}"})
+    except Exception:
+        pass
+    return rows
+
+def _extract_json_object(text: str) -> dict | None:
+    text=(text or "").strip()
+    if not text:
+        return None
+    if text.startswith("```"):
+        text=re.sub(r"^```(?:json)?\s*", "", text)
+        text=re.sub(r"\s*```$", "", text)
+    try:
+        data=json.loads(text)
+        return data if isinstance(data,dict) else None
+    except Exception:
+        pass
+    m=re.search(r"\{.*\}", text, re.S)
+    if not m:
+        return None
+    try:
+        data=json.loads(m.group(0))
+        return data if isinstance(data,dict) else None
+    except Exception:
+        return None
+
+def _llm_json(db: Session, system: str, user: str, temperature: float = 0.2) -> dict | None:
+    for cfg in _llm_candidates(db):
+        url = cfg["base_url"] if cfg["base_url"].endswith("/chat/completions") else f"{cfg['base_url']}/chat/completions"
+        headers={"Content-Type":"application/json"}
+        if cfg.get("api_key"):
+            headers["Authorization"] = f"Bearer {cfg['api_key']}"
+        payload={
+            "model": cfg["model"],
+            "messages":[{"role":"system","content":system},{"role":"user","content":user}],
+            "temperature": temperature,
+            "response_format": {"type":"json_object"},
+        }
+        try:
+            r=requests.post(url, headers=headers, json=payload, timeout=45)
+            r.raise_for_status()
+            data=r.json()
+            content=((data.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+            obj=_extract_json_object(content)
+            if obj:
+                obj["_llm_provider"] = cfg.get("name")
+                return obj
+        except Exception:
+            continue
+    return None
 
 def query_overlap(query: str, result: dict) -> float:
     q_terms = [t for t in re.findall(r"[a-z0-9]+", query.lower()) if t not in {"best", "free", "software", "tool", "online"}]
@@ -742,6 +809,71 @@ def _keyword_specific_mvp(keyword_query: str, biz: dict, verdict: str, reason: s
         return f"{reason}\n\n待验证假设：围绕 `{q}` 做一个最小验证页，不先完整开发产品。\n\n要验证的具体任务：{detail['task']}。\n\n最小交付：{detail['artifact']}。\n\n验证动作：{detail['test']}；同时记录点击、留资或回复。如果没有明确转化，再降级或换词。"
     return f"{reason}\n\n执行型 MVP：围绕 `{q}` 做一个单页工具/模板，只解决这个具体任务：{detail['task']}。\n\n核心交付：{detail['artifact']}。\n\n变现路径：{biz['revenue_path']}\n\n定价测试：{biz['pricing']}\n\n获客入口：{biz['gtm']}\n\n第一笔钱测试：{detail['test']}。\n\n关键假设：{biz['key_assumption']}"
 
+def _verdict_rank(v: str) -> int:
+    return {"Reject": 0, "Watch": 1, "Action": 2}.get(v, 1)
+
+def _safe_verdict(llm_v: str, rule_v: str) -> str:
+    v = str(llm_v or "").strip().title()
+    if v not in {"Action", "Watch", "Reject"}:
+        return rule_v
+    # LLM may be more conservative than rules, but must not upgrade evidence.
+    return v if _verdict_rank(v) <= _verdict_rank(rule_v) else rule_v
+
+def _llm_opportunity_analysis(db: Session, keyword: models.Keyword, serp: list[models.SerpResult], comps: list[models.CompetitorPage], socials: list[models.SocialEvidence], metrics: dict, rule_verdict: str, rule_reason: str) -> dict | None:
+    if (setting(db, "LLM_CARD_ANALYSIS_ENABLED") or "true").lower() not in {"1","true","yes","on"}:
+        return None
+    system = """你是 Nero 的机会分析器。你的职责不是套模板，而是基于真实搜索证据判断一个关键词是否值得推进为可验证商业机会。
+
+必须遵守：
+1. 中文输出。英文原始标题/关键词可以保留，但解释必须中文。
+2. 不能编造证据，只能使用输入里的关键词、SERP、竞品、社媒证据。
+3. 每张卡必须针对该关键词的具体任务，不允许输出泛泛的“做一个工具/模板”。
+4. Action/Watch/Reject 必须和证据强度一致：
+   - Action：搜索意图清楚、SERP 有缺口、竞品/现有结果弱、能定义很小的付费验证。
+   - Watch：方向可能有价值，但证据不足，需要补需求/入口/付费验证。
+   - Reject：搜索入口错、意图混乱、强竞品过多、缺口弱或无法定义付费验证。
+5. Reject 不能包装成机会；只能写否决原因和需要补什么证据。
+6. 输出必须是严格 JSON，不要 Markdown，不要代码块。"""
+    evidence = {
+        "keyword": keyword.query,
+        "intent": keyword.intent,
+        "rule_verdict": rule_verdict,
+        "rule_reason": rule_reason,
+        "metrics": metrics,
+        "serp_top": [{"rank": s.rank, "title": s.title, "domain": s.domain, "url": s.url, "snippet": s.snippet[:500], "gap_tags": json.loads(s.gap_tags or "[]"), "weakness_score": s.weakness_score} for s in serp[:10]],
+        "competitors": [{"domain": c.domain, "title": c.title, "url": c.url, "weakness_tags": json.loads(c.weakness_tags or "[]"), "excerpt": c.content_excerpt[:500]} for c in comps[:6]],
+        "social_evidence": [{"platform": x.platform, "title": x.title, "url": x.url, "snippet": x.snippet[:500], "pain_tags": json.loads(x.pain_tags or "[]")} for x in socials[:6]],
+    }
+    user = """请基于以下证据生成一张机会分析卡。输出 JSON schema：
+{
+  "title": "中文机会标题，必须包含关键词的具体任务",
+  "verdict": "Action|Watch|Reject",
+  "verdict_reason": "为什么是这个判断，引用输入中的关键指标/证据",
+  "business_type": "机会类型/变现类型，中文",
+  "icp": "目标用户，中文且具体",
+  "pain": "痛点，中文且具体",
+  "pay_trigger": "什么情况下愿意付费",
+  "wedge": "切入点，必须具体到该关键词任务",
+  "mvp_plan": "Action 写执行型 MVP；Watch 写待验证假设；Reject 写不建议推进和补证据方向。中文，分段也可以但不要 Markdown",
+  "revenue_path": "收入路径，中文",
+  "pricing": "定价测试，中文",
+  "gtm": "获客入口，中文",
+  "first_sale_test": ["第一步", "第二步", "第三步"],
+  "key_assumption": "关键假设",
+  "risks": ["风险1", "风险2"],
+  "commercial_score": 0.0到1.0
+}
+
+证据：
+""" + json.dumps(evidence, ensure_ascii=False)
+    obj = _llm_json(db, system, user, temperature=0.15)
+    if not obj:
+        return None
+    required=["title","verdict","verdict_reason","business_type","icp","pain","pay_trigger","wedge","mvp_plan","revenue_path","pricing","gtm","first_sale_test","key_assumption","risks"]
+    if not all(k in obj for k in required):
+        return None
+    return obj
+
 def make_card(db: Session, keyword: models.Keyword) -> models.OpportunityCard:
     serp = db.query(models.SerpResult).filter_by(keyword_id=keyword.id).all() or run_serp(db, keyword)
     comps = analyze_competitors(db, keyword)
@@ -766,15 +898,44 @@ def make_card(db: Session, keyword: models.Keyword) -> models.OpportunityCard:
     social_ok = has_social or not require_social
     verdict = "Action" if total >= min_action_score and strong_count <= 2 and gap >= .52 and social_ok and relevant_count >= 5 else ("Watch" if total >= 55 and relevant_count >= 3 else "Reject")
     reason = _zh_verdict_reason(verdict, total, gap, strong_count, relevant_count, has_social, require_social, mismatch_count)
-    biz["verdict_reason"] = reason
-    evidence = [biz] + [{"type":"serp","url":s.url,"title":s.title,"tags":json.loads(s.gap_tags or "[]")} for s in serp[:5]] + [{"type":x.platform,"url":x.url,"title":x.title} for x in socials[:4]]
     risks=[]
     if strong_count>3: risks.append("SERP 强品牌过多，切入难度高")
     if len(socials)==0 and require_social: risks.append("缺少社媒痛点旁证")
     if mismatch_count >= max(2, len(serp)//2): risks.append("SERP 查询意图不匹配，搜索入口不可靠")
     if gap<.5: risks.append("SERP 缺口不明显")
-    plan = _keyword_specific_mvp(keyword.query, biz, verdict, reason)
-    card=models.OpportunityCard(keyword_id=keyword.id,title=f"{keyword.query} 机会", verdict=verdict, score=total, demand_score=round(demand,2), serp_gap_score=round(gap,2), competitor_weakness_score=round(comp,2), mvp_score=commercial, monetization_score=mscore, monetization_type=mtype, mvp_plan=plan, evidence_json=json.dumps(evidence,ensure_ascii=False), risks=json.dumps(risks,ensure_ascii=False))
+    metrics={"total_score":total,"demand_score":round(demand,2),"serp_gap_score":round(gap,2),"competitor_weakness_score":round(comp,2),"commercial_score":commercial,"monetization_score":mscore,"strong_count":strong_count,"mismatch_count":mismatch_count,"relevant_count":relevant_count,"has_social":has_social,"require_social":require_social}
+    llm = _llm_opportunity_analysis(db, keyword, serp, comps, socials, metrics, verdict, reason)
+    if llm:
+        verdict = _safe_verdict(llm.get("verdict"), verdict)
+        reason = str(llm.get("verdict_reason") or reason)
+        commercial = max(0.0, min(1.0, float(llm.get("commercial_score") or commercial)))
+        biz.update({
+            "business_type": str(llm.get("business_type") or biz.get("business_type")),
+            "icp": str(llm.get("icp") or biz.get("icp")),
+            "pain": str(llm.get("pain") or biz.get("pain")),
+            "pay_trigger": str(llm.get("pay_trigger") or biz.get("pay_trigger")),
+            "wedge": str(llm.get("wedge") or biz.get("wedge")),
+            "commercial_mvp": str(llm.get("mvp_plan") or biz.get("commercial_mvp")),
+            "revenue_path": str(llm.get("revenue_path") or biz.get("revenue_path")),
+            "pricing": str(llm.get("pricing") or biz.get("pricing")),
+            "gtm": str(llm.get("gtm") or biz.get("gtm")),
+            "first_sale_test": llm.get("first_sale_test") if isinstance(llm.get("first_sale_test"), list) else biz.get("first_sale_test"),
+            "key_assumption": str(llm.get("key_assumption") or biz.get("key_assumption")),
+            "commercial_score": commercial,
+            "analysis_source": "llm",
+        })
+        plan = str(llm.get("mvp_plan") or _keyword_specific_mvp(keyword.query, biz, verdict, reason))
+        title = str(llm.get("title") or f"{keyword.query} 机会")
+        llm_risks = llm.get("risks") if isinstance(llm.get("risks"), list) else []
+        risks = [str(x) for x in llm_risks if str(x).strip()] or risks
+        mtype = str(llm.get("business_type") or mtype)
+    else:
+        biz["analysis_source"] = "rules_fallback"
+        plan = _keyword_specific_mvp(keyword.query, biz, verdict, reason)
+        title = f"{keyword.query} 机会"
+    biz["verdict_reason"] = reason
+    evidence = [biz] + [{"type":"serp","url":s.url,"title":s.title,"tags":json.loads(s.gap_tags or "[]")} for s in serp[:5]] + [{"type":x.platform,"url":x.url,"title":x.title} for x in socials[:4]]
+    card=models.OpportunityCard(keyword_id=keyword.id,title=title, verdict=verdict, score=total, demand_score=round(demand,2), serp_gap_score=round(gap,2), competitor_weakness_score=round(comp,2), mvp_score=commercial, monetization_score=mscore, monetization_type=mtype, mvp_plan=plan, evidence_json=json.dumps(evidence,ensure_ascii=False), risks=json.dumps(risks,ensure_ascii=False))
     db.add(card); keyword.score=total; keyword.status=verdict.lower(); db.commit(); db.refresh(card); return card
 
 def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = None, seeds: list[str] | None = None) -> models.RunHistory:
