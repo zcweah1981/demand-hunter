@@ -204,17 +204,22 @@ def searxng_endpoints(db: Session) -> list[dict]:
                     if isinstance(item, dict):
                         url = str(item.get("url") or "").strip().rstrip("/")
                         token = str(item.get("api_token") or item.get("token") or "").strip()
+                        use_builtin = bool(item.get("use_builtin_engines", True))
+                        engines = str(item.get("engines") or "").strip()
                     else:
                         url = str(item or "").strip().rstrip("/")
                         token = ""
+                        use_builtin = True
+                        engines = ""
                     if url:
-                        endpoints.append({"url": url, "api_token": token})
+                        endpoints.append({"url": url, "api_token": token, "use_builtin_engines": use_builtin, "engines": engines})
         except Exception:
             endpoints = []
     if not endpoints:
         legacy_token = setting(db, "SEARXNG_API_TOKEN") or ""
         urls = _rotating_values(db, "SEARXNG_URLS", "SEARXNG_URL")
-        endpoints = [{"url": u.rstrip("/"), "api_token": legacy_token} for u in urls if u.strip()]
+        legacy_engines = setting(db, "SEARXNG_ENGINES") or ""
+        endpoints = [{"url": u.rstrip("/"), "api_token": legacy_token, "use_builtin_engines": not bool(legacy_engines), "engines": legacy_engines} for u in urls if u.strip()]
     if not endpoints:
         return []
     idx = _ROTATION_STATE.get("SEARXNG_ENDPOINTS", 0) % len(endpoints)
@@ -236,10 +241,14 @@ def searxng_search(db: Session, query: str, categories="general", limit=10) -> l
         if token:
             headers["X-API-TOKEN"] = token
         try:
-            engines = setting(db, "SEARXNG_ENGINES")
             params={"q": query, "format":"json", "language":"en"}
-            if engines: params["engines"] = engines
-            elif categories: params["categories"] = categories
+            engines = endpoint.get("engines") or ""
+            if not endpoint.get("use_builtin_engines", True) and engines:
+                params["engines"] = engines
+            elif endpoint.get("use_builtin_engines", True):
+                pass
+            elif categories:
+                params["categories"] = categories
             r = requests.get(f"{base}/search", params=params, headers=headers, timeout=12)
             r.raise_for_status()
             data = r.json()
@@ -793,16 +802,18 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
 
 
 def test_search_provider(db: Session) -> dict:
-    endpoint = (searxng_endpoints(db) or [{"url": setting(db, "SEARXNG_URL").rstrip("/"), "api_token": setting(db, "SEARXNG_API_TOKEN")}])[0]
+    endpoint = (searxng_endpoints(db) or [{"url": setting(db, "SEARXNG_URL").rstrip("/"), "api_token": setting(db, "SEARXNG_API_TOKEN"), "use_builtin_engines": not bool(setting(db, "SEARXNG_ENGINES")), "engines": setting(db, "SEARXNG_ENGINES")}])[0]
     base = endpoint["url"].rstrip("/")
     started = datetime.utcnow()
     providers = {"available": available_serp_providers(db), "searxng_urls": len(searxng_urls(db)), "brave_keys": len(rotating_api_keys(db, "BRAVE_API_KEYS", "BRAVE_API_KEY")), "tavily_keys": len(rotating_api_keys(db, "TAVILY_API_KEYS", "TAVILY_API_KEY")), "brave_configured": bool(rotating_api_keys(db, "BRAVE_API_KEYS", "BRAVE_API_KEY")), "tavily_configured": bool(rotating_api_keys(db, "TAVILY_API_KEYS", "TAVILY_API_KEY"))}
     try:
-        engines = setting(db, "SEARXNG_ENGINES") or "bing,wikipedia"
         headers = {"Accept": "application/json"}
         if endpoint.get("api_token"):
             headers["X-API-TOKEN"] = endpoint["api_token"]
-        r = requests.get(f"{base}/search", params={"q":"invoice calculator", "format":"json", "language":"en", "engines": engines}, headers=headers, timeout=12)
+        params={"q":"invoice calculator", "format":"json", "language":"en"}
+        if not endpoint.get("use_builtin_engines", True) and endpoint.get("engines"):
+            params["engines"] = endpoint["engines"]
+        r = requests.get(f"{base}/search", params=params, headers=headers, timeout=12)
         elapsed_ms = int((datetime.utcnow() - started).total_seconds() * 1000)
         r.raise_for_status()
         data = r.json()

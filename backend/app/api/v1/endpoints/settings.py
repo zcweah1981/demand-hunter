@@ -51,17 +51,18 @@ def _searxng_rows_raw(db: Session) -> list[dict]:
         try:
             data = json.loads(row.value)
             if isinstance(data, list):
-                rows = [{"url": str(x.get("url", "")).rstrip("/"), "api_token": str(x.get("api_token", ""))} for x in data if isinstance(x, dict) and x.get("url")]
+                rows = [{"url": str(x.get("url", "")).rstrip("/"), "api_token": str(x.get("api_token", "")), "use_builtin_engines": bool(x.get("use_builtin_engines", True)), "engines": str(x.get("engines", ""))} for x in data if isinstance(x, dict) and x.get("url")]
         except Exception:
             pass
     if rows:
         return rows
     legacy_token = services.setting(db, "SEARXNG_API_TOKEN") or ""
+    legacy_engines = services.setting(db, "SEARXNG_ENGINES") or ""
     legacy_urls = services._rotating_values(db, "SEARXNG_URLS", "SEARXNG_URL")
-    return [{"url": u.rstrip("/"), "api_token": legacy_token} for u in legacy_urls if u.strip()]
+    return [{"url": u.rstrip("/"), "api_token": legacy_token, "use_builtin_engines": not bool(legacy_engines), "engines": legacy_engines} for u in legacy_urls if u.strip()]
 
 def _searxng_rows_status(rows: list[dict]) -> dict:
-    return {"count": len(rows), "items": [{"index": i, "url": r.get("url", ""), "api_token": _mask_entry(r.get("api_token", "")), "has_token": bool(r.get("api_token"))} for i, r in enumerate(rows)]}
+    return {"count": len(rows), "items": [{"index": i, "url": r.get("url", ""), "api_token": _mask_entry(r.get("api_token", "")), "has_token": bool(r.get("api_token")), "use_builtin_engines": bool(r.get("use_builtin_engines", True)), "engines": r.get("engines", "")} for i, r in enumerate(rows)]}
 
 @router.get("/searxng/endpoints")
 def searxng_endpoints_status(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
@@ -79,7 +80,7 @@ def searxng_endpoints_save(payload: schemas.SearxngEndpointsIn, _: bool = Depend
         token = item.api_token.strip()
         if (not token or token.startswith("***")) and idx < len(existing) and existing[idx].get("url") == url:
             token = existing[idx].get("api_token", "")
-        rows.append({"url": url, "api_token": token})
+        rows.append({"url": url, "api_token": token, "use_builtin_engines": bool(item.use_builtin_engines), "engines": item.engines.strip()})
     row = db.get(models.Setting, "SEARXNG_ENDPOINTS") or models.Setting(key="SEARXNG_ENDPOINTS", value="[]", secret=True)
     row.value = json.dumps(rows, ensure_ascii=False)
     row.secret = True
@@ -192,7 +193,10 @@ def provider_health(_: bool = Depends(require_auth), db: Session = Depends(get_d
             headers = {"Accept": "application/json"}
             if endpoint.get("api_token"):
                 headers["X-API-TOKEN"] = endpoint["api_token"]
-            r = requests.get(f"{base.rstrip('/')}/search", params={"q": "invoice calculator", "format": "json", "language": "en", "engines": services.setting(db, "SEARXNG_ENGINES") or "bing"}, headers=headers, timeout=12)
+            params={"q": "invoice calculator", "format": "json", "language": "en"}
+            if not endpoint.get("use_builtin_engines", True) and endpoint.get("engines"):
+                params["engines"] = endpoint["engines"]
+            r = requests.get(f"{base.rstrip('/')}/search", params=params, headers=headers, timeout=12)
             r.raise_for_status()
             data = r.json()
             health["searxng"].append({"url": base, "ok": True, "elapsed_ms": int((time.time()-started)*1000), "results": len(data.get("results", []))})

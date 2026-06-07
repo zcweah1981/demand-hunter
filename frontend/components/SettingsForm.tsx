@@ -32,13 +32,13 @@ function SearxngEndpointManager(){
  const [msg,setMsg]=useState('')
  async function load(){const r=await api<any>('/api/settings/searxng/endpoints'); setRows(r.items||[])}
  useEffect(()=>{load().catch(()=>{})},[])
- function add(){setRows([...rows,{url:'',api_token:'',has_token:false}])}
+ function add(){setRows([...rows,{url:'',api_token:'',has_token:false,use_builtin_engines:true,engines:''}])}
  function update(i:number,patch:any){setRows(rows.map((r,idx)=>idx===i?{...r,...patch}:r))}
  function remove(i:number){setRows(rows.filter((_,idx)=>idx!==i))}
  async function save(){
   setBusy(true); setMsg('')
   try{
-   const endpoints=rows.map(r=>({url:(r.url||'').trim(),api_token:(r.api_token||'').trim()})).filter(r=>r.url)
+   const endpoints=rows.map(r=>({url:(r.url||'').trim(),api_token:(r.api_token||'').trim(),use_builtin_engines:r.use_builtin_engines!==false,engines:(r.engines||'').trim()})).filter(r=>r.url)
    const saved=await api<any>('/api/settings/searxng/endpoints',{method:'POST',body:JSON.stringify({endpoints})})
    setRows(saved.items||[]); setMsg(`✅ ${t('saved')}`)
   }catch(e:any){setMsg(`❌ ${e.message}`)} finally{setBusy(false)}
@@ -46,11 +46,17 @@ function SearxngEndpointManager(){
  return <div className="space-y-3">
   <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
    <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><div><b>{rows.length} SearXNG endpoints</b><p className="text-xs text-slate-500">每一条 URL 都可以单独设置请求头 <code>X-API-TOKEN</code>。</p></div><button className="btn" disabled={busy} onClick={save}>{busy?t('saving'):t('saveGroup')}</button></div>
-   <div className="space-y-3">{rows.length?rows.map((row,i)=><div key={i} className="grid gap-2 rounded-2xl border border-slate-800 bg-slate-950 p-3 md:grid-cols-[48px_1fr_1fr_auto]">
-    <div className="pt-3 text-sm text-slate-500">#{i+1}</div>
-    <label className="block"><span className="mb-1 block text-xs text-slate-500">URL</span><input className="input font-mono text-sm" value={row.url||''} placeholder="http://searxng:8080" onChange={e=>update(i,{url:e.target.value})}/></label>
-    <label className="block"><span className="mb-1 block text-xs text-slate-500">X-API-TOKEN</span><input className="input font-mono text-sm" type="password" value={row.api_token?.startsWith('***')?'':(row.api_token||'')} placeholder={row.api_token?.startsWith('***')?row.api_token:'optional'} onChange={e=>update(i,{api_token:e.target.value})}/></label>
-    <button className="btn-secondary self-end" onClick={()=>remove(i)}>{t('remove')}</button>
+   <div className="space-y-3">{rows.length?rows.map((row,i)=><div key={i} className="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+    <div className="mb-3 flex items-center justify-between gap-3"><span className="text-sm text-slate-500">#{i+1}</span><button className="btn-secondary" onClick={()=>remove(i)}>{t('remove')}</button></div>
+    <div className="grid gap-3 lg:grid-cols-2">
+     <label className="block"><span className="mb-1 block text-xs text-slate-500">URL</span><input className="input font-mono text-sm" value={row.url||''} placeholder="http://searxng:8080" onChange={e=>update(i,{url:e.target.value})}/></label>
+     <label className="block"><span className="mb-1 block text-xs text-slate-500">X-API-TOKEN</span><input className="input font-mono text-sm" type="password" value={row.api_token?.startsWith('***')?'':(row.api_token||'')} placeholder={row.api_token?.startsWith('***')?row.api_token:'optional'} onChange={e=>update(i,{api_token:e.target.value})}/></label>
+    </div>
+    <div className="mt-3 rounded-xl border border-slate-800 bg-slate-900/60 p-3">
+     <label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={row.use_builtin_engines!==false} onChange={e=>update(i,{use_builtin_engines:e.target.checked})}/> 搜索引擎采用内置</label>
+     <p className="mt-1 text-xs text-slate-500">开启时不传 engines 参数，使用该 SearXNG 实例自己的默认搜索引擎。</p>
+     {row.use_builtin_engines===false&&<label className="mt-3 block"><span className="mb-1 block text-xs text-slate-500">自定义 engines</span><input className="input font-mono text-sm" value={row.engines||''} placeholder="bing,google,duckduckgo" onChange={e=>update(i,{engines:e.target.value})}/></label>}
+    </div>
    </div>):<div className="rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-500">{t('noEntries')}</div>}</div>
   </div>
   <button className="btn-secondary" onClick={add}>{t('confirmAdd')} endpoint</button>

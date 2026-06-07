@@ -61,6 +61,8 @@ class SettingKeyClearIn(BaseModel):
 class SearxngEndpointIn(BaseModel):
     url: str
     api_token: str = ""
+    use_builtin_engines: bool = True
+    engines: str = ""
 
 class SearxngEndpointsIn(BaseModel):
     endpoints: list[SearxngEndpointIn]
