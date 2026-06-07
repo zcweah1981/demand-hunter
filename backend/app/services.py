@@ -935,8 +935,25 @@ def make_card(db: Session, keyword: models.Keyword) -> models.OpportunityCard:
         title = f"{keyword.query} 机会"
     biz["verdict_reason"] = reason
     evidence = [biz] + [{"type":"serp","url":s.url,"title":s.title,"tags":json.loads(s.gap_tags or "[]")} for s in serp[:5]] + [{"type":x.platform,"url":x.url,"title":x.title} for x in socials[:4]]
-    card=models.OpportunityCard(keyword_id=keyword.id,title=title, verdict=verdict, score=total, demand_score=round(demand,2), serp_gap_score=round(gap,2), competitor_weakness_score=round(comp,2), mvp_score=commercial, monetization_score=mscore, monetization_type=mtype, mvp_plan=plan, evidence_json=json.dumps(evidence,ensure_ascii=False), risks=json.dumps(risks,ensure_ascii=False))
-    db.add(card); keyword.score=total; keyword.status=verdict.lower(); db.commit(); db.refresh(card); return card
+    existing = db.query(models.OpportunityCard).filter_by(keyword_id=keyword.id).order_by(models.OpportunityCard.created_at.desc(), models.OpportunityCard.id.desc()).first()
+    if existing:
+        card = existing
+        card.title = title
+        card.verdict = verdict
+        card.score = total
+        card.demand_score = round(demand,2)
+        card.serp_gap_score = round(gap,2)
+        card.competitor_weakness_score = round(comp,2)
+        card.mvp_score = commercial
+        card.monetization_score = mscore
+        card.monetization_type = mtype
+        card.mvp_plan = plan
+        card.evidence_json = json.dumps(evidence,ensure_ascii=False)
+        card.risks = json.dumps(risks,ensure_ascii=False)
+    else:
+        card=models.OpportunityCard(keyword_id=keyword.id,title=title, verdict=verdict, score=total, demand_score=round(demand,2), serp_gap_score=round(gap,2), competitor_weakness_score=round(comp,2), mvp_score=commercial, monetization_score=mscore, monetization_type=mtype, mvp_plan=plan, evidence_json=json.dumps(evidence,ensure_ascii=False), risks=json.dumps(risks,ensure_ascii=False))
+        db.add(card)
+    keyword.score=total; keyword.status=verdict.lower(); db.commit(); db.refresh(card); return card
 
 def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = None, seeds: list[str] | None = None) -> models.RunHistory:
     # recover stale runs from previous crashes/restarts so dashboard does not stay "running" forever
