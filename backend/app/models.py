@@ -152,3 +152,16 @@ class CandidateKeyword(Base):
     score: Mapped[float] = mapped_column(Float, default=0.0)
     status: Mapped[str] = mapped_column(String(40), default="new")  # new, imported, rejected
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class SitemapSeenUrl(Base):
+    """Track sitemap URL diff so sitemap watcher reports only newly seen pages."""
+    __tablename__ = "sitemap_seen_urls"
+    __table_args__ = (UniqueConstraint("url", name="uq_sitemap_seen_url"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    url: Mapped[str] = mapped_column(Text)
+    domain: Mapped[str] = mapped_column(String(255), index=True, default="")
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    seen_count: Mapped[int] = mapped_column(Integer, default=1)
+    last_keyword: Mapped[str] = mapped_column(String(260), default="")

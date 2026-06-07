@@ -6,7 +6,10 @@ import requests
 from sqlalchemy.orm import Session
 from . import models
 
-STOPWORDS={"best","top","free","online","app","apps","software","tool","tools","page","blog","pricing","login","signup","about","contact","privacy","terms","docs","help","features"}
+STOPWORDS={"best","top","free","online","app","apps","software","tool","tools","page","blog","pricing","login","signup","about","contact","privacy","terms","docs","help","features","category","tag","author","news","article","post","posts","product","products"}
+TOOL_INTENT_TERMS={"calculator","generator","template","checker","converter","tracker","dashboard","analyzer","builder","creator","planner","estimator","form","spreadsheet","invoice","policy","report","monitor","automation","integration","api"}
+COMMERCIAL_TERMS={"pricing","price","cost","fee","invoice","tax","compliance","shopify","woocommerce","quickbooks","hubspot","salesforce","stripe","paypal","b2b","business","agency","client","contractor","clinic","rental"}
+EARLY_SOURCE_BONUS={"sitemap":0.16,"advanced_search":0.12,"hn_algolia":0.10,"arxiv":0.08,"google_suggest":0.06,"duckduckgo":0.05}
 
 def domain_of(url:str)->str:
     try: return urlparse(url).netloc.lower().removeprefix('www.')
@@ -30,15 +33,52 @@ def normalize_keyword(text:str)->str:
     if len(terms)<2: return ''
     return ' '.join(terms[:8])
 
+def score_candidate(keyword:str, source:str, evidence:dict|None=None, base:float=0.0)->float:
+    """Free-first candidate scoring from article-method signals.
+
+    Score is intentionally conservative: it ranks candidates for validation, it
+    never marks a candidate as an opportunity directly.
+    """
+    evidence=evidence or {}
+    kw=normalize_keyword(keyword)
+    if not kw: return 0.0
+    terms=kw.split()
+    score=max(base, 0.35)
+    score += EARLY_SOURCE_BONUS.get(source, 0.04)
+    if any(t in TOOL_INTENT_TERMS for t in terms): score += 0.16
+    if any(t in COMMERCIAL_TERMS for t in terms): score += 0.14
+    if 2 <= len(terms) <= 6: score += 0.06
+    if len(terms) > 8: score -= 0.12
+    if evidence.get('is_new_url'): score += 0.18
+    if evidence.get('variant') in {'allintitle_after','site_after'}: score += 0.10
+    if evidence.get('provider') in {'serpapi','zenserp','scaleserp'}: score += 0.04
+    if re.search(r"\b(best|top|free|202[0-9])\b", kw): score -= 0.08
+    if len(set(terms)) < len(terms): score -= 0.06
+    return round(max(0.0, min(1.0, score)), 3)
+
+def mark_sitemap_seen(db:Session, url:str, keyword:str)->bool:
+    """Return True when URL is first seen, otherwise update last_seen metadata."""
+    row=db.query(models.SitemapSeenUrl).filter_by(url=url).first()
+    now=datetime.utcnow()
+    if row:
+        row.last_seen_at=now
+        row.seen_count=(row.seen_count or 0)+1
+        row.last_keyword=keyword[:260]
+        db.merge(row)
+        return False
+    db.add(models.SitemapSeenUrl(url=url, domain=domain_of(url), first_seen_at=now, last_seen_at=now, seen_count=1, last_keyword=keyword[:260]))
+    return True
+
 def upsert_candidate(db:Session, keyword:str, source:str, source_url:str='', source_domain:str='', method:str='', evidence:dict|None=None, score:float=0.0):
     kw=normalize_keyword(keyword)
     if not kw: return None
+    computed_score=score_candidate(kw, source, evidence, score)
     q=db.query(models.CandidateKeyword).filter_by(keyword=kw, source=source, source_url=source_url or '').first()
     if q:
-        q.score=max(q.score, score)
+        q.score=max(q.score, computed_score)
         q.evidence_json=json.dumps({**(json.loads(q.evidence_json or '{}') if q.evidence_json else {}), **(evidence or {})}, ensure_ascii=False)
         db.merge(q); return q
-    row=models.CandidateKeyword(keyword=kw, source=source, source_url=source_url or '', source_domain=source_domain or '', method=method, evidence_json=json.dumps(evidence or {}, ensure_ascii=False), score=score, status='new')
+    row=models.CandidateKeyword(keyword=kw, source=source, source_url=source_url or '', source_domain=source_domain or '', method=method, evidence_json=json.dumps(evidence or {}, ensure_ascii=False), score=computed_score, status='new')
     db.add(row); return row
 
 def _fetch(url:str, timeout=15)->bytes:
@@ -75,8 +115,8 @@ def parse_sitemap_urls(sitemap_url:str, max_urls=200)->tuple[list[str], list[str
     page_locs=[u for u in locs if u not in sitemap_locs]
     return page_locs[:max_urls], sitemap_locs[:20]
 
-def run_sitemap_watcher(db:Session, domains:list[str], max_urls_per_domain=80)->dict:
-    total=0; imported=0; errors=[]
+def run_sitemap_watcher(db:Session, domains:list[str], max_urls_per_domain=80, only_new:bool=True)->dict:
+    total=0; imported=0; new_urls=0; old_urls=0; errors=[]
     for d in domains:
         try:
             queue=discover_sitemaps(d); seen=set(); pages=[]
@@ -92,14 +132,20 @@ def run_sitemap_watcher(db:Session, domains:list[str], max_urls_per_domain=80)->
                     errors.append({'domain':d,'sitemap':sm,'error':str(e)[:180]})
             for url in pages[:max_urls_per_domain]:
                 kw=keyword_from_url(url)
-                if kw:
-                    total+=1
-                    row=upsert_candidate(db, kw, 'sitemap', url, domain_of(url), '站找词', {'url':url}, 0.62)
-                    if row: imported+=1
+                if not kw: continue
+                total+=1
+                is_new=mark_sitemap_seen(db, url, kw)
+                if is_new: new_urls+=1
+                else: old_urls+=1
+                if only_new and not is_new:
+                    continue
+                evidence={'url':url,'is_new_url':is_new,'first_seen_at':datetime.utcnow().isoformat(timespec='seconds') if is_new else None}
+                row=upsert_candidate(db, kw, 'sitemap', url, domain_of(url), '站找词', evidence, 0.50)
+                if row: imported+=1
         except Exception as e:
             errors.append({'domain':d,'error':str(e)[:180]})
     db.commit()
-    return {'ok':True,'source':'sitemap','domains':len(domains),'candidates_seen':total,'saved':imported,'errors':errors[:20]}
+    return {'ok':True,'source':'sitemap','domains':len(domains),'urls_seen':total,'new_urls':new_urls,'old_urls':old_urls,'saved':imported,'only_new':only_new,'errors':errors[:20]}
 
 def suggest_queries(seed:str)->list[dict]:
     out=[]

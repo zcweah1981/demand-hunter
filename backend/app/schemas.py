@@ -104,6 +104,7 @@ class ApiKeyEntryIn(BaseModel):
 class CollectorSitemapIn(BaseModel):
     domains: list[str]
     max_urls_per_domain: int = 80
+    only_new: bool = True
 
 class CollectorSuggestIn(BaseModel):
     seeds: list[str]

@@ -26,7 +26,7 @@ def candidate_list(limit: int = 100, status: str = "new", _: bool = Depends(requ
 @router.post("/sitemap/run")
 def sitemap_run(payload: schemas.CollectorSitemapIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     domains=[d.strip() for d in payload.domains if d.strip()]
-    return collectors.run_sitemap_watcher(db, domains, payload.max_urls_per_domain)
+    return collectors.run_sitemap_watcher(db, domains, payload.max_urls_per_domain, payload.only_new)
 
 @router.post("/suggest/run")
 def suggest_run(payload: schemas.CollectorSuggestIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
