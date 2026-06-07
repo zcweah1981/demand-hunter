@@ -29,6 +29,8 @@ DEFAULT_SETTINGS = {
     "AUTO_RUN_ENABLED": "true",
     "AUTO_RUN_INTERVAL_MINUTES": "360",
     "AUTO_RUN_LIMIT": "6",
+    "AUTO_RECHECK_ENABLED": "true",
+    "AUTO_RECHECK_LIMIT": "4",
     "MIN_ACTION_SCORE": "74",
     "REQUIRE_SOCIAL_FOR_ACTION": "false",
     "COLLECT_SOCIAL_EVIDENCE": "false",
@@ -955,6 +957,29 @@ def make_card(db: Session, keyword: models.Keyword) -> models.OpportunityCard:
         db.add(card)
     keyword.score=total; keyword.status=verdict.lower(); db.commit(); db.refresh(card); return card
 
+def select_old_keywords_for_recheck(db: Session, limit: int = 4) -> list[models.Keyword]:
+    """Pick existing keywords for periodic re-evaluation.
+
+    Old keywords matter: SERPs change, Watch can become Action, and Reject can
+    become valid if the query or provider behavior improves. Prefer keywords
+    that already have cards and are not currently hard SERP-rejected.
+    """
+    if limit <= 0:
+        return []
+    rows = (
+        db.query(models.Keyword)
+        .join(models.OpportunityCard, models.OpportunityCard.keyword_id == models.Keyword.id)
+        .filter(~models.Keyword.status.in_(["serp_reject", "rewrite_exhausted", "rejected"]))
+        .order_by(models.Keyword.status.desc(), models.OpportunityCard.created_at.asc(), models.Keyword.id.asc())
+        .limit(limit)
+        .all()
+    )
+    seen=set(); out=[]
+    for kw in rows:
+        if kw.id not in seen:
+            out.append(kw); seen.add(kw.id)
+    return out
+
 def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = None, seeds: list[str] | None = None) -> models.RunHistory:
     # recover stale runs from previous crashes/restarts so dashboard does not stay "running" forever
     stale = db.query(models.RunHistory).filter(models.RunHistory.status == "running").all()
@@ -967,8 +992,14 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
     try:
         if use_four_find is None:
             use_four_find = (setting(db, "FOUR_FIND_AUTO_ENABLED") or "false").lower() in {"1", "true", "yes", "on"}
+        try:
+            recheck_limit = int(setting(db, "AUTO_RECHECK_LIMIT") or "4") if (setting(db, "AUTO_RECHECK_ENABLED") or "true").lower() in {"1","true","yes","on"} else 0
+        except Exception:
+            recheck_limit = 4
+        old_kws = select_old_keywords_for_recheck(db, limit=min(recheck_limit, max(0, limit)))
+        new_limit = max(0, limit - len(old_kws))
         if use_four_find:
-            kws = discover_keywords_four_find(db, limit=limit, seeds=seeds)
+            kws = old_kws + discover_keywords_four_find(db, limit=new_limit, seeds=seeds)
             if len(kws) < limit:
                 existing = {kw.query for kw in kws}
                 for kw in discover_keywords(db, limit=limit, roots=roots):
@@ -978,7 +1009,7 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
                     if len(kws) >= limit:
                         break
         else:
-            kws=discover_keywords(db, limit=limit, roots=roots)
+            kws=old_kws + discover_keywords(db, limit=new_limit, roots=roots)
         cards=[]
         skipped=[]
         kws = [kw for kw in kws if kw.status not in {"rejected", "serp_reject", "rewrite_exhausted"}]
@@ -1011,6 +1042,8 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
             "watch":sum(1 for c in cards if c.verdict=="Watch"),
             "reject":sum(1 for c in cards if c.verdict=="Reject"),
             "use_four_find": bool(use_four_find),
+            "old_keywords_rechecked": len(old_kws),
+            "new_keyword_budget": new_limit,
             "four_find_keywords": sum(1 for k in kws if k.source.startswith("four_find:")),
             "root_combo_keywords": sum(1 for k in kws if k.source == "root_combo"),
             "skipped_low_quality_serp": len(skipped),
