@@ -43,7 +43,7 @@ DEFAULT_SETTINGS = {
     "FOUR_FIND_REWRITE_LIMIT": "4",
     "FOUR_FIND_SERP_STRATEGY_ENABLED": "true",
     "FOUR_FIND_SERP_VARIANT_LIMIT": "2",
-    "SERP_PROVIDER_ORDER": "searxng,brave,tavily",
+    "SERP_PROVIDER_ORDER": "searxng,serpapi,brave,tavily",
     "SERP_PROVIDER_ATTEMPT_LIMIT": "3",
     "SERP_ROTATION_STRATEGY": "failover",
 
@@ -77,6 +77,8 @@ STRONG_DOMAINS = ("google.com","microsoft.com","adobe.com","shopify.com","intuit
 FORUM_DOMAINS = ("reddit.com","news.ycombinator.com","stackoverflow.com","quora.com","community.","forum.")
 WEAK_HINTS = ("free", "blog", "post", "forum", "reddit", "template", "spreadsheet", "pdf", "docs", "github")
 BLOCKED_AMBIGUOUS_ROOTS = {"booking"}
+
+_KEY_POOL_STATE: dict[str, dict] = {}
 
 
 def setting(db: Session, key: str) -> str:
@@ -258,7 +260,52 @@ def searxng_endpoints(db: Session) -> list[dict]:
     return _maybe_rotate(db, "SEARXNG_ENDPOINTS", endpoints)
 
 def rotating_api_keys(db: Session, multi_key: str, single_key: str) -> list[str]:
-    return _rotating_values(db, multi_key, single_key)
+    return [entry["key"] for entry in provider_key_pool(db, multi_key, single_key)]
+
+def _fingerprint_secret(value: str) -> str:
+    value = value or ""
+    if len(value) <= 8:
+        return "***"
+    return f"***{value[-4:]}"
+
+def provider_key_pool(db: Session, multi_key: str, single_key: str = "") -> list[dict]:
+    """Return ordered key entries and advance cursor when strategy is round_robin.
+
+    This is the real key-pool layer used by paid/free-quota APIs. It tracks
+    success/failure counters in memory and exposes stable key indexes so callers
+    can record results. Persistence is intentionally avoided for secrets/status;
+    settings remain the source of keys.
+    """
+    keys = _split_multi_value(setting(db, multi_key))
+    if not keys and single_key:
+        single = (setting(db, single_key) or "").strip()
+        if single:
+            keys = [single]
+    if not keys:
+        return []
+    state = _KEY_POOL_STATE.setdefault(multi_key, {"cursor": 0, "stats": {}})
+    indexed = [{"index": i, "key": k, "masked": _fingerprint_secret(k), "stats": state["stats"].get(str(i), {})} for i, k in enumerate(keys)]
+    if serp_rotation_strategy(db) == "round_robin":
+        idx = int(state.get("cursor", 0)) % len(indexed)
+        state["cursor"] = idx + 1
+        indexed = indexed[idx:] + indexed[:idx]
+    return indexed
+
+def record_provider_key_result(pool_key: str, index: int | None, ok: bool, error: str = ""):
+    if index is None:
+        return
+    state = _KEY_POOL_STATE.setdefault(pool_key, {"cursor": 0, "stats": {}})
+    stats = state.setdefault("stats", {}).setdefault(str(index), {"ok": 0, "fail": 0, "last_error": ""})
+    if ok:
+        stats["ok"] = int(stats.get("ok", 0)) + 1
+        stats["last_error"] = ""
+    else:
+        stats["fail"] = int(stats.get("fail", 0)) + 1
+        stats["last_error"] = str(error)[-240:]
+
+def provider_key_pool_status(db: Session, multi_key: str, single_key: str = "") -> dict:
+    entries = provider_key_pool(db, multi_key, single_key)
+    return {"key": multi_key, "count": len(entries), "strategy": serp_rotation_strategy(db), "items": [{"index": e["index"], "masked": e["masked"], "stats": e.get("stats", {})} for e in entries]}
 
 def searxng_search(db: Session, query: str, categories="general", limit=10) -> list[dict]:
     endpoints = searxng_endpoints(db)
@@ -293,61 +340,87 @@ def searxng_search(db: Session, query: str, categories="general", limit=10) -> l
     return [{"title":"SearXNG error", "url":"", "content":last_error, "engine":"error"}]
 
 def brave_search(db: Session, query: str, limit=10) -> list[dict]:
-    keys = rotating_api_keys(db, "BRAVE_API_KEYS", "BRAVE_API_KEY")
+    keys = provider_key_pool(db, "BRAVE_API_KEYS", "BRAVE_API_KEY")
     if not keys:
         return []
     last_error = ""
-    for key in keys:
+    for entry in keys:
       try:
         r = requests.get(
             "https://api.search.brave.com/res/v1/web/search",
             params={"q": query, "count": min(max(limit, 1), 20), "search_lang": "en"},
-            headers={"Accept": "application/json", "X-Subscription-Token": key},
+            headers={"Accept": "application/json", "X-Subscription-Token": entry["key"]},
             timeout=10,
         )
         r.raise_for_status()
         data = r.json()
         out=[]
         for item in (data.get("web", {}) or {}).get("results", [])[:limit]:
-            out.append({
-                "title": item.get("title") or "",
-                "url": item.get("url") or "",
-                "content": item.get("description") or "",
-                "engine": "brave",
-            })
+            out.append({"title": item.get("title") or "", "url": item.get("url") or "", "content": item.get("description") or "", "engine": "brave", "provider_key": entry["masked"]})
+        record_provider_key_result("BRAVE_API_KEYS", entry["index"], True)
         return out
       except Exception as e:
         last_error = str(e)
+        record_provider_key_result("BRAVE_API_KEYS", entry.get("index"), False, last_error)
         continue
     return [{"title":"Brave error", "url":"", "content":last_error, "engine":"error"}]
 
 def tavily_search(db: Session, query: str, limit=10) -> list[dict]:
-    keys = rotating_api_keys(db, "TAVILY_API_KEYS", "TAVILY_API_KEY")
+    keys = provider_key_pool(db, "TAVILY_API_KEYS", "TAVILY_API_KEY")
     if not keys:
         return []
     last_error = ""
-    for key in keys:
+    for entry in keys:
       try:
         r = requests.post(
             "https://api.tavily.com/search",
-            json={"api_key": key, "query": query, "max_results": min(max(limit, 1), 10), "search_depth": "basic", "include_answer": False},
+            json={"api_key": entry["key"], "query": query, "max_results": min(max(limit, 1), 10), "search_depth": "basic", "include_answer": False},
             timeout=12,
         )
         r.raise_for_status()
         data = r.json()
         out=[]
         for item in data.get("results", [])[:limit]:
-            out.append({
-                "title": item.get("title") or "",
-                "url": item.get("url") or "",
-                "content": item.get("content") or "",
-                "engine": "tavily",
-            })
+            out.append({"title": item.get("title") or "", "url": item.get("url") or "", "content": item.get("content") or "", "engine": "tavily", "provider_key": entry["masked"]})
+        record_provider_key_result("TAVILY_API_KEYS", entry["index"], True)
         return out
       except Exception as e:
         last_error = str(e)
+        record_provider_key_result("TAVILY_API_KEYS", entry.get("index"), False, last_error)
         continue
     return [{"title":"Tavily error", "url":"", "content":last_error, "engine":"error"}]
+
+def serpapi_search(db: Session, query: str, limit=10) -> list[dict]:
+    keys = provider_key_pool(db, "SERPAPI_API_KEYS")
+    if not keys:
+        return []
+    last_error = ""
+    for entry in keys:
+        try:
+            r = requests.get(
+                "https://serpapi.com/search.json",
+                params={"engine": "google", "q": query, "api_key": entry["key"], "num": min(max(limit, 1), 10), "hl": "en"},
+                timeout=15,
+            )
+            r.raise_for_status()
+            data = r.json()
+            if data.get("error"):
+                raise RuntimeError(data.get("error"))
+            out=[]
+            for item in (data.get("organic_results") or [])[:limit]:
+                out.append({"title": item.get("title") or "", "url": item.get("link") or "", "content": item.get("snippet") or "", "engine": "serpapi", "provider_key": entry["masked"]})
+            # Include related searches as low-rank discovery hints when present.
+            for item in (data.get("related_searches") or [])[:max(0, limit-len(out))]:
+                q = item.get("query") or item.get("title") or ""
+                if q:
+                    out.append({"title": q, "url": item.get("link") or "", "content": "related_search", "engine": "serpapi_related", "provider_key": entry["masked"]})
+            record_provider_key_result("SERPAPI_API_KEYS", entry["index"], True)
+            return out
+        except Exception as e:
+            last_error = str(e)
+            record_provider_key_result("SERPAPI_API_KEYS", entry.get("index"), False, last_error)
+            continue
+    return [{"title":"SerpApi error", "url":"", "content":last_error, "engine":"error"}]
 
 def available_serp_providers(db: Session) -> list[str]:
     order = [x.strip().lower() for x in (setting(db, "SERP_PROVIDER_ORDER") or "searxng").split(",") if x.strip()]
@@ -359,11 +432,14 @@ def available_serp_providers(db: Session) -> list[str]:
             out.append(p)
         elif p == "tavily" and rotating_api_keys(db, "TAVILY_API_KEYS", "TAVILY_API_KEY"):
             out.append(p)
+        elif p == "serpapi" and rotating_api_keys(db, "SERPAPI_API_KEYS", ""):
+            out.append(p)
     return out or ["searxng"]
 
 def provider_search(db: Session, provider: str, query: str, limit=10) -> list[dict]:
     if provider == "brave": return brave_search(db, query, limit)
     if provider == "tavily": return tavily_search(db, query, limit)
+    if provider == "serpapi": return serpapi_search(db, query, limit)
     return searxng_search(db, query, limit=limit)
 
 def domain(url: str) -> str:
@@ -1090,7 +1166,7 @@ def test_search_provider(db: Session) -> dict:
     endpoint = (searxng_endpoints(db) or [{"url": setting(db, "SEARXNG_URL").rstrip("/"), "api_token": setting(db, "SEARXNG_API_TOKEN"), "use_builtin_engines": not bool(setting(db, "SEARXNG_ENGINES")), "engines": setting(db, "SEARXNG_ENGINES")}])[0]
     base = endpoint["url"].rstrip("/")
     started = datetime.utcnow()
-    providers = {"available": available_serp_providers(db), "searxng_urls": len(searxng_urls(db)), "brave_keys": len(rotating_api_keys(db, "BRAVE_API_KEYS", "BRAVE_API_KEY")), "tavily_keys": len(rotating_api_keys(db, "TAVILY_API_KEYS", "TAVILY_API_KEY")), "brave_configured": bool(rotating_api_keys(db, "BRAVE_API_KEYS", "BRAVE_API_KEY")), "tavily_configured": bool(rotating_api_keys(db, "TAVILY_API_KEYS", "TAVILY_API_KEY"))}
+    providers = {"available": available_serp_providers(db), "searxng_urls": len(searxng_urls(db)), "brave_keys": len(rotating_api_keys(db, "BRAVE_API_KEYS", "BRAVE_API_KEY")), "tavily_keys": len(rotating_api_keys(db, "TAVILY_API_KEYS", "TAVILY_API_KEY")), "serpapi_keys": len(rotating_api_keys(db, "SERPAPI_API_KEYS", "")), "brave_configured": bool(rotating_api_keys(db, "BRAVE_API_KEYS", "BRAVE_API_KEY")), "tavily_configured": bool(rotating_api_keys(db, "TAVILY_API_KEYS", "TAVILY_API_KEY")), "serpapi_configured": bool(rotating_api_keys(db, "SERPAPI_API_KEYS", ""))}
     try:
         headers = {"Accept": "application/json"}
         if endpoint.get("api_token"):
