@@ -96,7 +96,7 @@ export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=
     <div className="text-sm text-slate-300">{card.score}</div>
     <div className="safe-text text-sm text-slate-400">{shortText(biz.verdict_reason||card.mvp_plan||biz.pain||card.monetization_type)}</div>
     <div>{mode==='review'?<InlineRowFeedback onFeedback={(label)=>applyFeedback(card,label)}/>:<a className="btn-secondary" href={`/review?card=${card.id}`}>去复核</a>}</div>
-   </div>}):<div className="p-6 text-sm text-slate-500">{empty}</div>}
+   </div>}):mode==='review'&&initialCount>0?<ReviewComplete processed={processed}/>:<div className="p-6 text-sm text-slate-500">{empty}</div>}
   </div>
 
   {selected&&<div className="fixed inset-0 z-50">
@@ -114,3 +114,5 @@ export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=
 }
 
 function InlineRowFeedback({onFeedback}:{onFeedback:(label:string)=>void}){const labels:any={Action:'行动',Watch:'观察',Reject:'拒绝',Block:'屏蔽'}; return <div className="flex flex-wrap gap-2">{['Action','Watch','Reject','Block'].map(x=><button key={x} title={x} className="rounded bg-slate-800 px-2 py-1 text-xs hover:bg-slate-700" onClick={()=>onFeedback(x)}>{labels[x]} <span className="text-slate-500">{x}</span></button>)}</div>}
+
+function ReviewComplete({processed}:{processed:number}){return <div className="p-8"><div className="rounded-3xl border border-emerald-500/30 bg-emerald-500/10 p-6 text-center"><div className="text-sm font-semibold uppercase tracking-[0.25em] text-emerald-300">Review Complete</div><h3 className="mt-3 text-2xl font-black text-white">本次复核完成</h3><p className="mt-2 text-slate-300">已处理 {processed} 张卡片。系统会用你的反馈更新后续采集和评分。</p><div className="mt-5 flex flex-wrap justify-center gap-2"><a className="btn" href="/">返回首页</a><a className="btn-secondary" href="/cards?verdict=Action">看 Action 候选</a><button className="btn-secondary" onClick={async()=>{await api('/api/auto/tick',{method:'POST',body:JSON.stringify({force:true})}); location.href='/runs'}}>运行下一轮</button></div></div></div>}
