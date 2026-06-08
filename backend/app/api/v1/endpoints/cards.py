@@ -1,5 +1,5 @@
 from __future__ import annotations
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from app import models, schemas, services
@@ -17,19 +17,23 @@ def generate_card(keyword_id: int, _: bool = Depends(require_auth), db: Session 
     return obj(services.make_card(db, kw))
 
 @router.get("")
-def cards(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
+def cards(include_duplicates: bool = Query(False), _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     rows=[]
     for x in db.query(models.OpportunityCard).order_by(models.OpportunityCard.created_at.desc()).limit(100).all():
         d = obj(x)
         kw = db.get(models.Keyword, x.keyword_id)
         if kw:
+            if not include_duplicates and kw.status in {"duplicate", "rejected", "serp_reject", "rewrite_exhausted"} and x.verdict in {"Action", "Watch"}:
+                continue
             d["source_keyword"] = kw.query
             d["keyword_source"] = kw.source
             d["keyword_intent"] = kw.intent
+            d["keyword_status"] = kw.status
         else:
             d["source_keyword"] = ""
             d["keyword_source"] = ""
             d["keyword_intent"] = ""
+            d["keyword_status"] = ""
         rows.append(d)
     return rows
 
