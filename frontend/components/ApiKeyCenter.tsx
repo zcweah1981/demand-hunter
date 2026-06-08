@@ -36,7 +36,7 @@ export function ApiKeyCenter({data,types}:{data:any;types:any[]}){
       <div className="text-slate-200"><b>{t.count||0}</b> 条</div>
       <div>{active?<span className="badge badge-action">可用</span>:(t.count>0?<span className="badge badge-watch">未接入</span>:<span className="badge">未配置</span>)}</div>
       <div className="space-y-1">
-       {maskedItems.length?maskedItems.slice(0,3).map((it:any)=><div key={it.index} className="flex items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-900/60 px-2 py-1 font-mono text-xs text-slate-400"><span>{it.masked}</span>{it.stats&&<span className="font-sans text-[11px] text-slate-500">ok {it.stats?.ok||0} / fail {it.stats?.fail||0}</span>}</div>):<span className="text-xs text-slate-600">暂无 Key</span>}
+       {maskedItems.length?maskedItems.slice(0,3).map((it:any)=><div key={it.index} className="flex items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-900/60 px-2 py-1 font-mono text-xs text-slate-400"><span>{it.display||it.masked}</span>{it.stats&&<span className="font-sans text-[11px] text-slate-500">ok {it.stats?.ok||0} / fail {it.stats?.fail||0}</span>}</div>):<span className="text-xs text-slate-600">暂无 Key</span>}
        {maskedItems.length>3&&<div className="text-xs text-slate-600">还有 {maskedItems.length-3} 条...</div>}
       </div>
       <div className="text-right"><span className="btn-secondary no-underline">管理</span></div>
@@ -68,7 +68,7 @@ export function ApiKeyCenter({data,types}:{data:any;types:any[]}){
       <div className="flex flex-wrap items-center justify-between gap-3">
        <div>
         <div className="text-xs font-semibold text-slate-500">#{it.index}</div>
-        <div className="mt-1 font-mono text-sm text-slate-200">{it.masked}</div>
+        <div className="mt-1 font-mono text-sm text-slate-200">{it.display||it.masked}</div>
         {it.stats&&<div className="mt-1 text-xs text-slate-500">ok {it.stats?.ok||0} / fail {it.stats?.fail||0}</div>}
        </div>
        <ApiKeyActions typeId={selected.id} index={it.index}/>

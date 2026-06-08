@@ -101,6 +101,25 @@ def _mask_entry(value: str) -> str:
         return ""
     return "***" + value[-4:] if len(value) > 4 else "***"
 
+def _display_entry(value: str) -> str:
+    import json
+    v = (value or "").strip()
+    if not v:
+        return ""
+    if v.startswith("{"):
+        try:
+            data = json.loads(v)
+            if isinstance(data, dict):
+                parts = []
+                for k, val in data.items():
+                    s = str(val or "")
+                    sensitive = any(x in k.lower() for x in ["key", "token", "secret", "password", "bearer"])
+                    parts.append(f"{k}: {_mask_entry(s) if sensitive else s}")
+                return " | ".join(parts)
+        except Exception:
+            pass
+    return _mask_entry(v)
+
 def _searxng_rows_raw(db: Session) -> list[dict]:
     import json
     rows: list[dict] = []
@@ -351,7 +370,7 @@ def api_key_types(_: bool = Depends(require_auth), db: Session = Depends(get_db)
         row = db.get(models.Setting, key)
         values = _split_secret_values(row.value if row else "")
         pool = services.provider_key_pool_status(db, key) if key in {"BRAVE_API_KEYS","TAVILY_API_KEYS","SERPAPI_API_KEYS","ZENSERP_API_KEYS","SCALESERP_API_KEYS"} else None
-        out.append({**t, "count": len(values), "items": [{"index": i, "masked": _mask_entry(v)} for i, v in enumerate(values)], "pool": pool})
+        out.append({**t, "count": len(values), "items": [{"index": i, "masked": _mask_entry(v), "display": _display_entry(v)} for i, v in enumerate(values)], "pool": pool})
     return {"types": out, "rotation_strategy": services.serp_rotation_strategy(db), "available_providers": services.available_serp_providers(db)}
 
 @router.get("/api-key-types/{type_id}")
@@ -363,7 +382,7 @@ def api_key_type(type_id: str, _: bool = Depends(require_auth), db: Session = De
     row = db.get(models.Setting, t["setting_key"])
     values = _split_secret_values(row.value if row else "")
     pool = services.provider_key_pool_status(db, t["setting_key"]) if t["setting_key"] in {"BRAVE_API_KEYS","TAVILY_API_KEYS","SERPAPI_API_KEYS","ZENSERP_API_KEYS","SCALESERP_API_KEYS"} else None
-    return {"ok": True, "type": {**t, "count": len(values), "items": [{"index": i, "masked": _mask_entry(v)} for i, v in enumerate(values)], "pool": pool}}
+    return {"ok": True, "type": {**t, "count": len(values), "items": [{"index": i, "masked": _mask_entry(v), "display": _display_entry(v)} for i, v in enumerate(values)], "pool": pool}}
 
 @router.post("/api-keys")
 def api_key_add(payload: schemas.ApiKeyEntryIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
