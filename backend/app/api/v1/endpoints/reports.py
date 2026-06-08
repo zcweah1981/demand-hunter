@@ -10,3 +10,7 @@ router = APIRouter(prefix="/api/reports", tags=["reports"])
 @router.post("/export")
 def export_report(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
     return {"path": services.export_latest_markdown(db)}
+
+@router.post("/export/actions")
+def export_action_report(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    return {"path": services.export_action_execution_markdown(db)}

@@ -1989,3 +1989,48 @@ def export_latest_markdown(db: Session) -> str:
     path = out_dir / "demand_cards_latest.md"
     path.write_text("\n".join(lines), encoding="utf-8")
     return str(path)
+
+def export_action_execution_markdown(db: Session, min_score: int | None = None) -> str:
+    from pathlib import Path
+    out_dir = ROOT / "output"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    if min_score is None:
+        try: min_score = int(setting(db, "MIN_ACTION_SCORE") or "74")
+        except Exception: min_score = 74
+    cards = (
+        db.query(models.OpportunityCard)
+        .filter(models.OpportunityCard.verdict == "Action")
+        .filter(models.OpportunityCard.score >= min_score)
+        .order_by(models.OpportunityCard.score.desc(), models.OpportunityCard.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    lines = ["# Demand Hunter Action Execution List", "", f"Generated: {datetime.utcnow().isoformat()}Z", f"Min Action Score: {min_score}", f"Count: {len(cards)}", ""]
+    for idx,c in enumerate(cards,1):
+        kw = db.get(models.Keyword, c.keyword_id)
+        try: evidence = json.loads(c.evidence_json or "[]")
+        except Exception: evidence = []
+        business = next((e for e in evidence if e.get("type") == "business"), {})
+        web_evidence = [e for e in evidence if e.get("type") != "business"][:5]
+        try: risks = json.loads(c.risks or "[]")
+        except Exception: risks = []
+        lines += [f"## {idx}. {c.title}", "", f"- Score: {c.score}", f"- Keyword: {kw.query if kw else '-'}", f"- Monetization: {business.get('business_type') or c.monetization_type or '-'}", f"- ICP: {business.get('icp') or '-'}", ""]
+        first_sale = business.get("first_sale_test") or []
+        lines += ["### First validation", ""]
+        if first_sale:
+            lines += [f"{i+1}. {x}" for i,x in enumerate(first_sale[:5])]
+        else:
+            lines += [business.get("commercial_mvp") or c.mvp_plan or "-"]
+        lines += ["", "### MVP", "", business.get("commercial_mvp") or c.mvp_plan or "-", "", "### Revenue path", "", business.get("revenue_path") or c.monetization_type or "-"]
+        if business.get("pricing"):
+            lines += ["", f"Pricing: {business.get('pricing')}"]
+        if business.get("gtm") or business.get("wedge"):
+            lines += ["", "### GTM / Wedge", "", f"- GTM: {business.get('gtm') or '-'}", f"- Wedge: {business.get('wedge') or '-'}"]
+        if risks:
+            lines += ["", "### Risks", ""] + [f"- {r}" for r in risks[:6]]
+        if web_evidence:
+            lines += ["", "### Evidence", ""] + [f"- [{e.get('type','web')}] {e.get('title','')} {e.get('url','')}" for e in web_evidence]
+        lines += [""]
+    path = out_dir / "action_execution_list.md"
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return str(path)

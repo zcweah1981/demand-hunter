@@ -1,6 +1,7 @@
 import {api, Card} from '../../lib/api'
 import {OpportunityList} from '../../components/OpportunityList'
 import {verdictLabel} from '../../components/OpportunityCard'
+import {ExportActionsButton} from '../../components/Actions'
 
 const VERDICTS=['Action','Watch','Reject','Block','All']
 
@@ -28,6 +29,7 @@ export default async function Page({searchParams}:{searchParams?:Promise<Record<
     <p className="mt-1 text-xs text-slate-500">当前 Action 分数门槛：{minAction}</p>
    </div>
    <div className="flex flex-wrap gap-2">
+    {verdict==='Action'&&<ExportActionsButton/>}
     {VERDICTS.map(v=><a key={v} className={verdict===v?'btn':'btn-secondary'} href={`/cards?verdict=${v}`}>{v==='All'?'全部':verdictLabel(v)}</a>)}
    </div>
   </div>
