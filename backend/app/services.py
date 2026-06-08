@@ -1250,6 +1250,8 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
             kws=old_kws + collector_kws + discover_keywords(db, limit=new_limit, roots=roots)
         cards=[]
         skipped=[]
+        processed=[]
+        serp_gate_reasons={}
         kws = [kw for kw in kws if kw.status not in {"rejected", "serp_reject", "rewrite_exhausted"}]
         total_kws = len(kws[:limit])
         for idx, kw in enumerate(kws[:limit], 1):
@@ -1257,11 +1259,18 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
             db.commit()
             serp, strategy_meta = run_serp_with_strategy(db, kw)
             admissible, gate = serp_admissibility(serp)
+            source_family = kw.source.split(":",1)[0] if ":" in kw.source else kw.source
+            source_detail = kw.source.split(":",1)[1] if ":" in kw.source else kw.source
             if not admissible:
                 mark_four_find_serp_reject(db, kw, gate)
                 skipped.append({"keyword": kw.query, "serp_strategy": strategy_meta, **gate})
+                reason = gate.get("reason") or "unknown"
+                serp_gate_reasons[reason]=serp_gate_reasons.get(reason,0)+1
+                processed.append({"keyword": kw.query, "source": kw.source, "source_family": source_family, "source_detail": source_detail, "status":"serp_reject", **gate})
                 continue
-            cards.append(make_card(db, kw))
+            card=make_card(db, kw)
+            cards.append(card)
+            processed.append({"keyword": kw.query, "source": kw.source, "source_family": source_family, "source_detail": source_detail, "status":"card", "verdict": card.verdict, "score": card.score})
         rewrite_summary = None
         if (setting(db, "FOUR_FIND_REWRITE_ON_SERP_REJECT") or "false").lower() in {"1", "true", "yes", "on"} and skipped:
             try:
@@ -1272,6 +1281,58 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
             if rewrite_summary.get("cards"):
                 recovered_cards = db.query(models.OpportunityCard).order_by(models.OpportunityCard.created_at.desc()).limit(int(rewrite_summary.get("cards") or 0)).all()
                 cards.extend(recovered_cards)
+        collector_results = (collector_summary or {}).get("results") or []
+        collector_by_source = []
+        for r in collector_results:
+            if isinstance(r, dict):
+                collector_by_source.append({
+                    "source": r.get("source") or "unknown",
+                    "saved": r.get("saved", 0),
+                    "seen": r.get("candidates_seen", r.get("urls_seen", 0)),
+                    "new_urls": r.get("new_urls"),
+                    "old_urls": r.get("old_urls"),
+                    "errors": len(r.get("errors") or []),
+                })
+        clean = (collector_summary or {}).get("clean") or {}
+        imported = (collector_summary or {}).get("import") or {}
+        card_by_source={}
+        for p in processed:
+            key=p.get("source") or "unknown"
+            row=card_by_source.setdefault(key,{"processed":0,"cards":0,"action":0,"watch":0,"reject":0,"serp_reject":0})
+            row["processed"] += 1
+            if p.get("status") == "serp_reject": row["serp_reject"] += 1
+            if p.get("status") == "card":
+                row["cards"] += 1
+                verdict=(p.get("verdict") or "").lower()
+                if verdict in row: row[verdict] += 1
+        quality_report={
+            "collector": {
+                "enabled": bool(collector_summary and collector_summary.get("enabled", True)),
+                "budget_plan": (collector_summary or {}).get("budget_plan"),
+                "by_source": collector_by_source,
+                "errors": (collector_summary or {}).get("errors") or [],
+                "pool": (collector_summary or {}).get("summary") or {},
+                "clean": clean,
+                "import": imported,
+            },
+            "funnel": {
+                "collector_seen": sum(int(x.get("seen") or 0) for x in collector_by_source),
+                "collector_saved": sum(int(x.get("saved") or 0) for x in collector_by_source),
+                "clean_scanned": clean.get("scanned", 0),
+                "clean_rejected": clean.get("rejected", 0),
+                "import_selected": imported.get("selected", 0),
+                "imported_keywords": imported.get("imported", 0),
+                "keywords_processed": len(processed),
+                "serp_rejected": len(skipped),
+                "cards": len(cards),
+                "action": sum(1 for c in cards if c.verdict=="Action"),
+                "watch": sum(1 for c in cards if c.verdict=="Watch"),
+                "reject": sum(1 for c in cards if c.verdict=="Reject"),
+            },
+            "serp_gate_reasons": serp_gate_reasons,
+            "card_by_source": card_by_source,
+            "processed_examples": processed[:12],
+        }
         summary={
             "phase":"finished",
             "keywords":len(kws),
@@ -1286,6 +1347,7 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
             "root_combo_keywords": sum(1 for k in kws if k.source == "root_combo"),
             "collector_keywords": sum(1 for k in kws if k.source.startswith("collector:")),
             "collector_summary": collector_summary,
+            "quality_report": quality_report,
             "skipped_low_quality_serp": len(skipped),
             "skipped_examples": skipped[:5],
             "rewrite_recovery": rewrite_summary,
