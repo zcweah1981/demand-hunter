@@ -33,6 +33,8 @@ def autopilot_status(_: bool = Depends(require_auth), db: Session = Depends(get_
     watch = db.query(models.OpportunityCard).filter(models.OpportunityCard.verdict == "Watch").count()
     discoveries = db.query(models.DiscoveryExpansion).count() + db.query(models.CompetitorKeyword).count() + db.query(models.CompetitorSite).count()
     collector_summary = collectors.collector_pool_summary(db)
+    experiments = services.list_repair_experiments(db, limit=5)
+    active_experiment = next((x for x in experiments if x.get("status") == "running" or (x.get("effect") or {}).get("status") in {"pending", "no_baseline"}), None)
     last = auto.get("last_run")
     running = bool(last and last.get("status") == "running")
     ready_checks = [
@@ -67,6 +69,7 @@ def autopilot_status(_: bool = Depends(require_auth), db: Session = Depends(get_
         "counts": {"discoveries": discoveries, "cards": cards, "pending_review": pending_review, "action": actions, "watch": watch},
         "collectors": collector_summary,
         "diagnosis": last.get("summary", {}).get("diagnosis") if last and isinstance(last.get("summary"), dict) else None,
+        "active_experiment": active_experiment,
         "auto": auto,
     }
 

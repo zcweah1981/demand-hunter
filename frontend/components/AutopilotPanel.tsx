@@ -18,6 +18,7 @@ type AutopilotStatus = {
   seeds:string[]
   domains:string[]
   diagnosis?:{severity?:string;issues?:any[];recommended_actions?:string[];repair_actions?:any[];next_action?:string}|null
+  active_experiment?:any|null
   collectors?:{by_status?:Record<string,number>;by_source?:Record<string,number>;source_weights?:Record<string,any>;budget_plan?:{active?:any[];paused?:any[]};top_new?:any[]}
 }
 
@@ -36,6 +37,7 @@ export function AutopilotPanel({status}:{status:AutopilotStatus}){
   const collectorWeights=status.collectors?.source_weights||{}
   const budgetPlan=status.collectors?.budget_plan||{}
   const diagnosis=status.diagnosis
+  const activeExperiment=status.active_experiment
   const severityClass=diagnosis?.severity==='critical'?'border-rose-500/40 bg-rose-500/10 text-rose-100':diagnosis?.severity==='warning'?'border-amber-500/40 bg-amber-500/10 text-amber-100':'border-slate-800 bg-slate-900/60 text-slate-200'
 
   async function call(path:string){
@@ -71,6 +73,8 @@ export function AutopilotPanel({status}:{status:AutopilotStatus}){
     </div>}
 
     {diagnosis&&<div className={`mt-4 rounded-2xl border p-4 ${severityClass}`}><div className="flex flex-wrap justify-between gap-3"><div><div className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">自动诊断</div><b className="mt-1 block">{diagnosis.issues?.[0]?.title||'诊断完成'}</b><p className="mt-1 text-sm opacity-90">{diagnosis.next_action}</p></div><span className="badge">{diagnosis.severity}</span></div>{!!diagnosis.issues?.length&&<div className="mt-3 flex flex-wrap gap-2">{diagnosis.issues.slice(0,3).map((i:any)=><span key={i.code} className="rounded-lg bg-slate-950/70 px-2 py-1 text-xs">{i.code}</span>)}</div>}{!!diagnosis.repair_actions?.length&&<div className="mt-3"><div className="mb-2 text-xs font-semibold opacity-70">半自动修复 / 实验</div><div className="flex flex-wrap gap-2">{diagnosis.repair_actions.slice(0,4).map((a:any)=><span key={a.id||a.action} className="flex gap-1"><RepairActionButton action={a}/><ExperimentRepairButton action={a}/></span>)}</div></div>}</div>}
+
+    {activeExperiment&&<div className="mt-4 rounded-2xl border border-blue-500/30 bg-blue-500/10 p-4 text-blue-100"><div className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">实验队列</div><b className="mt-1 block">已有实验等待评估：#{activeExperiment.id} {activeExperiment.summary?.action}</b><p className="mt-1 text-sm opacity-90">为避免变量污染，新实验会被阻止，直到当前实验完成或处理。</p></div>}
 
     <div className="mt-5 grid gap-3 md:grid-cols-3">
       <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"><div className="kpi-label">待复核</div><b className="text-3xl text-amber-300">{status.counts.pending_review}</b></div>

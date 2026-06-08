@@ -1529,6 +1529,13 @@ def start_repair_experiment(db: Session, action: str, source: str | None = None,
     background daily run can then evaluate that repair via the existing repair
     effect mechanism.
     """
+    # Refresh old experiments first so completed ones close before concurrency check.
+    active=[]
+    for exp in list_repair_experiments(db, limit=20):
+        if exp.get("status") == "running" or (exp.get("effect") or {}).get("status") in {"pending", "no_baseline"}:
+            active.append(exp)
+    if active:
+        return {"ok":False,"error":"active_experiment_exists","message":"已有实验等待评估；为避免变量污染，请等待完成或回滚后再启动新实验。","active_experiment":active[0]}
     repair=apply_repair_action(db, action, source=source, value=value, record=True)
     if not repair.get("ok"):
         return {"ok":False,"error":repair.get("error","repair failed"),"repair":repair}
