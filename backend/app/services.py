@@ -26,6 +26,8 @@ DEFAULT_SETTINGS = {
     "LLM_PRIMARY_API_KEY": "",
     "LLM_FALLBACKS": "[]",
     "LLM_CARD_ANALYSIS_ENABLED": "true",
+    "LLM_CARD_ANALYSIS_TIMEOUT_SECONDS": "18",
+    "LLM_CARD_ANALYSIS_CANDIDATE_LIMIT": "1",
     "AUTO_RUN_ENABLED": "true",
     "AUTO_RUN_INTERVAL_MINUTES": "360",
     "AUTO_RUN_LIMIT": "6",
@@ -56,6 +58,9 @@ DEFAULT_SETTINGS = {
     "COLLECTOR_AUTO_SITEMAP_ENABLED": "true",
     "COLLECTOR_AUTO_SUGGEST_ENABLED": "true",
     "COLLECTOR_ADVANCED_MAX_SECONDS": "90",
+    "COLLECTOR_AUTOPILOT_MAX_SECONDS": "120",
+    "COLLECTOR_SUGGEST_MAX_SECONDS": "20",
+    "COLLECTOR_SOURCE_RADAR_MAX_SECONDS": "45",
     "COLLECTOR_SOURCE_WEIGHTS": "{}",
     "COLLECTOR_AUTO_MIN_WEIGHT": "0.35",
     "REPAIR_EXPERIMENT_COOLDOWN_HOURS": "24",
@@ -164,7 +169,10 @@ def keyword_noise_reason(query: str, source: str = "") -> str:
     q=(query or "").lower()
     if any(x in q for x in ("pull request", "fix activejob", "attempt to", " labels ", "github", "documentation", "readme", "release notes", "changelog")):
         return "developer_or_documentation_noise"
-    terms=normalized_opportunity_key(query).split()
+    if re.search(r"\b(after|before)\b", q):
+        return "search_operator_noise"
+    plural_map={"calculators":"calculator","generators":"generator","templates":"template","checkers":"checker","converters":"converter","trackers":"tracker","dashboards":"dashboard","analyzers":"analyzer","builders":"builder","planners":"planner","estimators":"estimator","forms":"form","spreadsheets":"spreadsheet","reports":"report","monitors":"monitor","automations":"automation","integrations":"integration","apis":"api"}
+    terms=[plural_map.get(t,t) for t in normalized_opportunity_key(query).split()]
     if len(terms) < 2:
         return "too_short"
     if len(terms) > 9:
@@ -173,6 +181,12 @@ def keyword_noise_reason(query: str, source: str = "") -> str:
     # to create duplicate pseudo-opportunities.
     if any(t in terms for t in {"calculator","template","generator"}) and not any(t in terms for t in {"invoice","tax","compliance","appointment","rental","clinic","shopify","woocommerce","hubspot","quickbooks","stripe","permit","contractor","patient","payment","fee","late","reminder","estimate"}):
         return "generic_tool_modifier"
+    tool_count=len(set(terms) & {"calculator","template","generator","checker","converter","tracker","dashboard","analyzer","builder","planner","estimator","form","spreadsheet"})
+    commercial_count=len(set(terms) & {"invoice","tax","compliance","shopify","woocommerce","quickbooks","hubspot","salesforce","stripe","paypal","business","agency","client","contractor","clinic","rental","payment","fee","late","reminder","estimate"})
+    if len(terms) >= 3 and terms[0] in {"calculator","template","generator","tool","software","app"} and tool_count >= 2:
+        return "tool_category_slug"
+    if tool_count >= 2 and commercial_count <= 1:
+        return "tool_word_stack"
     return ""
 
 def find_duplicate_card(db: Session, keyword: models.Keyword, threshold: float = 0.42) -> models.OpportunityCard | None:
@@ -227,12 +241,18 @@ def discover_keywords(db: Session, limit=24, roots: list[str] | None = None) -> 
                     seen_queries.add(query)
                     candidates.append((query, terms))
     out = []
-    for query, terms in candidates[:limit]:
+    for query, terms in candidates:
         row = db.query(models.Keyword).filter_by(query=query).first()
+        if row and row.status in {"reject", "rejected", "block", "duplicate", "serp_reject", "rewrite_exhausted"}:
+            continue
+        if keyword_noise_reason(query, "root_combo"):
+            continue
         if not row:
             row = models.Keyword(query=query, source="root_combo", root_terms=json.dumps(terms), intent=classify_intent(query))
             db.add(row); db.flush()
         out.append(row)
+        if len(out) >= limit:
+            break
     db.commit()
     return out
 
@@ -640,7 +660,15 @@ def _extract_json_object(text: str) -> dict | None:
         return None
 
 def _llm_json(db: Session, system: str, user: str, temperature: float = 0.2) -> dict | None:
-    for cfg in _llm_candidates(db):
+    try:
+        candidate_limit=int(setting(db,"LLM_CARD_ANALYSIS_CANDIDATE_LIMIT") or "1")
+    except Exception:
+        candidate_limit=1
+    try:
+        timeout_seconds=float(setting(db,"LLM_CARD_ANALYSIS_TIMEOUT_SECONDS") or "18")
+    except Exception:
+        timeout_seconds=18.0
+    for cfg in _llm_candidates(db)[:max(1,candidate_limit)]:
         url = cfg["base_url"] if cfg["base_url"].endswith("/chat/completions") else f"{cfg['base_url']}/chat/completions"
         headers={"Content-Type":"application/json"}
         if cfg.get("api_key"):
@@ -652,7 +680,7 @@ def _llm_json(db: Session, system: str, user: str, temperature: float = 0.2) -> 
             "response_format": {"type":"json_object"},
         }
         try:
-            r=requests.post(url, headers=headers, json=payload, timeout=45)
+            r=requests.post(url, headers=headers, json=payload, timeout=timeout_seconds)
             r.raise_for_status()
             data=r.json()
             content=((data.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
@@ -1413,6 +1441,9 @@ def diagnose_quality_report(report: dict, db: Session | None = None) -> dict:
         issues.append({"severity":"critical","code":"no_collector_input","title":"采集层没有输入","detail":"collector_seen=0，本轮没有拿到任何候选原料。"})
         actions.append("检查 seeds/domains 是否为空、搜索源是否可用；先运行 Settings 里的搜索测试。")
         repair_actions.append({"id":"add_commercial_seeds","label":"补充默认商业 seeds","action":"add_commercial_seeds","safety":"可逆：只追加内部 seeds"})
+    elif saved == 0:
+        issues.append({"severity":"info","code":"no_new_collector_candidates","title":"采集层本轮无新增候选","detail":f"seen={seen}，saved=0。强过滤已拦截重复/噪音结果。"})
+        actions.append("如果连续多轮 saved=0，再补充新的商业化 seeds；单轮 0 saved 不代表流程故障。")
     elif saved / max(1, seen) < 0.08:
         issues.append({"severity":"warning","code":"low_candidate_save_rate","title":"采集→候选保存率低","detail":f"saved/seen={saved}/{seen}。"})
         actions.append("当前采集结果大多无法转成关键词；增加更商业化 seeds，或降低低产 collector 预算。")
@@ -1817,6 +1848,16 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
         for idx, kw in enumerate(kws[:limit], 1):
             run.summary=json.dumps({"phase":"running", "current": idx, "total": total_kws, "keyword": kw.query, "cards": len(cards)}, ensure_ascii=False)
             db.commit()
+            noise = keyword_noise_reason(kw.query, kw.source)
+            if noise:
+                kw.status = "rejected"
+                kw.intent = f"noise:{noise}"[:80]
+                kw.score = 0.0
+                db.commit()
+                source_family = kw.source.split(":",1)[0] if kw.source else "unknown"
+                source_detail = kw.source.split(":",1)[1] if ":" in (kw.source or "") else (kw.source or "unknown")
+                processed.append({"keyword": kw.query, "source": kw.source, "source_family": source_family, "source_detail": source_detail, "status":"keyword_reject", "reason": noise})
+                continue
             serp, strategy_meta = run_serp_with_strategy(db, kw)
             admissible, gate = serp_admissibility(serp)
             source_family = kw.source.split(":",1)[0] if ":" in kw.source else kw.source

@@ -6,8 +6,9 @@ import requests
 from sqlalchemy.orm import Session
 from . import models, services
 
-STOPWORDS={"best","top","free","online","app","apps","software","tool","tools","page","blog","pricing","login","signup","about","contact","privacy","terms","docs","help","features","category","tag","author","news","article","post","posts","product","products"}
+STOPWORDS={"best","top","free","online","app","apps","software","tool","tools","page","blog","pricing","login","signup","about","contact","privacy","terms","docs","help","features","category","tag","author","news","article","post","posts","product","products","en","www"}
 TOOL_INTENT_TERMS={"calculator","generator","template","checker","converter","tracker","dashboard","analyzer","builder","creator","planner","estimator","form","spreadsheet","invoice","policy","report","monitor","automation","integration","api"}
+TOOL_INTENT_PLURALS={"calculators":"calculator","generators":"generator","templates":"template","checkers":"checker","converters":"converter","trackers":"tracker","dashboards":"dashboard","analyzers":"analyzer","builders":"builder","planners":"planner","estimators":"estimator","forms":"form","spreadsheets":"spreadsheet","reports":"report","monitors":"monitor","automations":"automation","integrations":"integration","apis":"api"}
 COMMERCIAL_TERMS={"pricing","price","cost","fee","invoice","tax","compliance","shopify","woocommerce","quickbooks","hubspot","salesforce","stripe","paypal","b2b","business","agency","client","contractor","clinic","rental"}
 EARLY_SOURCE_BONUS={"sitemap":0.16,"advanced_search":0.12,"hn_algolia":0.10,"arxiv":0.08,"google_suggest":0.06,"duckduckgo":0.05}
 NOISE_DOMAINS={"github.com","raw.githubusercontent.com","gist.github.com"}
@@ -36,7 +37,7 @@ def normalize_keyword(text:str)->str:
     s=re.sub(r"[^a-zA-Z0-9\s\-_/]+", " ", text or "").lower()
     s=re.sub(r"[_/\-]+", " ", s)
     s=re.sub(r"\s+", " ", s).strip()
-    terms=[t for t in s.split() if t not in STOPWORDS]
+    terms=[TOOL_INTENT_PLURALS.get(t,t) for t in s.split() if t not in STOPWORDS]
     if len(terms)<2: return ''
     return ' '.join(terms[:8])
 
@@ -71,11 +72,49 @@ def candidate_noise_reason(keyword:str, evidence:dict|None=None)->str:
         return 'developer_or_documentation_noise'
     if re.search(r"\b(after|before):\d{4}-\d{2}-\d{2}\b", text) and not any(t in kw for t in TOOL_INTENT_TERMS|COMMERCIAL_TERMS):
         return 'search_operator_noise'
+    if re.search(r"\b(after|before)\b", kw):
+        return 'search_operator_noise'
     if len(terms)>9: return 'too_long'
     if len(terms)<2: return 'too_short'
     if len(set(terms)) < max(2, len(terms)-1): return 'repeated_terms'
     if any(t in {"crack","apk","coupon","promo"} for t in terms): return 'low_commercial_quality'
     if all(t in NOISE_TERMS for t in terms): return 'generic_noise'
+    return ''
+
+def candidate_quality_reject_reason(keyword:str, source:str, evidence:dict|None=None)->str:
+    """Source-specific quality gate before a candidate enters the importable pool.
+
+    Suggest/autocomplete may be broad, but SERP-derived collectors are noisy:
+    titles from repos, docs, news, HN/arXiv, and generic pages can look like
+    keywords. For those sources require both a concrete tool/task word and a
+    commercial/vertical modifier.
+    """
+    kw=normalize_keyword(keyword)
+    if not kw:
+        return 'empty_or_too_short'
+    terms=set(kw.split())
+    has_tool=bool(terms & TOOL_INTENT_TERMS)
+    has_commercial=bool(terms & COMMERCIAL_TERMS)
+    tool_count=len(terms & (TOOL_INTENT_TERMS - {"invoice","policy","report","api"}))
+    commercial_count=len(terms & COMMERCIAL_TERMS)
+    ordered=kw.split()
+    if len(ordered) >= 3 and ordered[0] in {"calculator","template","generator","tool","software","app"} and tool_count >= 2:
+        return 'tool_category_slug'
+    if tool_count >= 2 and commercial_count <= 1 and source in {'advanced_search','hn_algolia','arxiv'}:
+        return 'tool_word_stack'
+    if source in {'advanced_search','hn_algolia','arxiv'}:
+        if not has_tool:
+            return 'missing_tool_intent'
+        if not has_commercial:
+            return 'missing_commercial_modifier'
+        root=(evidence or {}).get('root') or (evidence or {}).get('seed') or ''
+        root_terms=set(normalize_keyword(root).split()) if root else set()
+        if root_terms and not (terms & root_terms):
+            return 'root_mismatch'
+    # Generic task words alone create endless duplicate pseudo-opportunities.
+    generic_tools={'calculator','template','generator','tool','software','app'}
+    if terms and terms.issubset(generic_tools | NOISE_TERMS):
+        return 'generic_tool_only'
     return ''
 
 def clean_candidate_pool(db:Session, limit:int=1000)->dict:
@@ -221,7 +260,7 @@ def upsert_candidate(db:Session, keyword:str, source:str, source_url:str='', sou
     evidence=evidence or {}
     evidence.setdefault('url', source_url or '')
     evidence.setdefault('source_domain', source_domain or domain_of(source_url or ''))
-    reason=candidate_noise_reason(kw, evidence)
+    reason=candidate_noise_reason(kw, evidence) or candidate_quality_reject_reason(kw, source, evidence)
     if reason:
         # Store rejected evidence for observability, but never let obvious source
         # noise enter the importable candidate pool.
@@ -234,6 +273,8 @@ def upsert_candidate(db:Session, keyword:str, source:str, source_url:str='', sou
     computed_score=round(max(0.0, min(1.0, score_candidate(kw, source, evidence, score) * collector_source_multiplier(db, source))), 3)
     q=db.query(models.CandidateKeyword).filter_by(keyword=kw, source=source, source_url=source_url or '').first()
     if q:
+        if q.status != 'new':
+            return None
         q.score=max(q.score, computed_score)
         q.evidence_json=json.dumps({**(json.loads(q.evidence_json or '{}') if q.evidence_json else {}), **(evidence or {})}, ensure_ascii=False)
         db.merge(q); return q
@@ -306,7 +347,7 @@ def run_sitemap_watcher(db:Session, domains:list[str], max_urls_per_domain=80, o
     db.commit()
     return {'ok':True,'source':'sitemap','domains':len(domains),'urls_seen':total,'new_urls':new_urls,'old_urls':old_urls,'saved':imported,'only_new':only_new,'errors':errors[:20]}
 
-def suggest_queries(seed:str)->list[dict]:
+def suggest_queries(seed:str, timeout:float=5)->list[dict]:
     out=[]
     seed=seed.strip()
     if not seed: return out
@@ -316,7 +357,7 @@ def suggest_queries(seed:str)->list[dict]:
     ]
     for source,url,params in endpoints:
         try:
-            r=requests.get(url, params=params, headers={'User-Agent':'Mozilla/5.0'}, timeout=12)
+            r=requests.get(url, params=params, headers={'User-Agent':'Mozilla/5.0'}, timeout=timeout)
             r.raise_for_status(); data=r.json()
             if source=='duckduckgo':
                 for x in data: out.append({'keyword':x.get('phrase') or x.get('word') or '', 'source':source})
@@ -331,15 +372,23 @@ def suggest_queries(seed:str)->list[dict]:
             seen.add(kw); clean.append({'keyword':kw,'source':x['source']})
     return clean[:50]
 
-def run_suggest_collector(db:Session, seeds:list[str])->dict:
-    saved=0; seen=0
+def run_suggest_collector(db:Session, seeds:list[str], max_seconds:int|None=None)->dict:
+    try:
+        max_seconds=int(max_seconds if max_seconds is not None else (services.setting(db,'COLLECTOR_SUGGEST_MAX_SECONDS') or '20'))
+    except Exception:
+        max_seconds=20
+    started=time.monotonic()
+    saved=0; seen=0; errors=[]
     for seed in seeds:
-        for item in suggest_queries(seed):
+        if time.monotonic() - started > max_seconds:
+            errors.append({'seed':seed,'error':f'time_budget_exceeded>{max_seconds}s'})
+            break
+        for item in suggest_queries(seed, timeout=4):
             seen+=1
             row=upsert_candidate(db, item['keyword'], item['source'], '', '', '词找词', {'seed':seed,'provider':item['source']}, 0.55)
             if row: saved+=1
     db.commit()
-    return {'ok':True,'source':'suggest','seeds':len(seeds),'candidates_seen':seen,'saved':saved}
+    return {'ok':True,'source':'suggest','seeds':len(seeds),'candidates_seen':seen,'saved':saved,'errors':errors[:20]}
 
 def import_candidates_to_keywords(db:Session, limit:int=30)->dict:
     # Clean first so the import step receives one representative per canonical keyword.
@@ -474,23 +523,35 @@ def run_collector_autopilot(db:Session, limit:int=24, import_limit:int=12)->dict
         return {'enabled':False,'skipped':'COLLECTOR_AUTO_ENABLED=false','summary':collector_pool_summary(db)}
     seeds=_split_setting_list(services.setting(db,'COLLECTOR_AUTO_SEEDS'))
     domains=_split_setting_list(services.setting(db,'COLLECTOR_AUTO_DOMAINS'))
+    try:
+        max_seconds=int(services.setting(db,'COLLECTOR_AUTOPILOT_MAX_SECONDS') or '120')
+    except Exception:
+        max_seconds=120
+    started=time.monotonic()
+    def budget_left() -> bool:
+        return time.monotonic() - started <= max_seconds
     plan=collector_budget_plan(db, limit=limit)
     results=[]
     errors=[]
     active={row['key']:row for row in plan.get('active',[])}
-    if seeds and 'suggest' in active:
-        try: results.append(run_suggest_collector(db, seeds[:active['suggest']['item_limit']]))
+    if seeds and 'suggest' in active and budget_left():
+        remaining=max(5, int(max_seconds - (time.monotonic() - started)))
+        try: results.append(run_suggest_collector(db, seeds[:active['suggest']['item_limit']], max_seconds=min(remaining, int(services.setting(db,'COLLECTOR_SUGGEST_MAX_SECONDS') or '20'))))
         except Exception as e: errors.append({'collector':'suggest','error':str(e)[:180]})
-    if domains and 'sitemap' in active:
+    if domains and 'sitemap' in active and budget_left():
         try: results.append(run_sitemap_watcher(db, domains[:active['sitemap']['item_limit']], max_urls_per_domain=active['sitemap'].get('max_urls_per_domain', max(20,min(120,limit*4))), only_new=True))
         except Exception as e: errors.append({'collector':'sitemap','error':str(e)[:180]})
-    if seeds and 'advanced_search' in active:
+    if seeds and 'advanced_search' in active and budget_left():
         roots=seeds[:active['advanced_search']['item_limit']]
-        try: results.append(run_advanced_search_collector(db, roots, domains[:6], days=45, limit_per_query=active['advanced_search'].get('limit_per_query',5)))
+        remaining=max(5, int(max_seconds - (time.monotonic() - started)))
+        try: results.append(run_advanced_search_collector(db, roots, domains[:6], days=45, limit_per_query=active['advanced_search'].get('limit_per_query',5), max_seconds=min(remaining, int(services.setting(db,'COLLECTOR_ADVANCED_MAX_SECONDS') or '90'))))
         except Exception as e: errors.append({'collector':'advanced_search','error':str(e)[:180]})
-    if seeds and 'source_radar' in active:
-        try: results.append(run_source_radar(db, seeds[:active['source_radar']['item_limit']], limit_per_seed=active['source_radar'].get('limit_per_seed',6)))
+    if seeds and 'source_radar' in active and budget_left():
+        remaining=max(5, int(max_seconds - (time.monotonic() - started)))
+        try: results.append(run_source_radar(db, seeds[:active['source_radar']['item_limit']], limit_per_seed=active['source_radar'].get('limit_per_seed',6), max_seconds=min(remaining, int(services.setting(db,'COLLECTOR_SOURCE_RADAR_MAX_SECONDS') or '45'))))
         except Exception as e: errors.append({'collector':'source_radar','error':str(e)[:180]})
+    if not budget_left():
+        errors.append({'collector':'autopilot','error':f'time_budget_exceeded>{max_seconds}s'})
     clean=clean_candidate_pool(db, limit=max(200, limit*10))
     imported=import_candidates_to_keywords(db, limit=max(1, import_limit))
     return {'enabled':True,'seeds':seeds,'domains':domains,'budget_plan':plan,'results':results,'errors':errors[:20],'clean':clean,'import':imported,'summary':collector_pool_summary(db)}
@@ -559,16 +620,26 @@ def run_advanced_search_collector(db:Session, roots:list[str], domains:list[str]
     db.commit()
     return {'ok':True,'source':'advanced_search','queries':len(queries),'providers':providers,'candidates_seen':seen,'saved':saved,'errors':errors[:20]}
 
-def run_source_radar(db:Session, seeds:list[str], limit_per_seed:int=10)->dict:
+def run_source_radar(db:Session, seeds:list[str], limit_per_seed:int=10, max_seconds:int|None=None)->dict:
     """Article method: trace demand to early information sources.
 
     Free-first sources: Hacker News Algolia and arXiv. GitHub/HF can join later
     through the same candidate pool.
     """
+    try:
+        max_seconds = int(max_seconds if max_seconds is not None else (services.setting(db,'COLLECTOR_SOURCE_RADAR_MAX_SECONDS') or '45'))
+    except Exception:
+        max_seconds = 45
+    started=time.monotonic()
     saved=0; seen=0; errors=[]
     for seed in [s.strip() for s in seeds if s.strip()]:
+        if time.monotonic() - started > max_seconds:
+            errors.append({'source':'source_radar','seed':seed,'error':f'time_budget_exceeded>{max_seconds}s'})
+            break
         # HN Algolia
         try:
+            if time.monotonic() - started > max_seconds:
+                break
             r=requests.get('https://hn.algolia.com/api/v1/search_by_date', params={'query':seed,'tags':'story','hitsPerPage':limit_per_seed}, timeout=12)
             r.raise_for_status(); data=r.json()
             for h in data.get('hits',[])[:limit_per_seed]:
@@ -583,6 +654,8 @@ def run_source_radar(db:Session, seeds:list[str], limit_per_seed:int=10)->dict:
             errors.append({'source':'hn','seed':seed,'error':str(e)[:180]})
         # arXiv Atom feed (no key)
         try:
+            if time.monotonic() - started > max_seconds:
+                break
             r=requests.get('http://export.arxiv.org/api/query', params={'search_query':f'all:{seed}','sortBy':'submittedDate','sortOrder':'descending','max_results':limit_per_seed}, timeout=15)
             r.raise_for_status(); text=r.text
             titles=re.findall(r'<title>\s*([^<]+?)\s*</title>', text, flags=re.I|re.S)
