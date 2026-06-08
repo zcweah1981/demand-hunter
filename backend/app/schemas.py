@@ -119,6 +119,15 @@ class ApiKeyEntryIn(BaseModel):
     type_id: str
     values: dict[str, Any]
 
+class ApiKeyEntryUpdateIn(BaseModel):
+    type_id: str
+    index: int
+    values: dict[str, Any]
+
+class ApiKeyEntryRemoveIn(BaseModel):
+    type_id: str
+    index: int
+
 class CollectorSitemapIn(BaseModel):
     domains: list[str]
     max_urls_per_domain: int = 80

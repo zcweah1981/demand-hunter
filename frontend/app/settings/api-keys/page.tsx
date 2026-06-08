@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import {api} from '../../../lib/api'
 import {SettingsHeader} from '../../../components/SettingsHeader'
+import {ApiKeyActions} from '../../../components/ApiKeyActions'
 
 function priceLabel(price:string){
  const map:any={free:'免费',free_quota:'免费额度',free_optional:'免费可选',free_limited:'免费但受限',paid_free_trial:'付费/试用',paid_limited:'付费/强限制',paid:'付费'}
@@ -39,7 +40,7 @@ export default async function Page(){
   </section>
 
   <section className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-950/70 shadow-xl shadow-black/10">
-   <div className="grid grid-cols-[1.5fr_0.9fr_0.8fr_0.7fr_1.4fr_90px] gap-3 border-b border-slate-800 bg-slate-900/70 px-5 py-3 text-xs font-bold uppercase tracking-wider text-slate-500">
+   <div className="grid grid-cols-[1.5fr_0.9fr_0.8fr_0.7fr_1.4fr_150px] gap-3 border-b border-slate-800 bg-slate-900/70 px-5 py-3 text-xs font-bold uppercase tracking-wider text-slate-500">
     <div>类型</div><div>费用</div><div>已保存</div><div>状态</div><div>Key 列表</div><div className="text-right">操作</div>
    </div>
    <div className="divide-y divide-slate-800">
@@ -47,7 +48,7 @@ export default async function Page(){
      const poolItems=t.pool?.items||[]
      const maskedItems=poolItems.length?poolItems:(t.items||[])
      const active=(data.available_providers||[]).includes(t.provider)
-     return <div key={t.id} className="grid grid-cols-[1.5fr_0.9fr_0.8fr_0.7fr_1.4fr_90px] items-center gap-3 px-5 py-4 text-sm hover:bg-slate-900/50">
+     return <div key={t.id} className="grid grid-cols-[1.5fr_0.9fr_0.8fr_0.7fr_1.4fr_150px] items-center gap-3 px-5 py-4 text-sm hover:bg-slate-900/50">
       <div>
        <div className="font-black text-slate-100">{t.title}</div>
        <div className="mt-1 text-xs text-slate-500">{t.category}</div>
@@ -60,7 +61,7 @@ export default async function Page(){
        {maskedItems.length?maskedItems.slice(0,5).map((it:any)=><div key={it.index} className="flex items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-900/60 px-2 py-1 font-mono text-xs text-slate-400"><span>{it.masked}</span>{it.stats&&<span className="font-sans text-[11px] text-slate-500">ok {it.stats?.ok||0} / fail {it.stats?.fail||0}</span>}</div>):<span className="text-xs text-slate-600">暂无 Key</span>}
        {maskedItems.length>5&&<div className="text-xs text-slate-600">还有 {maskedItems.length-5} 条...</div>}
       </div>
-      <div className="text-right"><Link className="btn-secondary no-underline" href={`/settings/api-keys/new?type=${t.id}`}>新增</Link></div>
+      <div className="space-y-2 text-right"><Link className="btn-secondary no-underline" href={`/settings/api-keys/new?type=${t.id}`}>新增</Link>{maskedItems.length?maskedItems.slice(0,5).map((it:any)=><ApiKeyActions key={it.index} typeId={t.id} index={it.index}/>):null}</div>
      </div>
     })}
    </div>

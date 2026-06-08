@@ -368,3 +368,40 @@ def api_key_add(payload: schemas.ApiKeyEntryIn, _: bool = Depends(require_auth),
     db.merge(row)
     db.commit()
     return api_key_type(payload.type_id, True, db)
+
+@router.post("/api-keys/update")
+def api_key_update(payload: schemas.ApiKeyEntryUpdateIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    t = services.api_key_type_by_id(payload.type_id)
+    if not t:
+        return {"ok": False, "error": "unknown type"}
+    value = services.format_api_key_entry(t, payload.values or {})
+    if not value:
+        return {"ok": False, "error": "empty credential"}
+    key = t["setting_key"]
+    row = db.get(models.Setting, key) or models.Setting(key=key, value="", secret=True)
+    values = _split_secret_values(row.value)
+    if not (0 <= payload.index < len(values)):
+        return {"ok": False, "error": "index out of range"}
+    values[payload.index] = value
+    row.value = "\n".join(values)
+    row.secret = True
+    db.merge(row)
+    db.commit()
+    return api_key_type(payload.type_id, True, db)
+
+@router.post("/api-keys/remove")
+def api_key_remove(payload: schemas.ApiKeyEntryRemoveIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    t = services.api_key_type_by_id(payload.type_id)
+    if not t:
+        return {"ok": False, "error": "unknown type"}
+    key = t["setting_key"]
+    row = db.get(models.Setting, key) or models.Setting(key=key, value="", secret=True)
+    values = _split_secret_values(row.value)
+    if not (0 <= payload.index < len(values)):
+        return {"ok": False, "error": "index out of range"}
+    values.pop(payload.index)
+    row.value = "\n".join(values)
+    row.secret = True
+    db.merge(row)
+    db.commit()
+    return api_key_type(payload.type_id, True, db)
