@@ -99,3 +99,15 @@ def autopilot_repairs(limit: int = 20, _: bool = Depends(require_auth), db: Sess
 @router.post("/repair/rollback")
 def autopilot_repair_rollback(payload: schemas.RepairRollbackIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     return services.rollback_repair_action(db, payload.repair_id)
+
+@router.post("/experiment/start")
+def autopilot_experiment_start(payload: schemas.RepairExperimentIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    services.init_defaults(db)
+    res = services.start_repair_experiment(db, payload.action, source=payload.source, value=payload.value, force_run=payload.force_run)
+    if res.get("ok") and payload.force_run:
+        res["run"] = start_run_thread(force=True)
+    return res
+
+@router.get("/experiments")
+def autopilot_experiments(limit: int = 20, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    return services.list_repair_experiments(db, limit=max(1, min(100, limit)))

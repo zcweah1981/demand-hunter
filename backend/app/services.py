@@ -1522,6 +1522,39 @@ def rollback_repair_action(db: Session, repair_id: int) -> dict:
     db.commit()
     return rollback_payload
 
+def start_repair_experiment(db: Session, action: str, source: str | None = None, value: str | None = None, force_run: bool = True) -> dict:
+    """Start a controlled one-change experiment.
+
+    The experiment itself is an audit wrapper around one safe repair action. A
+    background daily run can then evaluate that repair via the existing repair
+    effect mechanism.
+    """
+    repair=apply_repair_action(db, action, source=source, value=value, record=True)
+    if not repair.get("ok"):
+        return {"ok":False,"error":repair.get("error","repair failed"),"repair":repair}
+    payload={"ok":True,"kind":"repair_experiment","action":action,"source":source,"value":value,"repair_id":repair.get("repair_id"),"force_run":bool(force_run),"status":"repair_applied_run_pending" if force_run else "repair_applied"}
+    exp=models.RunHistory(kind="repair_experiment", status="running" if force_run else "ok", summary=json.dumps(payload, ensure_ascii=False), finished_at=None if force_run else datetime.utcnow())
+    db.add(exp); db.commit(); db.refresh(exp)
+    payload["experiment_id"]=exp.id
+    exp.summary=json.dumps(payload, ensure_ascii=False)
+    db.merge(exp); db.commit()
+    return {"ok":True,"experiment_id":exp.id,"repair":repair,"force_run":bool(force_run)}
+
+def list_repair_experiments(db: Session, limit: int = 20) -> list[dict]:
+    rows=db.query(models.RunHistory).filter(models.RunHistory.kind=="repair_experiment").order_by(models.RunHistory.started_at.desc()).limit(limit).all()
+    out=[]
+    for row in rows:
+        summary=_parse_run_summary(row)
+        repair_id=summary.get("repair_id")
+        repair_row=db.get(models.RunHistory, repair_id) if repair_id else None
+        effect=evaluate_repair_effect(db, repair_row) if repair_row else {"status":"no_repair"}
+        status=row.status
+        if row.status=="running" and effect.get("status") not in {"pending","no_baseline"}:
+            status="ok"
+            row.status="ok"; row.finished_at=datetime.utcnow(); db.merge(row); db.commit()
+        out.append({"id":row.id,"status":status,"started_at":row.started_at.isoformat() if row.started_at else None,"finished_at":row.finished_at.isoformat() if row.finished_at else None,"summary":summary,"effect":effect})
+    return out
+
 def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = None, seeds: list[str] | None = None) -> models.RunHistory:
     # recover stale runs from previous crashes/restarts so dashboard does not stay "running" forever
     stale = db.query(models.RunHistory).filter(models.RunHistory.status == "running").all()
