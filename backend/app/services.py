@@ -1251,25 +1251,37 @@ def _is_repair_in_cooldown(st: dict, cooldown_hours: float) -> tuple[bool, str |
     return False, None
 
 def rank_repair_actions(actions: list[dict], strategy_stats: dict | None = None) -> list[dict]:
+    ranked, _ = rank_repair_actions_with_meta(actions, strategy_stats)
+    return ranked
+
+def rank_repair_actions_with_meta(actions: list[dict], strategy_stats: dict | None = None) -> tuple[list[dict], dict]:
     strategy_stats=strategy_stats or {}
     cooldown_hours=_cooldown_hours_from_stats(strategy_stats)
-    out=[]; seen=set()
+    out=[]; seen=set(); meta={"total_candidates":0,"deduped_candidates":0,"hidden":0,"cooldown":0,"cooldown_until":None,"cooldown_hours":cooldown_hours}
     for a in actions:
+        meta["total_candidates"] += 1
         key=_repair_action_key(a)
         if key in seen:
             continue
         seen.add(key)
+        meta["deduped_candidates"] += 1
         st=strategy_stats.get(key) or strategy_stats.get(f"{a.get('action','')}:" ) or {}
         if st.get("hide"):
+            meta["hidden"] += 1
             continue
         in_cd, until = _is_repair_in_cooldown(st, cooldown_hours)
         if in_cd:
+            meta["cooldown"] += 1
+            if until and (not meta["cooldown_until"] or until < meta["cooldown_until"]):
+                meta["cooldown_until"] = until
             continue
         enriched={**a,"strategy":st or None,"priority":float(st.get("priority",1.0) if st else 1.0)}
         if st:
             enriched["label"] = f"{a.get('label')} · p{enriched['priority']:.1f}"
         out.append(enriched)
-    return sorted(out, key=lambda x:x.get("priority",1.0), reverse=True)
+    ranked=sorted(out, key=lambda x:x.get("priority",1.0), reverse=True)
+    meta["available"] = len(ranked)
+    return ranked, meta
 
 def diagnose_quality_report(report: dict, db: Session | None = None) -> dict:
     """Heuristic diagnosis for one run's quality funnel.
@@ -1343,8 +1355,16 @@ def diagnose_quality_report(report: dict, db: Session | None = None) -> dict:
     if db is not None:
         try: strategy_stats["__cooldown_hours"] = float(setting(db, "REPAIR_EXPERIMENT_COOLDOWN_HOURS") or "24")
         except Exception: strategy_stats["__cooldown_hours"] = 24
-    ranked_repairs=rank_repair_actions(repair_actions, strategy_stats)
-    return {"severity":severity,"issues":issues,"recommended_actions":actions[:6],"repair_actions":ranked_repairs[:6],"recommended_experiment":ranked_repairs[0] if ranked_repairs else None,"repair_strategy_stats":strategy_stats,"next_action":next_action}
+    ranked_repairs, repair_meta=rank_repair_actions_with_meta(repair_actions, strategy_stats)
+    fallback = None
+    if repair_actions and not ranked_repairs:
+        if repair_meta.get("cooldown") and repair_meta.get("cooldown") >= repair_meta.get("deduped_candidates",0) - repair_meta.get("hidden",0):
+            fallback = f"暂无新的推荐实验：候选修复动作都在 {repair_meta.get('cooldown_hours')} 小时冷却期内。"
+        elif repair_meta.get("hidden"):
+            fallback = "暂无新的推荐实验：候选修复动作历史效果较差，已被暂时隐藏。"
+        else:
+            fallback = "暂无新的推荐实验；可以等待下一轮数据或展开其它修复动作手动处理。"
+    return {"severity":severity,"issues":issues,"recommended_actions":actions[:6],"repair_actions":ranked_repairs[:6],"recommended_experiment":ranked_repairs[0] if ranked_repairs else None,"repair_recommendation_meta":repair_meta,"repair_recommendation_fallback":fallback,"repair_strategy_stats":strategy_stats,"next_action":next_action}
 
 def _setting_list(db: Session, key: str) -> list[str]:
     return [x.strip() for x in re.split(r"[\n,]+", setting(db, key) or "") if x.strip()]
