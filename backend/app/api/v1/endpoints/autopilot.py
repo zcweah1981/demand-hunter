@@ -45,6 +45,8 @@ def autopilot_status(_: bool = Depends(require_auth), db: Session = Depends(get_
     ready = all(x["ok"] for x in ready_checks)
     if running:
         next_action = "系统正在跑，等结果生成后只需要复核 Watch/Action 卡。"
+    elif last and isinstance(last.get("summary"), dict) and last["summary"].get("diagnosis", {}).get("next_action"):
+        next_action = last["summary"]["diagnosis"]["next_action"]
     elif not ready:
         next_action = "点击“开启自动猎手”，我会补齐默认自动化配置并启动一轮。"
     elif pending_review:
@@ -64,6 +66,7 @@ def autopilot_status(_: bool = Depends(require_auth), db: Session = Depends(get_
         "domains": domains,
         "counts": {"discoveries": discoveries, "cards": cards, "pending_review": pending_review, "action": actions, "watch": watch},
         "collectors": collector_summary,
+        "diagnosis": last.get("summary", {}).get("diagnosis") if last and isinstance(last.get("summary"), dict) else None,
         "auto": auto,
     }
 

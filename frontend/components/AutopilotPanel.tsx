@@ -16,6 +16,7 @@ type AutopilotStatus = {
   providers:string[]
   seeds:string[]
   domains:string[]
+  diagnosis?:{severity?:string;issues?:any[];recommended_actions?:string[];next_action?:string}|null
   collectors?:{by_status?:Record<string,number>;by_source?:Record<string,number>;source_weights?:Record<string,any>;budget_plan?:{active?:any[];paused?:any[]};top_new?:any[]}
 }
 
@@ -33,6 +34,8 @@ export function AutopilotPanel({status}:{status:AutopilotStatus}){
   const collectorTop=status.collectors?.top_new||[]
   const collectorWeights=status.collectors?.source_weights||{}
   const budgetPlan=status.collectors?.budget_plan||{}
+  const diagnosis=status.diagnosis
+  const severityClass=diagnosis?.severity==='critical'?'border-rose-500/40 bg-rose-500/10 text-rose-100':diagnosis?.severity==='warning'?'border-amber-500/40 bg-amber-500/10 text-amber-100':'border-slate-800 bg-slate-900/60 text-slate-200'
 
   async function call(path:string){
     setError('')
@@ -65,6 +68,8 @@ export function AutopilotPanel({status}:{status:AutopilotStatus}){
       <div className="mb-2 h-2 overflow-hidden rounded-full bg-slate-800"><div className="h-full rounded-full bg-blue-500" style={{width:`${progress}%`}} /></div>
       <div className="flex flex-wrap justify-between gap-2 text-xs text-slate-500"><span>#{last.id} · {last.status}</span><span>{progress}%</span></div>
     </div>}
+
+    {diagnosis&&<div className={`mt-4 rounded-2xl border p-4 ${severityClass}`}><div className="flex flex-wrap justify-between gap-3"><div><div className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">自动诊断</div><b className="mt-1 block">{diagnosis.issues?.[0]?.title||'诊断完成'}</b><p className="mt-1 text-sm opacity-90">{diagnosis.next_action}</p></div><span className="badge">{diagnosis.severity}</span></div>{!!diagnosis.issues?.length&&<div className="mt-3 flex flex-wrap gap-2">{diagnosis.issues.slice(0,3).map((i:any)=><span key={i.code} className="rounded-lg bg-slate-950/70 px-2 py-1 text-xs">{i.code}</span>)}</div>}</div>}
 
     <div className="mt-5 grid gap-3 md:grid-cols-3">
       <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"><div className="kpi-label">待复核</div><b className="text-3xl text-amber-300">{status.counts.pending_review}</b></div>

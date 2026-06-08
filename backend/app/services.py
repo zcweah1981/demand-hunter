@@ -1200,6 +1200,66 @@ def select_collector_keywords(db: Session, limit: int = 8) -> list[models.Keywor
         .all()
     )
 
+def diagnose_quality_report(report: dict) -> dict:
+    """Heuristic diagnosis for one run's quality funnel.
+
+    Keep this deterministic: it should explain where the pipeline leaked without
+    requiring an LLM call or inventing hidden causes.
+    """
+    f = report.get("funnel") or {}
+    collector = report.get("collector") or {}
+    issues=[]; actions=[]
+    def n(key):
+        try: return int(f.get(key) or 0)
+        except Exception: return 0
+    seen=n("collector_seen"); saved=n("collector_saved"); scanned=n("clean_scanned")
+    clean_rejected=n("clean_rejected"); imported=n("imported_keywords")
+    processed=n("keywords_processed"); serp_rejected=n("serp_rejected"); cards=n("cards"); action=n("action"); watch=n("watch")
+    errors=[]
+    for row in collector.get("by_source") or []:
+        if int(row.get("errors") or 0) > 0:
+            errors.append(row)
+    if errors:
+        issues.append({"severity":"warning","code":"collector_errors","title":"部分采集器有错误","detail":f"{len(errors)} 个 collector/source 报错。"})
+        actions.append("先检查 Collector 产出表里的 errors；如果集中在付费/外部 API，降低该 source 权重或检查 key/quota。")
+    if seen == 0:
+        issues.append({"severity":"critical","code":"no_collector_input","title":"采集层没有输入","detail":"collector_seen=0，本轮没有拿到任何候选原料。"})
+        actions.append("检查 seeds/domains 是否为空、搜索源是否可用；先运行 Settings 里的搜索测试。")
+    elif saved / max(1, seen) < 0.08:
+        issues.append({"severity":"warning","code":"low_candidate_save_rate","title":"采集→候选保存率低","detail":f"saved/seen={saved}/{seen}。"})
+        actions.append("当前采集结果大多无法转成关键词；增加更商业化 seeds，或降低低产 collector 预算。")
+    if scanned and clean_rejected / max(1, scanned) > 0.65:
+        issues.append({"severity":"warning","code":"high_clean_reject_rate","title":"清洗拒绝率过高","detail":f"clean_rejected/scanned={clean_rejected}/{scanned}。"})
+        actions.append("候选噪音偏多；查看 duplicate/noise 原因，减少 generic seeds（best/free/online 类）并提高强商业词比例。")
+    if saved > 0 and imported == 0:
+        issues.append({"severity":"critical","code":"no_keyword_import","title":"候选没有导入关键词流","detail":"有候选保存，但 imported_keywords=0。"})
+        actions.append("检查候选是否都被去重或已存在；如果都已存在，应提高 recheck 预算或拓展新 seeds。")
+    if processed > 0 and serp_rejected / max(1, processed) > 0.7:
+        top_reason = ""
+        reasons = report.get("serp_gate_reasons") or {}
+        if reasons:
+            top_reason = sorted(reasons.items(), key=lambda x:x[1], reverse=True)[0][0]
+        issues.append({"severity":"critical","code":"high_serp_reject_rate","title":"SERP Gate 拒绝率过高","detail":f"serp_rejected/processed={serp_rejected}/{processed}" + (f"，主因 {top_reason}" if top_reason else "。")})
+        if top_reason == "no_commercial_serp_signal":
+            actions.append("关键词商业意图不足；优先加入 calculator/template/software/pricing/integration 等商业后缀，并降低泛信息源预算。")
+        elif top_reason == "informational_or_dictionary_serp":
+            actions.append("搜索结果偏定义/百科；改写 seed 为具体工作流或垂直行业任务，避免单泛词。")
+        else:
+            actions.append("查看 SERP Gate examples；如果明显误杀，调整 query variants 或接入更稳定 SERP provider。")
+    if processed > 0 and cards == 0 and serp_rejected == 0:
+        issues.append({"severity":"warning","code":"no_cards_without_serp_reject","title":"关键词处理了但没有卡片","detail":"SERP 没被拒绝，但 cards=0。"})
+        actions.append("检查 make_card / LLM 配置与日志；这通常不是采集问题。")
+    if cards > 0 and action == 0 and watch == 0:
+        issues.append({"severity":"info","code":"cards_low_quality","title":"生成了卡片但没有 Action/Watch","detail":f"cards={cards}，Action/Watch=0。"})
+        actions.append("说明机会质量不足；把 Reject 来源反馈回 collector，系统会自动降权。")
+    if not issues:
+        issues.append({"severity":"ok","code":"healthy","title":"本轮漏斗健康","detail":"未发现明显阻断点。"})
+        actions.append("继续复核 Watch/Action 卡；反馈会自动影响下一轮采集预算。")
+    severity_order={"ok":0,"info":1,"warning":2,"critical":3}
+    severity=max((i["severity"] for i in issues), key=lambda x: severity_order.get(x,0))
+    next_action=actions[0] if actions else "继续观察下一轮。"
+    return {"severity":severity,"issues":issues,"recommended_actions":actions[:6],"next_action":next_action}
+
 def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = None, seeds: list[str] | None = None) -> models.RunHistory:
     # recover stale runs from previous crashes/restarts so dashboard does not stay "running" forever
     stale = db.query(models.RunHistory).filter(models.RunHistory.status == "running").all()
@@ -1333,6 +1393,8 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
             "card_by_source": card_by_source,
             "processed_examples": processed[:12],
         }
+        diagnosis=diagnose_quality_report(quality_report)
+        quality_report["diagnosis"] = diagnosis
         summary={
             "phase":"finished",
             "keywords":len(kws),
@@ -1348,6 +1410,7 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
             "collector_keywords": sum(1 for k in kws if k.source.startswith("collector:")),
             "collector_summary": collector_summary,
             "quality_report": quality_report,
+            "diagnosis": diagnosis,
             "skipped_low_quality_serp": len(skipped),
             "skipped_examples": skipped[:5],
             "rewrite_recovery": rewrite_summary,
