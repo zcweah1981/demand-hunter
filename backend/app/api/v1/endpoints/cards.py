@@ -1,5 +1,6 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from app import models, schemas, services
 from app.api.deps import obj
@@ -38,3 +39,11 @@ def feedback(card_id: int, payload: schemas.FeedbackIn, _: bool = Depends(requir
     if not card:
         raise HTTPException(404, "card not found")
     return obj(services.apply_feedback(db, card, payload.label, payload.note))
+
+@router.get("/{card_id}/markdown")
+def card_markdown(card_id: int, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    try:
+        path = services.export_card_markdown(db, card_id)
+    except ValueError:
+        raise HTTPException(404, "card not found")
+    return FileResponse(path, media_type="text/markdown; charset=utf-8", filename=f"opportunity-card-{card_id}.md")

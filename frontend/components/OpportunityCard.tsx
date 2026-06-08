@@ -1,4 +1,4 @@
-import {Feedback} from './Actions'
+import {ExportCardMarkdownButton, Feedback} from './Actions'
 import {I18nText} from './I18nText'
 
 export function verdictClass(v:string){return v==='Action'?'badge badge-action':v==='Watch'?'badge badge-watch':'badge badge-reject'}
@@ -21,6 +21,7 @@ export function OpportunityCardView({card,compact=false,showFeedback=true,onFeed
    <div className="flex shrink-0 flex-col items-end gap-2">
     <span className={verdictClass(card.verdict)}>{verdictLabel(card.verdict)} · {card.score}</span>
     {business?.go_no_go&&<span className="badge badge-watch">商业判断：{business.go_no_go} · {Math.round((business.commercial_score||0)*100)}</span>}
+    {!compact&&<ExportCardMarkdownButton id={card.id}/>} 
    </div>
   </div>
 

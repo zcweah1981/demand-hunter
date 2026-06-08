@@ -2034,3 +2034,69 @@ def export_action_execution_markdown(db: Session, min_score: int | None = None) 
     path = out_dir / "action_execution_list.md"
     path.write_text("\n".join(lines), encoding="utf-8")
     return str(path)
+
+def export_card_markdown(db: Session, card_id: int) -> str:
+    from pathlib import Path
+    out_dir = ROOT / "output" / "cards"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    c = db.get(models.OpportunityCard, card_id)
+    if not c:
+        raise ValueError("card not found")
+    kw = db.get(models.Keyword, c.keyword_id)
+    try: evidence = json.loads(c.evidence_json or "[]")
+    except Exception: evidence = []
+    business = next((e for e in evidence if isinstance(e, dict) and e.get("type") == "business"), {})
+    web_evidence = [e for e in evidence if isinstance(e, dict) and e.get("type") != "business"]
+    try: risks = json.loads(c.risks or "[]")
+    except Exception: risks = []
+    lines = [
+        f"# Opportunity Card: {c.title}", "",
+        "## Summary", "",
+        f"- Card ID: {c.id}",
+        f"- Verdict: {c.verdict}",
+        f"- Score: {c.score}",
+        f"- Keyword: {kw.query if kw else '-'}",
+        f"- Keyword Source: {kw.source if kw else '-'}",
+        f"- Intent: {kw.intent if kw else '-'}",
+        f"- Monetization Type: {business.get('business_type') or c.monetization_type or '-'}",
+        f"- Created At: {c.created_at}", "",
+        "## Scores", "",
+        f"- Demand: {c.demand_score}",
+        f"- SERP Gap: {c.serp_gap_score}",
+        f"- Competitor Weakness: {c.competitor_weakness_score}",
+        f"- MVP Feasibility: {c.mvp_score}",
+        f"- Monetization: {c.monetization_score}", "",
+    ]
+    if business:
+        lines += [
+            "## Commercialization Brief", "",
+            f"- Go/No-Go: {business.get('go_no_go','-')}",
+            f"- Commercial Score: {business.get('commercial_score','-')}",
+            f"- Keyword Type: {business.get('keyword_type','-')}",
+            f"- SEO Fit: {business.get('seo_fit','-')}",
+            "", "### ICP", "", business.get("icp") or "-",
+            "", "### Pain / Pay Trigger", "", business.get("pay_trigger") or "-",
+            "", "### Commercial MVP", "", business.get("commercial_mvp") or c.mvp_plan or "-",
+            "", "### Revenue Path", "", business.get("revenue_path") or c.monetization_type or "-",
+            "", "### Pricing", "", business.get("pricing") or "-",
+            "", "### GTM", "", business.get("gtm") or "-",
+            "", "### Wedge", "", business.get("wedge") or "-",
+            "", "### Key Assumption", "", business.get("key_assumption") or "-",
+            "", "### Verdict Reason", "", business.get("verdict_reason") or "-",
+        ]
+        if business.get("first_sale_test"):
+            lines += ["", "### First Sale Test", ""] + [f"{i+1}. {x}" for i,x in enumerate(business.get("first_sale_test") or [])]
+        if business.get("missing_evidence"):
+            lines += ["", "### Missing Evidence", ""] + [f"- {x}" for x in (business.get("missing_evidence") or [])]
+    lines += ["", "## MVP Plan", "", c.mvp_plan or "-"]
+    if risks:
+        lines += ["", "## Risks", ""] + [f"- {r}" for r in risks]
+    if web_evidence:
+        lines += ["", "## Evidence Links", ""]
+        for e in web_evidence:
+            lines.append(f"- [{e.get('type','web')}] {e.get('title','')} — {e.get('url','')}")
+    lines += ["", "## Raw Evidence JSON", "", "```json", json.dumps(evidence, ensure_ascii=False, indent=2), "```", ""]
+    safe = re.sub(r"[^a-zA-Z0-9_-]+", "-", c.title.lower()).strip("-")[:80] or f"card-{c.id}"
+    path = out_dir / f"card-{c.id}-{safe}.md"
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return str(path)
