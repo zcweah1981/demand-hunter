@@ -1200,7 +1200,54 @@ def select_collector_keywords(db: Session, limit: int = 8) -> list[models.Keywor
         .all()
     )
 
-def diagnose_quality_report(report: dict) -> dict:
+def _repair_action_key(action: dict) -> str:
+    return f"{action.get('action','')}:{action.get('source') or ''}"
+
+def repair_strategy_stats(db: Session, limit: int = 80) -> dict:
+    rows=db.query(models.RunHistory).filter(models.RunHistory.kind=="repair").order_by(models.RunHistory.started_at.desc()).limit(limit).all()
+    stats={}
+    for row in rows:
+        summary=_parse_run_summary(row)
+        key=f"{summary.get('action','')}:{summary.get('source') or ''}"
+        if not summary.get("action"):
+            continue
+        entry=stats.setdefault(key,{"action":summary.get("action"),"source":summary.get("source"),"runs":0,"improved":0,"neutral":0,"regressed":0,"rolled_back":0,"pending":0,"delta_sum":0.0,"priority":1.0})
+        effect=evaluate_repair_effect(db,row)
+        status=effect.get("status") or "unknown"
+        entry["runs"] += 1
+        if status in entry:
+            entry[status] += 1
+        if status == "rolled_back":
+            entry["rolled_back"] += 1
+        try: entry["delta_sum"] += float(effect.get("delta") or 0)
+        except Exception: pass
+    for key,entry in stats.items():
+        completed=max(1, entry["improved"]+entry["neutral"]+entry["regressed"])
+        avg_delta=entry["delta_sum"]/completed
+        priority=1.0 + entry["improved"]*0.25 - entry["regressed"]*0.35 - entry["rolled_back"]*0.45 + max(-0.4, min(0.4, avg_delta/25))
+        entry["avg_delta"]=round(avg_delta,2)
+        entry["priority"]=round(max(0.1,min(2.5,priority)),2)
+        entry["hide"]=entry["regressed"]>=2 and entry["improved"]==0
+    return stats
+
+def rank_repair_actions(actions: list[dict], strategy_stats: dict | None = None) -> list[dict]:
+    strategy_stats=strategy_stats or {}
+    out=[]; seen=set()
+    for a in actions:
+        key=_repair_action_key(a)
+        if key in seen:
+            continue
+        seen.add(key)
+        st=strategy_stats.get(key) or strategy_stats.get(f"{a.get('action','')}:" ) or {}
+        if st.get("hide"):
+            continue
+        enriched={**a,"strategy":st or None,"priority":float(st.get("priority",1.0) if st else 1.0)}
+        if st:
+            enriched["label"] = f"{a.get('label')} · p{enriched['priority']:.1f}"
+        out.append(enriched)
+    return sorted(out, key=lambda x:x.get("priority",1.0), reverse=True)
+
+def diagnose_quality_report(report: dict, db: Session | None = None) -> dict:
     """Heuristic diagnosis for one run's quality funnel.
 
     Keep this deterministic: it should explain where the pipeline leaked without
@@ -1268,7 +1315,9 @@ def diagnose_quality_report(report: dict) -> dict:
     severity_order={"ok":0,"info":1,"warning":2,"critical":3}
     severity=max((i["severity"] for i in issues), key=lambda x: severity_order.get(x,0))
     next_action=actions[0] if actions else "继续观察下一轮。"
-    return {"severity":severity,"issues":issues,"recommended_actions":actions[:6],"repair_actions":repair_actions[:6],"next_action":next_action}
+    strategy_stats=repair_strategy_stats(db) if db is not None else {}
+    ranked_repairs=rank_repair_actions(repair_actions, strategy_stats)
+    return {"severity":severity,"issues":issues,"recommended_actions":actions[:6],"repair_actions":ranked_repairs[:6],"repair_strategy_stats":strategy_stats,"next_action":next_action}
 
 def _setting_list(db: Session, key: str) -> list[str]:
     return [x.strip() for x in re.split(r"[\n,]+", setting(db, key) or "") if x.strip()]
@@ -1433,10 +1482,15 @@ def apply_repair_action(db: Session, action: str, source: str | None = None, val
 def list_repair_audits(db: Session, limit: int = 20) -> list[dict]:
     rows=db.query(models.RunHistory).filter(models.RunHistory.kind=="repair").order_by(models.RunHistory.started_at.desc()).limit(limit).all()
     out=[]
+    strategy=repair_strategy_stats(db)
     for r in rows:
         try: summary=json.loads(r.summary or "{}")
         except Exception: summary={"raw":r.summary}
-        out.append({"id":r.id,"status":r.status,"started_at":r.started_at.isoformat() if r.started_at else None,"finished_at":r.finished_at.isoformat() if r.finished_at else None,"summary":summary,"effect":evaluate_repair_effect(db,r)})
+        effect=evaluate_repair_effect(db,r)
+        key=f"{summary.get('action','')}:{summary.get('source') or ''}"
+        if key in strategy:
+            effect["strategy"]=strategy[key]
+        out.append({"id":r.id,"status":r.status,"started_at":r.started_at.isoformat() if r.started_at else None,"finished_at":r.finished_at.isoformat() if r.finished_at else None,"summary":summary,"effect":effect})
     return out
 
 def rollback_repair_action(db: Session, repair_id: int) -> dict:
@@ -1601,7 +1655,7 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
             "card_by_source": card_by_source,
             "processed_examples": processed[:12],
         }
-        diagnosis=diagnose_quality_report(quality_report)
+        diagnosis=diagnose_quality_report(quality_report, db=db)
         quality_report["diagnosis"] = diagnosis
         summary={
             "phase":"finished",
