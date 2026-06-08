@@ -1548,16 +1548,29 @@ def list_repair_experiments(db: Session, limit: int = 20) -> list[dict]:
         repair_id=summary.get("repair_id")
         repair_row=db.get(models.RunHistory, repair_id) if repair_id else None
         effect=evaluate_repair_effect(db, repair_row) if repair_row else {"status":"no_repair"}
+        guard={"status":"pending","label":"等待评估","recommendation":effect.get("note") or "等待实验后的 daily run 完成。","rollback_recommended":False}
+        if effect.get("status") == "improved":
+            guard={"status":"keep","label":"建议保留","recommendation":"实验改善了漏斗，保留本次 repair。","rollback_recommended":False}
+        elif effect.get("status") == "regressed":
+            guard={"status":"rollback_recommended","label":"建议回滚","recommendation":"实验后质量下降，建议点击回滚对应 repair。","rollback_recommended":True}
+        elif effect.get("status") == "neutral":
+            guard={"status":"observe","label":"继续观察","recommendation":"效果不明显；可再观察一轮或手动回滚。","rollback_recommended":False}
+        elif effect.get("status") == "rolled_back":
+            guard={"status":"rolled_back","label":"已回滚","recommendation":"实验关联 repair 已回滚。","rollback_recommended":False}
+        effect["guard"]=guard
         status=row.status
         if row.status=="running" and effect.get("status") not in {"pending","no_baseline"}:
             status="ok"
-            row.status="ok"; row.finished_at=datetime.utcnow(); db.merge(row); db.commit()
+            summary["status"]=guard["status"]
+            summary["closed_at"]=datetime.utcnow().isoformat(timespec="seconds")
+            summary["guard"]=guard
+            row.status="ok"; row.finished_at=datetime.utcnow(); row.summary=json.dumps(summary, ensure_ascii=False); db.merge(row); db.commit()
         out.append({"id":row.id,"status":status,"started_at":row.started_at.isoformat() if row.started_at else None,"finished_at":row.finished_at.isoformat() if row.finished_at else None,"summary":summary,"effect":effect})
     return out
 
 def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = None, seeds: list[str] | None = None) -> models.RunHistory:
     # recover stale runs from previous crashes/restarts so dashboard does not stay "running" forever
-    stale = db.query(models.RunHistory).filter(models.RunHistory.status == "running").all()
+    stale = db.query(models.RunHistory).filter(models.RunHistory.status == "running", models.RunHistory.kind == "daily").all()
     for old in stale:
         old.status = "failed"
         old.summary = "stale running run recovered before new run"
