@@ -44,6 +44,9 @@ class RepairActionIn(BaseModel):
     source: str | None = None
     value: str | None = None
 
+class RepairRollbackIn(BaseModel):
+    repair_id: int
+
 class DiscoverySeedIn(BaseModel):
     seed: str
     depth: int | None = 2

@@ -1284,7 +1284,13 @@ def _save_setting_list(db: Session, key: str, values: list[str], sep: str = ",")
     row.secret=False
     db.merge(row)
 
-def apply_repair_action(db: Session, action: str, source: str | None = None, value: str | None = None) -> dict:
+def _record_repair_audit(db: Session, payload: dict) -> models.RunHistory:
+    row=models.RunHistory(kind="repair", status="ok", summary=json.dumps(payload, ensure_ascii=False), finished_at=datetime.utcnow())
+    db.add(row)
+    db.commit(); db.refresh(row)
+    return row
+
+def apply_repair_action(db: Session, action: str, source: str | None = None, value: str | None = None, record: bool = True) -> dict:
     """Apply safe, reversible internal repairs suggested by diagnosis."""
     action=(action or "").strip()
     before={}
@@ -1342,7 +1348,49 @@ def apply_repair_action(db: Session, action: str, source: str | None = None, val
         return {"ok":False,"error":"unknown repair action", "allowed":["add_commercial_seeds","prune_generic_seeds","increase_import_limit","enable_rewrite_recovery","lower_source_weight","pause_source"]}
     db.commit()
     after={k:setting(db,k) for k in changed}
-    return {"ok":True,"action":action,"source":source,"changed":changed,"before":before,"after":after}
+    result={"ok":True,"action":action,"source":source,"changed":changed,"before":before,"after":after,"rolled_back":False}
+    if record:
+        audit=_record_repair_audit(db, result)
+        result["repair_id"]=audit.id
+    return result
+
+def list_repair_audits(db: Session, limit: int = 20) -> list[dict]:
+    rows=db.query(models.RunHistory).filter(models.RunHistory.kind=="repair").order_by(models.RunHistory.started_at.desc()).limit(limit).all()
+    out=[]
+    for r in rows:
+        try: summary=json.loads(r.summary or "{}")
+        except Exception: summary={"raw":r.summary}
+        out.append({"id":r.id,"status":r.status,"started_at":r.started_at.isoformat() if r.started_at else None,"finished_at":r.finished_at.isoformat() if r.finished_at else None,"summary":summary})
+    return out
+
+def rollback_repair_action(db: Session, repair_id: int) -> dict:
+    row=db.get(models.RunHistory, repair_id)
+    if not row or row.kind != "repair":
+        return {"ok":False,"error":"repair audit not found"}
+    try: summary=json.loads(row.summary or "{}")
+    except Exception: return {"ok":False,"error":"invalid repair audit summary"}
+    if summary.get("rolled_back"):
+        return {"ok":False,"error":"repair already rolled back"}
+    before=summary.get("before") or {}
+    if not isinstance(before, dict) or not before:
+        return {"ok":False,"error":"repair has no rollback snapshot"}
+    restored={}
+    for key,value in before.items():
+        setting_row=db.get(models.Setting,key) or models.Setting(key=key, value="", secret=False)
+        setting_row.value=str(value or "")
+        setting_row.secret=False
+        db.merge(setting_row)
+        restored[key]=setting_row.value
+    summary["rolled_back"]=True
+    summary["rolled_back_at"]=datetime.utcnow().isoformat(timespec="seconds")
+    row.summary=json.dumps(summary, ensure_ascii=False)
+    row.status="rolled_back"
+    row.finished_at=datetime.utcnow()
+    db.merge(row)
+    rollback_payload={"ok":True,"action":"rollback_repair","repair_id":repair_id,"restored":restored}
+    db.add(models.RunHistory(kind="repair_rollback", status="ok", summary=json.dumps(rollback_payload, ensure_ascii=False), finished_at=datetime.utcnow()))
+    db.commit()
+    return rollback_payload
 
 def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = None, seeds: list[str] | None = None) -> models.RunHistory:
     # recover stale runs from previous crashes/restarts so dashboard does not stay "running" forever

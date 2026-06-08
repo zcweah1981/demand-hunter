@@ -91,3 +91,11 @@ def autopilot_start(_: bool = Depends(require_auth), db: Session = Depends(get_d
 def autopilot_repair(payload: schemas.RepairActionIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     services.init_defaults(db)
     return services.apply_repair_action(db, payload.action, source=payload.source, value=payload.value)
+
+@router.get("/repairs")
+def autopilot_repairs(limit: int = 20, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    return services.list_repair_audits(db, limit=max(1, min(100, limit)))
+
+@router.post("/repair/rollback")
+def autopilot_repair_rollback(payload: schemas.RepairRollbackIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    return services.rollback_repair_action(db, payload.repair_id)
