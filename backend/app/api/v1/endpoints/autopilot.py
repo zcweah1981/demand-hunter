@@ -1,7 +1,7 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from app import collectors, models, services
+from app import collectors, models, schemas, services
 from app.core.security import require_auth
 from app.database import get_db
 from app.main_runtime import start_run_thread
@@ -86,3 +86,8 @@ def autopilot_start(_: bool = Depends(require_auth), db: Session = Depends(get_d
     db.commit()
     started = start_run_thread(force=True)
     return {"ok": True, "started": started, "status": autopilot_status(True, db)}
+
+@router.post("/repair")
+def autopilot_repair(payload: schemas.RepairActionIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    services.init_defaults(db)
+    return services.apply_repair_action(db, payload.action, source=payload.source, value=payload.value)

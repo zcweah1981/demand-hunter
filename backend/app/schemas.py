@@ -39,6 +39,11 @@ class AuthLoginOut(BaseModel):
 class AutoTickIn(BaseModel):
     force: bool = False
 
+class RepairActionIn(BaseModel):
+    action: str
+    source: str | None = None
+    value: str | None = None
+
 class DiscoverySeedIn(BaseModel):
     seed: str
     depth: int | None = 2

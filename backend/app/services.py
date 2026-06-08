@@ -1208,7 +1208,7 @@ def diagnose_quality_report(report: dict) -> dict:
     """
     f = report.get("funnel") or {}
     collector = report.get("collector") or {}
-    issues=[]; actions=[]
+    issues=[]; actions=[]; repair_actions=[]
     def n(key):
         try: return int(f.get(key) or 0)
         except Exception: return 0
@@ -1222,18 +1222,25 @@ def diagnose_quality_report(report: dict) -> dict:
     if errors:
         issues.append({"severity":"warning","code":"collector_errors","title":"部分采集器有错误","detail":f"{len(errors)} 个 collector/source 报错。"})
         actions.append("先检查 Collector 产出表里的 errors；如果集中在付费/外部 API，降低该 source 权重或检查 key/quota。")
+        for row in errors[:3]:
+            if row.get("source"):
+                repair_actions.append({"id":f"lower_weight:{row['source']}","label":f"降低 {row['source']} 权重","action":"lower_source_weight","source":row.get("source"),"safety":"可逆：仅调整内部权重"})
     if seen == 0:
         issues.append({"severity":"critical","code":"no_collector_input","title":"采集层没有输入","detail":"collector_seen=0，本轮没有拿到任何候选原料。"})
         actions.append("检查 seeds/domains 是否为空、搜索源是否可用；先运行 Settings 里的搜索测试。")
+        repair_actions.append({"id":"add_commercial_seeds","label":"补充默认商业 seeds","action":"add_commercial_seeds","safety":"可逆：只追加内部 seeds"})
     elif saved / max(1, seen) < 0.08:
         issues.append({"severity":"warning","code":"low_candidate_save_rate","title":"采集→候选保存率低","detail":f"saved/seen={saved}/{seen}。"})
         actions.append("当前采集结果大多无法转成关键词；增加更商业化 seeds，或降低低产 collector 预算。")
+        repair_actions.append({"id":"add_commercial_seeds","label":"追加商业化 seed 模板","action":"add_commercial_seeds","safety":"可逆：只追加内部 seeds"})
     if scanned and clean_rejected / max(1, scanned) > 0.65:
         issues.append({"severity":"warning","code":"high_clean_reject_rate","title":"清洗拒绝率过高","detail":f"clean_rejected/scanned={clean_rejected}/{scanned}。"})
         actions.append("候选噪音偏多；查看 duplicate/noise 原因，减少 generic seeds（best/free/online 类）并提高强商业词比例。")
+        repair_actions.append({"id":"prune_generic_seeds","label":"移除泛噪音 seeds","action":"prune_generic_seeds","safety":"可逆：只改内部 seed 列表"})
     if saved > 0 and imported == 0:
         issues.append({"severity":"critical","code":"no_keyword_import","title":"候选没有导入关键词流","detail":"有候选保存，但 imported_keywords=0。"})
         actions.append("检查候选是否都被去重或已存在；如果都已存在，应提高 recheck 预算或拓展新 seeds。")
+        repair_actions.append({"id":"increase_import_limit","label":"提高候选导入额度","action":"increase_import_limit","safety":"可逆：只改内部 limit"})
     if processed > 0 and serp_rejected / max(1, processed) > 0.7:
         top_reason = ""
         reasons = report.get("serp_gate_reasons") or {}
@@ -1242,10 +1249,13 @@ def diagnose_quality_report(report: dict) -> dict:
         issues.append({"severity":"critical","code":"high_serp_reject_rate","title":"SERP Gate 拒绝率过高","detail":f"serp_rejected/processed={serp_rejected}/{processed}" + (f"，主因 {top_reason}" if top_reason else "。")})
         if top_reason == "no_commercial_serp_signal":
             actions.append("关键词商业意图不足；优先加入 calculator/template/software/pricing/integration 等商业后缀，并降低泛信息源预算。")
+            repair_actions.append({"id":"add_commercial_seeds","label":"补充商业意图 seeds","action":"add_commercial_seeds","safety":"可逆：只追加内部 seeds"})
         elif top_reason == "informational_or_dictionary_serp":
             actions.append("搜索结果偏定义/百科；改写 seed 为具体工作流或垂直行业任务，避免单泛词。")
+            repair_actions.append({"id":"prune_generic_seeds","label":"移除泛信息 seeds","action":"prune_generic_seeds","safety":"可逆：只改内部 seed 列表"})
         else:
             actions.append("查看 SERP Gate examples；如果明显误杀，调整 query variants 或接入更稳定 SERP provider。")
+        repair_actions.append({"id":"enable_rewrite_recovery","label":"开启 SERP Reject 改写恢复","action":"enable_rewrite_recovery","safety":"可逆：只改内部开关"})
     if processed > 0 and cards == 0 and serp_rejected == 0:
         issues.append({"severity":"warning","code":"no_cards_without_serp_reject","title":"关键词处理了但没有卡片","detail":"SERP 没被拒绝，但 cards=0。"})
         actions.append("检查 make_card / LLM 配置与日志；这通常不是采集问题。")
@@ -1258,7 +1268,81 @@ def diagnose_quality_report(report: dict) -> dict:
     severity_order={"ok":0,"info":1,"warning":2,"critical":3}
     severity=max((i["severity"] for i in issues), key=lambda x: severity_order.get(x,0))
     next_action=actions[0] if actions else "继续观察下一轮。"
-    return {"severity":severity,"issues":issues,"recommended_actions":actions[:6],"next_action":next_action}
+    return {"severity":severity,"issues":issues,"recommended_actions":actions[:6],"repair_actions":repair_actions[:6],"next_action":next_action}
+
+def _setting_list(db: Session, key: str) -> list[str]:
+    return [x.strip() for x in re.split(r"[\n,]+", setting(db, key) or "") if x.strip()]
+
+def _save_setting_list(db: Session, key: str, values: list[str], sep: str = ",") -> None:
+    row=db.get(models.Setting, key) or models.Setting(key=key, value="", secret=False)
+    seen=[]
+    for v in values:
+        v=(v or "").strip()
+        if v and v not in seen:
+            seen.append(v)
+    row.value=sep.join(seen[:100])
+    row.secret=False
+    db.merge(row)
+
+def apply_repair_action(db: Session, action: str, source: str | None = None, value: str | None = None) -> dict:
+    """Apply safe, reversible internal repairs suggested by diagnosis."""
+    action=(action or "").strip()
+    before={}
+    changed=[]
+    if action == "add_commercial_seeds":
+        key="COLLECTOR_AUTO_SEEDS"; before[key]=setting(db,key)
+        additions=[
+            "invoice late fee calculator", "shopify tax compliance app", "woocommerce return policy template",
+            "vendor compliance tracking software", "appointment reminder template", "hubspot data cleanup tool",
+            "stripe fee calculator", "quickbooks invoice reminder automation",
+        ]
+        seeds=_setting_list(db,key)+additions
+        _save_setting_list(db,key,seeds,","); changed.append(key)
+    elif action == "prune_generic_seeds":
+        key="COLLECTOR_AUTO_SEEDS"; before[key]=setting(db,key)
+        generic={"best","free","online","tool","software","app","calculator","template","booking"}
+        seeds=[]
+        for s in _setting_list(db,key):
+            terms=set(re.findall(r"[a-z0-9]+", s.lower()))
+            if terms and terms.issubset(generic):
+                continue
+            if len(terms & generic) >= max(2, len(terms)-1):
+                continue
+            seeds.append(s)
+        _save_setting_list(db,key,seeds,","); changed.append(key)
+    elif action == "increase_import_limit":
+        key="COLLECTOR_AUTO_IMPORT_LIMIT"; before[key]=setting(db,key)
+        try: current=int(setting(db,key) or "12")
+        except Exception: current=12
+        row=db.get(models.Setting,key) or models.Setting(key=key, value="12", secret=False)
+        row.value=str(min(48, max(current+6, int(current*1.5))))
+        row.secret=False; db.merge(row); changed.append(key)
+    elif action == "enable_rewrite_recovery":
+        for key,val in [("FOUR_FIND_REWRITE_ON_SERP_REJECT","true"),("FOUR_FIND_REWRITE_LIMIT","8")]:
+            before[key]=setting(db,key)
+            row=db.get(models.Setting,key) or models.Setting(key=key, value=val, secret=False)
+            row.value=val; row.secret=False; db.merge(row); changed.append(key)
+    elif action == "lower_source_weight":
+        if not source:
+            return {"ok":False,"error":"source required"}
+        key="COLLECTOR_SOURCE_WEIGHTS"; before[key]=setting(db,key)
+        try: weights=json.loads(setting(db,key) or "{}")
+        except Exception: weights={}
+        entry=weights.get(source,{}) if isinstance(weights.get(source,{}),dict) else {}
+        entry["weight"]=round(max(0.25, min(2.5, float(entry.get("weight",1.0))-0.25)), 3)
+        entry["repair_note"]="manual_lower_source_weight"
+        weights[source]=entry
+        row=db.get(models.Setting,key) or models.Setting(key=key, value="{}", secret=False)
+        row.value=json.dumps(weights, ensure_ascii=False, sort_keys=True); row.secret=False; db.merge(row); changed.append(key)
+    elif action == "pause_source":
+        if not source:
+            return {"ok":False,"error":"source required"}
+        return apply_repair_action(db, "lower_source_weight", source=source, value=value)
+    else:
+        return {"ok":False,"error":"unknown repair action", "allowed":["add_commercial_seeds","prune_generic_seeds","increase_import_limit","enable_rewrite_recovery","lower_source_weight","pause_source"]}
+    db.commit()
+    after={k:setting(db,k) for k in changed}
+    return {"ok":True,"action":action,"source":source,"changed":changed,"before":before,"after":after}
 
 def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = None, seeds: list[str] | None = None) -> models.RunHistory:
     # recover stale runs from previous crashes/restarts so dashboard does not stay "running" forever

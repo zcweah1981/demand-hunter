@@ -4,6 +4,7 @@ import {useState, useTransition} from 'react'
 import {useRouter} from 'next/navigation'
 import {api} from '../lib/api'
 import {useLang} from '../lib/i18n'
+import {RepairActionButton} from './Actions'
 
 type AutopilotStatus = {
   ready:boolean
@@ -16,7 +17,7 @@ type AutopilotStatus = {
   providers:string[]
   seeds:string[]
   domains:string[]
-  diagnosis?:{severity?:string;issues?:any[];recommended_actions?:string[];next_action?:string}|null
+  diagnosis?:{severity?:string;issues?:any[];recommended_actions?:string[];repair_actions?:any[];next_action?:string}|null
   collectors?:{by_status?:Record<string,number>;by_source?:Record<string,number>;source_weights?:Record<string,any>;budget_plan?:{active?:any[];paused?:any[]};top_new?:any[]}
 }
 
@@ -69,7 +70,7 @@ export function AutopilotPanel({status}:{status:AutopilotStatus}){
       <div className="flex flex-wrap justify-between gap-2 text-xs text-slate-500"><span>#{last.id} · {last.status}</span><span>{progress}%</span></div>
     </div>}
 
-    {diagnosis&&<div className={`mt-4 rounded-2xl border p-4 ${severityClass}`}><div className="flex flex-wrap justify-between gap-3"><div><div className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">自动诊断</div><b className="mt-1 block">{diagnosis.issues?.[0]?.title||'诊断完成'}</b><p className="mt-1 text-sm opacity-90">{diagnosis.next_action}</p></div><span className="badge">{diagnosis.severity}</span></div>{!!diagnosis.issues?.length&&<div className="mt-3 flex flex-wrap gap-2">{diagnosis.issues.slice(0,3).map((i:any)=><span key={i.code} className="rounded-lg bg-slate-950/70 px-2 py-1 text-xs">{i.code}</span>)}</div>}</div>}
+    {diagnosis&&<div className={`mt-4 rounded-2xl border p-4 ${severityClass}`}><div className="flex flex-wrap justify-between gap-3"><div><div className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">自动诊断</div><b className="mt-1 block">{diagnosis.issues?.[0]?.title||'诊断完成'}</b><p className="mt-1 text-sm opacity-90">{diagnosis.next_action}</p></div><span className="badge">{diagnosis.severity}</span></div>{!!diagnosis.issues?.length&&<div className="mt-3 flex flex-wrap gap-2">{diagnosis.issues.slice(0,3).map((i:any)=><span key={i.code} className="rounded-lg bg-slate-950/70 px-2 py-1 text-xs">{i.code}</span>)}</div>}{!!diagnosis.repair_actions?.length&&<div className="mt-3"><div className="mb-2 text-xs font-semibold opacity-70">半自动修复</div><div className="flex flex-wrap gap-2">{diagnosis.repair_actions.slice(0,4).map((a:any)=><RepairActionButton key={a.id||a.action} action={a}/>)}</div></div>}</div>}
 
     <div className="mt-5 grid gap-3 md:grid-cols-3">
       <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"><div className="kpi-label">待复核</div><b className="text-3xl text-amber-300">{status.counts.pending_review}</b></div>
