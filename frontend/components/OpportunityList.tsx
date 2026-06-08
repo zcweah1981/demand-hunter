@@ -106,7 +106,7 @@ export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=
      <div><div className="text-xs uppercase tracking-[0.25em] text-blue-300">机会详情</div><h2 className="mt-1 text-xl font-bold text-white">{selected.title}</h2><p className="mt-1 text-xs text-slate-500">创建时间：{fmtDate(selected.created_at)} · 来源词：{selected.source_keyword||'-'} · {verdictLabel(selected.verdict)} · 分数 {selected.score}{mode==='review'&&' · 快捷键 A/W/R/B'}</p></div>
      <button className="btn-secondary" onClick={()=>setSelected(null)}>关闭</button>
     </div>
-    <OpportunityCardView card={selected} showFeedback={mode==='review'} onFeedback={mode==='review'?(label)=>applyFeedback(selected,label):undefined}/>
+    <OpportunityCardView card={selected} showFeedback={mode==='review'} mode={mode==='opportunity'?'execute':'review'} onFeedback={mode==='review'?(label)=>applyFeedback(selected,label):undefined}/>
     {mode==='opportunity'&&<div className="mt-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-4"><a className="btn" href={`/review?card=${selected.id}`}>去复核模块处理这张卡</a></div>}
    </aside>
   </div>}

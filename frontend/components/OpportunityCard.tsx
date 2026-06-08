@@ -6,7 +6,7 @@ export function verdictLabel(v:string){return v==='Action'?'行动 Action':v==='
 function evidenceTypeLabel(t:string){const m:any={business:'商业判断',serp:'搜索结果',social:'社媒证据',competitor:'竞品',keyword:'关键词',source:'来源',url:'链接',error:'错误'}; return m[t]||t}
 function shortText(s:string,n=180){s=(s||'').replace(/\s+/g,' ').trim(); return s.length>n?s.slice(0,n)+'…':s}
 
-export function OpportunityCardView({card,compact=false,showFeedback=true,onFeedback}:{card:any;compact?:boolean;showFeedback?:boolean;onFeedback?:(label:string)=>void}){
+export function OpportunityCardView({card,compact=false,showFeedback=true,onFeedback,mode='review'}:{card:any;compact?:boolean;showFeedback?:boolean;onFeedback?:(label:string)=>void;mode?:'review'|'execute'}){
  const allEvidence=card.evidence_json||[]
  const business=allEvidence.find((e:any)=>e.type==='business')
  const evidence=allEvidence.filter((e:any)=>e.type!=='business')
@@ -24,7 +24,7 @@ export function OpportunityCardView({card,compact=false,showFeedback=true,onFeed
    </div>
   </div>
 
-  {showFeedback&&!compact&&<div className="rounded-2xl border border-blue-500/30 bg-blue-500/10 p-3">
+  {showFeedback&&!compact&&mode==='review'&&<div className="rounded-2xl border border-blue-500/30 bg-blue-500/10 p-3">
    <div className="mb-2 text-xs font-semibold tracking-wide text-blue-200">复核决策</div>
    <div className="flex flex-wrap items-center justify-between gap-3">
     <span className="text-xs text-slate-400">优先按证据与风险判断：Action / Watch / Reject / Block</span>
@@ -36,7 +36,18 @@ export function OpportunityCardView({card,compact=false,showFeedback=true,onFeed
    {[['Demand',card.demand_score],['SERP',card.serp_gap_score],['Weakness',card.competitor_weakness_score],['Commercial',card.mvp_score],['Money',card.monetization_score]].map(([k,v])=><div className="rounded-xl bg-slate-950/80 p-2" key={k as string}><div className="text-slate-500">{labels[k as string]}</div><b>{v as any}</b></div>)}
   </div>
 
-  {!compact&&business&&<section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+  {!compact&&mode==='execute'&&business&&<section className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+   <div className="mb-3 text-xs font-semibold tracking-wide text-emerald-200">执行摘要</div>
+   <div className="grid gap-3 text-sm text-slate-200 md:grid-cols-2">
+    <div><b>第一步验证</b><ol className="mt-1 list-decimal pl-5 text-slate-300">{(business.first_sale_test||[]).slice(0,3).map((x:string)=><li key={x}>{x}</li>)}</ol>{!business.first_sale_test?.length&&<p className="mt-1 text-slate-400">{shortText(business.commercial_mvp,220)||shortText(card.mvp_plan,220)||'-'}</p>}</div>
+    <div><b>最小商业 MVP</b><p className="mt-1 text-slate-400">{shortText(business.commercial_mvp,240)||shortText(card.mvp_plan,240)||'-'}</p></div>
+    <div><b>收入路径 / 定价</b><p className="mt-1 text-slate-400">{shortText(business.revenue_path,160)||'-'}{business.pricing?` · ${shortText(business.pricing,120)}`:''}</p></div>
+    <div><b>获客 / 切入点</b><p className="mt-1 text-slate-400">{shortText(business.gtm,150)||'-'}{business.wedge?` · ${shortText(business.wedge,120)}`:''}</p></div>
+   </div>
+   {business.key_assumption&&<p className="mt-3 rounded-xl bg-slate-950/70 p-3 text-xs text-slate-300"><b>关键假设：</b>{shortText(business.key_assumption,260)}</p>}
+  </section>}
+
+  {!compact&&mode==='review'&&business&&<section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
    <div className="mb-3 text-xs font-semibold tracking-wide text-slate-500">决策摘要</div>
    {business.verdict_reason&&<p className="mb-3 text-sm leading-6 text-slate-200"><b>判断理由：</b>{shortText(business.verdict_reason,260)}</p>}
    {business.missing_evidence?.length>0&&<div className="mb-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100"><b>待补证据：</b>{business.missing_evidence.join('、')}</div>}
