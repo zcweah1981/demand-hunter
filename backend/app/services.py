@@ -1283,6 +1283,27 @@ def rank_repair_actions_with_meta(actions: list[dict], strategy_stats: dict | No
     meta["available"] = len(ranked)
     return ranked, meta
 
+def annotate_manual_repair_actions(actions: list[dict], strategy_stats: dict | None = None) -> list[dict]:
+    strategy_stats=strategy_stats or {}
+    cooldown_hours=_cooldown_hours_from_stats(strategy_stats)
+    out=[]; seen=set()
+    for a in actions:
+        key=_repair_action_key(a)
+        if key in seen:
+            continue
+        seen.add(key)
+        st=strategy_stats.get(key) or strategy_stats.get(f"{a.get('action','')}:" ) or {}
+        in_cd, until = _is_repair_in_cooldown(st, cooldown_hours)
+        label=a.get("label") or a.get("action")
+        flags=[]
+        if in_cd: flags.append("cooldown")
+        if st.get("hide"): flags.append("history_hidden")
+        enriched={**a,"strategy":st or None,"priority":float(st.get("priority",1.0) if st else 1.0),"manual_flags":flags,"cooldown_until":until}
+        if flags:
+            enriched["label"] = f"{label} · {'/'.join(flags)}"
+        out.append(enriched)
+    return sorted(out, key=lambda x:x.get("priority",1.0), reverse=True)
+
 def diagnose_quality_report(report: dict, db: Session | None = None) -> dict:
     """Heuristic diagnosis for one run's quality funnel.
 
@@ -1356,6 +1377,7 @@ def diagnose_quality_report(report: dict, db: Session | None = None) -> dict:
         try: strategy_stats["__cooldown_hours"] = float(setting(db, "REPAIR_EXPERIMENT_COOLDOWN_HOURS") or "24")
         except Exception: strategy_stats["__cooldown_hours"] = 24
     ranked_repairs, repair_meta=rank_repair_actions_with_meta(repair_actions, strategy_stats)
+    manual_repairs=annotate_manual_repair_actions(repair_actions, strategy_stats)
     fallback = None
     if repair_actions and not ranked_repairs:
         if repair_meta.get("cooldown") and repair_meta.get("cooldown") >= repair_meta.get("deduped_candidates",0) - repair_meta.get("hidden",0):
@@ -1364,7 +1386,7 @@ def diagnose_quality_report(report: dict, db: Session | None = None) -> dict:
             fallback = "暂无新的推荐实验：候选修复动作历史效果较差，已被暂时隐藏。"
         else:
             fallback = "暂无新的推荐实验；可以等待下一轮数据或展开其它修复动作手动处理。"
-    return {"severity":severity,"issues":issues,"recommended_actions":actions[:6],"repair_actions":ranked_repairs[:6],"recommended_experiment":ranked_repairs[0] if ranked_repairs else None,"repair_recommendation_meta":repair_meta,"repair_recommendation_fallback":fallback,"repair_strategy_stats":strategy_stats,"next_action":next_action}
+    return {"severity":severity,"issues":issues,"recommended_actions":actions[:6],"repair_actions":ranked_repairs[:6],"manual_repair_actions":manual_repairs[:8],"recommended_experiment":ranked_repairs[0] if ranked_repairs else None,"repair_recommendation_meta":repair_meta,"repair_recommendation_fallback":fallback,"repair_strategy_stats":strategy_stats,"next_action":next_action}
 
 def _setting_list(db: Session, key: str) -> list[str]:
     return [x.strip() for x in re.split(r"[\n,]+", setting(db, key) or "") if x.strip()]
