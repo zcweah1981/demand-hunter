@@ -56,6 +56,7 @@ DEFAULT_SETTINGS = {
     "COLLECTOR_AUTO_SITEMAP_ENABLED": "true",
     "COLLECTOR_AUTO_SUGGEST_ENABLED": "true",
     "COLLECTOR_SOURCE_WEIGHTS": "{}",
+    "COLLECTOR_AUTO_MIN_WEIGHT": "0.35",
 
     # Collector / SEO data provider credentials. Store multiple keys where providers support rotation.
     "BING_WEBMASTER_API_KEYS": "",

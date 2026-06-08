@@ -139,6 +139,50 @@ def collector_source_multiplier(db:Session, source:str)->float:
     try: return max(0.25, min(2.5, float(raw)))
     except Exception: return 1.0
 
+def _collector_family_weight(db:Session, family:str)->float:
+    aliases={
+        'suggest':['google_suggest','duckduckgo'],
+        'sitemap':['sitemap'],
+        'advanced_search':['advanced_search'],
+        'source_radar':['hn_algolia','arxiv'],
+    }.get(family,[family])
+    vals=[collector_source_multiplier(db,a) for a in aliases]
+    return round(sum(vals)/max(1,len(vals)), 3)
+
+def collector_budget_plan(db:Session, limit:int=24)->dict:
+    """Allocate per-run collector budget from feedback-learned source weights."""
+    try: min_weight=float(services.setting(db,'COLLECTOR_AUTO_MIN_WEIGHT') or '0.35')
+    except Exception: min_weight=0.35
+    families=[
+        {'key':'suggest','setting':'COLLECTOR_AUTO_SUGGEST_ENABLED','unit':'seeds'},
+        {'key':'advanced_search','setting':'COLLECTOR_AUTO_ADVANCED_ENABLED','unit':'roots'},
+        {'key':'source_radar','setting':'COLLECTOR_AUTO_SOURCE_RADAR_ENABLED','unit':'seeds'},
+        {'key':'sitemap','setting':'COLLECTOR_AUTO_SITEMAP_ENABLED','unit':'domains'},
+    ]
+    active=[]; paused=[]
+    for f in families:
+        enabled=(services.setting(db,f['setting']) or 'true').lower() in {'1','true','yes','on'}
+        weight=_collector_family_weight(db, f['key'])
+        row={**f,'enabled':enabled,'weight':weight}
+        if enabled and weight >= min_weight:
+            active.append(row)
+        else:
+            row['pause_reason']='disabled' if not enabled else f'weight<{min_weight}'
+            paused.append(row)
+    total_weight=sum(x['weight'] for x in active) or 1.0
+    for row in active:
+        share=row['weight']/total_weight
+        row['share']=round(share,3)
+        row['item_limit']=max(1, min(20, round(share * max(4, limit))))
+        # Per-query limits are intentionally smaller for SERP-heavy collectors.
+        if row['key']=='advanced_search':
+            row['limit_per_query']=max(3, min(10, round(4 + row['weight']*2)))
+        elif row['key']=='source_radar':
+            row['limit_per_seed']=max(4, min(12, round(5 + row['weight']*2)))
+        elif row['key']=='sitemap':
+            row['max_urls_per_domain']=max(20, min(160, round(limit * 4 * row['weight'])))
+    return {'limit':limit,'min_weight':min_weight,'active':active,'paused':paused,'weights':_collector_source_weights(db)}
+
 def mark_sitemap_seen(db:Session, url:str, keyword:str)->bool:
     """Return True when URL is first seen, otherwise update last_seen metadata."""
     row=db.query(models.SitemapSeenUrl).filter_by(url=url).first()
@@ -299,7 +343,7 @@ def collector_pool_summary(db:Session)->dict:
         try: ev=json.loads(r.evidence_json or '{}')
         except Exception: ev={}
         top.append({'id':r.id,'keyword':r.keyword,'canonical_keyword':ev.get('canonical_keyword') or canonical_keyword(r.keyword),'source':r.source,'method':r.method,'score':r.score,'source_url':r.source_url})
-    return {'total':sum(by_status.values()),'by_status':by_status,'by_source':by_source,'source_weights':_collector_source_weights(db),'top_new':top}
+    return {'total':sum(by_status.values()),'by_status':by_status,'by_source':by_source,'source_weights':_collector_source_weights(db),'budget_plan':collector_budget_plan(db),'top_new':top}
 
 def _match_imported_candidates_for_keyword(db:Session, keyword_query:str, source:str)->list[tuple[models.CandidateKeyword,dict]]:
     source=source.removeprefix('collector:')
@@ -398,26 +442,26 @@ def run_collector_autopilot(db:Session, limit:int=24, import_limit:int=12)->dict
         return {'enabled':False,'skipped':'COLLECTOR_AUTO_ENABLED=false','summary':collector_pool_summary(db)}
     seeds=_split_setting_list(services.setting(db,'COLLECTOR_AUTO_SEEDS'))
     domains=_split_setting_list(services.setting(db,'COLLECTOR_AUTO_DOMAINS'))
+    plan=collector_budget_plan(db, limit=limit)
     results=[]
     errors=[]
-    def enabled(key:str)->bool:
-        return (services.setting(db,key) or 'true').lower() in {'1','true','yes','on'}
-    if seeds and enabled('COLLECTOR_AUTO_SUGGEST_ENABLED'):
-        try: results.append(run_suggest_collector(db, seeds[:10]))
+    active={row['key']:row for row in plan.get('active',[])}
+    if seeds and 'suggest' in active:
+        try: results.append(run_suggest_collector(db, seeds[:active['suggest']['item_limit']]))
         except Exception as e: errors.append({'collector':'suggest','error':str(e)[:180]})
-    if domains and enabled('COLLECTOR_AUTO_SITEMAP_ENABLED'):
-        try: results.append(run_sitemap_watcher(db, domains[:10], max_urls_per_domain=max(20,min(120,limit*4)), only_new=True))
+    if domains and 'sitemap' in active:
+        try: results.append(run_sitemap_watcher(db, domains[:active['sitemap']['item_limit']], max_urls_per_domain=active['sitemap'].get('max_urls_per_domain', max(20,min(120,limit*4))), only_new=True))
         except Exception as e: errors.append({'collector':'sitemap','error':str(e)[:180]})
-    if seeds and enabled('COLLECTOR_AUTO_ADVANCED_ENABLED'):
-        roots=seeds[:8]
-        try: results.append(run_advanced_search_collector(db, roots, domains[:6], days=45, limit_per_query=5))
+    if seeds and 'advanced_search' in active:
+        roots=seeds[:active['advanced_search']['item_limit']]
+        try: results.append(run_advanced_search_collector(db, roots, domains[:6], days=45, limit_per_query=active['advanced_search'].get('limit_per_query',5)))
         except Exception as e: errors.append({'collector':'advanced_search','error':str(e)[:180]})
-    if seeds and enabled('COLLECTOR_AUTO_SOURCE_RADAR_ENABLED'):
-        try: results.append(run_source_radar(db, seeds[:8], limit_per_seed=6))
+    if seeds and 'source_radar' in active:
+        try: results.append(run_source_radar(db, seeds[:active['source_radar']['item_limit']], limit_per_seed=active['source_radar'].get('limit_per_seed',6)))
         except Exception as e: errors.append({'collector':'source_radar','error':str(e)[:180]})
     clean=clean_candidate_pool(db, limit=max(200, limit*10))
     imported=import_candidates_to_keywords(db, limit=max(1, import_limit))
-    return {'enabled':True,'seeds':seeds,'domains':domains,'results':results,'errors':errors[:20],'clean':clean,'import':imported,'summary':collector_pool_summary(db)}
+    return {'enabled':True,'seeds':seeds,'domains':domains,'budget_plan':plan,'results':results,'errors':errors[:20],'clean':clean,'import':imported,'summary':collector_pool_summary(db)}
 
 from datetime import timedelta
 
