@@ -14,13 +14,15 @@ const VERDICTS=['全部','Action','Watch','Reject','Block']
 
 type Props={cards:any[]; empty?:string; showVerdictFilter?:boolean; mode?:'review'|'opportunity'}
 export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=true, mode='review'}:Props){
+ const [localCards,setLocalCards]=useState<any[]>(cards||[])
  const [selected,setSelected]=useState<any|null>(null)
  const [sort,setSort]=useState('newest')
  const [verdict,setVerdict]=useState('全部')
  const [sourceKeyword,setSourceKeyword]=useState('全部')
- const sourceOptions=useMemo(()=>['全部',...Array.from(new Set((cards||[]).map(c=>c.source_keyword||'').filter(Boolean))).sort()], [cards])
+ useEffect(()=>setLocalCards(cards||[]),[cards])
+ const sourceOptions=useMemo(()=>['全部',...Array.from(new Set((localCards||[]).map(c=>c.source_keyword||'').filter(Boolean))).sort()], [localCards])
  const rows=useMemo(()=>{
-  let xs=[...(cards||[])]
+  let xs=[...(localCards||[])]
   if(showVerdictFilter&&verdict!=='全部') xs=xs.filter(c=>c.verdict===verdict)
   if(sourceKeyword!=='全部') xs=xs.filter(c=>(c.source_keyword||'')===sourceKeyword)
   const rank:any={Action:0,Watch:1,Reject:2,Block:3}
@@ -32,14 +34,25 @@ export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=
    return new Date(b.created_at||0).getTime()-new Date(a.created_at||0).getTime()
   })
   return xs
- },[cards,sort,verdict,sourceKeyword,showVerdictFilter])
+ },[localCards,sort,verdict,sourceKeyword,showVerdictFilter])
+ async function applyFeedback(card:any,label:string){
+  if(!card||mode!=='review') return
+  const idx=rows.findIndex(x=>x.id===card.id)
+  await api(`/api/cards/${card.id}/feedback`,{method:'POST',body:JSON.stringify({label})})
+  const remaining=rows.filter(x=>x.id!==card.id)
+  setLocalCards(prev=>prev.filter(x=>x.id!==card.id))
+  if(selected?.id===card.id){
+   const next=remaining[Math.min(idx, remaining.length-1)] || null
+   setSelected(next)
+  }
+ }
  useEffect(()=>{
   const id=new URLSearchParams(location.search).get('card')
-  if(id){const found=(cards||[]).find(c=>String(c.id)===id); if(found) setSelected(found)}
- },[cards])
+  if(id){const found=(localCards||[]).find(c=>String(c.id)===id); if(found) setSelected(found)}
+ },[localCards])
  useEffect(()=>{
   function isTypingTarget(t:any){const tag=(t?.tagName||'').toLowerCase(); return tag==='input'||tag==='textarea'||tag==='select'||t?.isContentEditable}
-  async function sendFeedback(label:string){if(!selected||mode!=='review') return; await api(`/api/cards/${selected.id}/feedback`,{method:'POST',body:JSON.stringify({label})}); location.reload()}
+  async function sendFeedback(label:string){if(!selected||mode!=='review') return; await applyFeedback(selected,label)}
   function move(delta:number){if(!rows.length) return; const cur=selected?rows.findIndex(x=>x.id===selected.id):-1; const next=rows[Math.max(0, Math.min(rows.length-1, (cur<0?0:cur)+delta))]; if(next) setSelected(next)}
   function onKey(e:KeyboardEvent){
    if(isTypingTarget(e.target)||e.metaKey||e.ctrlKey||e.altKey) return
@@ -78,7 +91,7 @@ export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=
     <div><span className={verdictClass(card.verdict)}>{verdictLabel(card.verdict)}</span></div>
     <div className="text-sm text-slate-300">{card.score}</div>
     <div className="safe-text text-sm text-slate-400">{shortText(biz.verdict_reason||card.mvp_plan||biz.pain||card.monetization_type)}</div>
-    <div>{mode==='review'?<Feedback id={card.id}/>:<a className="btn-secondary" href={`/review?card=${card.id}`}>去复核</a>}</div>
+    <div>{mode==='review'?<InlineRowFeedback onFeedback={(label)=>applyFeedback(card,label)}/>:<a className="btn-secondary" href={`/review?card=${card.id}`}>去复核</a>}</div>
    </div>}):<div className="p-6 text-sm text-slate-500">{empty}</div>}
   </div>
 
@@ -89,9 +102,11 @@ export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=
      <div><div className="text-xs uppercase tracking-[0.25em] text-blue-300">机会详情</div><h2 className="mt-1 text-xl font-bold text-white">{selected.title}</h2><p className="mt-1 text-xs text-slate-500">创建时间：{fmtDate(selected.created_at)} · 来源词：{selected.source_keyword||'-'} · {verdictLabel(selected.verdict)} · 分数 {selected.score}{mode==='review'&&' · 快捷键 A/W/R/B'}</p></div>
      <button className="btn-secondary" onClick={()=>setSelected(null)}>关闭</button>
     </div>
-    <OpportunityCardView card={selected} showFeedback={mode==='review'}/>
+    <OpportunityCardView card={selected} showFeedback={mode==='review'} onFeedback={mode==='review'?(label)=>applyFeedback(selected,label):undefined}/>
     {mode==='opportunity'&&<div className="mt-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-4"><a className="btn" href={`/review?card=${selected.id}`}>去复核模块处理这张卡</a></div>}
    </aside>
   </div>}
  </>
 }
+
+function InlineRowFeedback({onFeedback}:{onFeedback:(label:string)=>void}){const labels:any={Action:'行动',Watch:'观察',Reject:'拒绝',Block:'屏蔽'}; return <div className="flex flex-wrap gap-2">{['Action','Watch','Reject','Block'].map(x=><button key={x} title={x} className="rounded bg-slate-800 px-2 py-1 text-xs hover:bg-slate-700" onClick={()=>onFeedback(x)}>{labels[x]} <span className="text-slate-500">{x}</span></button>)}</div>}

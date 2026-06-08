@@ -6,7 +6,7 @@ export function verdictLabel(v:string){return v==='Action'?'行动 Action':v==='
 function evidenceTypeLabel(t:string){const m:any={business:'商业判断',serp:'搜索结果',social:'社媒证据',competitor:'竞品',keyword:'关键词',source:'来源',url:'链接',error:'错误'}; return m[t]||t}
 function shortText(s:string,n=180){s=(s||'').replace(/\s+/g,' ').trim(); return s.length>n?s.slice(0,n)+'…':s}
 
-export function OpportunityCardView({card,compact=false,showFeedback=true}:{card:any;compact?:boolean;showFeedback?:boolean}){
+export function OpportunityCardView({card,compact=false,showFeedback=true,onFeedback}:{card:any;compact?:boolean;showFeedback?:boolean;onFeedback?:(label:string)=>void}){
  const allEvidence=card.evidence_json||[]
  const business=allEvidence.find((e:any)=>e.type==='business')
  const evidence=allEvidence.filter((e:any)=>e.type!=='business')
@@ -28,7 +28,7 @@ export function OpportunityCardView({card,compact=false,showFeedback=true}:{card
    <div className="mb-2 text-xs font-semibold tracking-wide text-blue-200">复核决策</div>
    <div className="flex flex-wrap items-center justify-between gap-3">
     <span className="text-xs text-slate-400">优先按证据与风险判断：Action / Watch / Reject / Block</span>
-    <Feedback id={card.id}/>
+    {onFeedback?<InlineFeedback onFeedback={onFeedback}/>:<Feedback id={card.id}/>} 
    </div>
   </div>}
 
@@ -79,7 +79,9 @@ export function OpportunityCardView({card,compact=false,showFeedback=true}:{card
 
   {showFeedback&&compact&&<div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-3">
    <span className="text-xs text-slate-500">复核反馈会训练词根和屏蔽词</span>
-   <Feedback id={card.id}/>
+   {onFeedback?<InlineFeedback onFeedback={onFeedback}/>:<Feedback id={card.id}/>} 
   </div>}
  </article>
 }
+
+function InlineFeedback({onFeedback}:{onFeedback:(label:string)=>void}){const labels:any={Action:'行动',Watch:'观察',Reject:'拒绝',Block:'屏蔽'}; return <div className="flex flex-wrap gap-2">{['Action','Watch','Reject','Block'].map(x=><button key={x} title={x} className="rounded bg-slate-800 px-2 py-1 text-xs hover:bg-slate-700" onClick={()=>onFeedback(x)}>{labels[x]} <span className="text-slate-500">{x}</span></button>)}</div>}
