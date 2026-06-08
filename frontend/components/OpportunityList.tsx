@@ -15,11 +15,12 @@ const VERDICTS=['全部','Action','Watch','Reject','Block']
 type Props={cards:any[]; empty?:string; showVerdictFilter?:boolean; mode?:'review'|'opportunity'}
 export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=true, mode='review'}:Props){
  const [localCards,setLocalCards]=useState<any[]>(cards||[])
+ const [initialCount,setInitialCount]=useState((cards||[]).length)
  const [selected,setSelected]=useState<any|null>(null)
  const [sort,setSort]=useState('newest')
  const [verdict,setVerdict]=useState('全部')
  const [sourceKeyword,setSourceKeyword]=useState('全部')
- useEffect(()=>setLocalCards(cards||[]),[cards])
+ useEffect(()=>{setLocalCards(cards||[]); setInitialCount((cards||[]).length)},[cards])
  const sourceOptions=useMemo(()=>['全部',...Array.from(new Set((localCards||[]).map(c=>c.source_keyword||'').filter(Boolean))).sort()], [localCards])
  const rows=useMemo(()=>{
   let xs=[...(localCards||[])]
@@ -69,9 +70,12 @@ export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=
   window.addEventListener('keydown', onKey)
   return ()=>window.removeEventListener('keydown', onKey)
  },[rows,selected,mode])
+ const processed=Math.max(0, initialCount-localCards.length)
+ const remaining=localCards.length
+ const progress=initialCount?Math.round(processed*100/initialCount):100
  return <>
   <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-950/70 p-3">
-   <div className="text-sm text-slate-400">共 <b className="text-slate-100">{rows.length}</b> 条{mode==='review'&&<span className="ml-3 text-xs text-slate-500">快捷键：J/K 切换 · A Action · W Watch · R Reject · B Block · Esc 关闭</span>}</div>
+   <div className="min-w-[260px] flex-1 text-sm text-slate-400"><div>本次队列：已处理 <b className="text-emerald-300">{processed}</b> / <b className="text-slate-100">{initialCount}</b> · 剩余 <b className="text-amber-300">{remaining}</b>{mode==='review'&&<span className="ml-3 text-xs text-slate-500">快捷键：J/K · A/W/R/B · Esc</span>}</div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-800"><div className="h-full rounded-full bg-emerald-500" style={{width:`${progress}%`}} /></div></div>
    <div className="flex flex-wrap gap-2">
     {showVerdictFilter&&<select className="input h-9 w-36 py-1 text-sm" value={verdict} onChange={e=>setVerdict(e.target.value)}>{VERDICTS.map(v=><option key={v} value={v}>{v==='全部'?'全部判断':verdictLabel(v)}</option>)}</select>}
     <select className="input h-9 w-52 py-1 text-sm" value={sourceKeyword} onChange={e=>setSourceKeyword(e.target.value)}>{sourceOptions.map(v=><option key={v} value={v}>{v==='全部'?'全部来源词':v}</option>)}</select>
