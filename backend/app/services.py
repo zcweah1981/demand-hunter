@@ -1317,7 +1317,7 @@ def diagnose_quality_report(report: dict, db: Session | None = None) -> dict:
     next_action=actions[0] if actions else "继续观察下一轮。"
     strategy_stats=repair_strategy_stats(db) if db is not None else {}
     ranked_repairs=rank_repair_actions(repair_actions, strategy_stats)
-    return {"severity":severity,"issues":issues,"recommended_actions":actions[:6],"repair_actions":ranked_repairs[:6],"repair_strategy_stats":strategy_stats,"next_action":next_action}
+    return {"severity":severity,"issues":issues,"recommended_actions":actions[:6],"repair_actions":ranked_repairs[:6],"recommended_experiment":ranked_repairs[0] if ranked_repairs else None,"repair_strategy_stats":strategy_stats,"next_action":next_action}
 
 def _setting_list(db: Session, key: str) -> list[str]:
     return [x.strip() for x in re.split(r"[\n,]+", setting(db, key) or "") if x.strip()]
