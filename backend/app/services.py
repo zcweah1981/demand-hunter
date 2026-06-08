@@ -1556,6 +1556,11 @@ def list_repair_experiments(db: Session, limit: int = 20) -> list[dict]:
         repair_row=db.get(models.RunHistory, repair_id) if repair_id else None
         effect=evaluate_repair_effect(db, repair_row) if repair_row else {"status":"no_repair"}
         guard={"status":"pending","label":"等待评估","recommendation":effect.get("note") or "等待实验后的 daily run 完成。","rollback_recommended":False}
+        if row.status == "abandoned" or summary.get("status") == "abandoned":
+            guard={"status":"abandoned","label":"已放弃","recommendation":"实验已手动放弃。","rollback_recommended":False}
+            effect={**effect,"status":"abandoned","guard":guard}
+            out.append({"id":row.id,"status":"abandoned","started_at":row.started_at.isoformat() if row.started_at else None,"finished_at":row.finished_at.isoformat() if row.finished_at else None,"summary":summary,"effect":effect})
+            continue
         if effect.get("status") == "improved":
             guard={"status":"keep","label":"建议保留","recommendation":"实验改善了漏斗，保留本次 repair。","rollback_recommended":False}
         elif effect.get("status") == "regressed":
@@ -1574,6 +1579,32 @@ def list_repair_experiments(db: Session, limit: int = 20) -> list[dict]:
             row.status="ok"; row.finished_at=datetime.utcnow(); row.summary=json.dumps(summary, ensure_ascii=False); db.merge(row); db.commit()
         out.append({"id":row.id,"status":status,"started_at":row.started_at.isoformat() if row.started_at else None,"finished_at":row.finished_at.isoformat() if row.finished_at else None,"summary":summary,"effect":effect})
     return out
+
+def abandon_repair_experiment(db: Session, experiment_id: int, rollback: bool = False) -> dict:
+    row=db.get(models.RunHistory, experiment_id)
+    if not row or row.kind != "repair_experiment":
+        return {"ok":False,"error":"experiment not found"}
+    summary=_parse_run_summary(row)
+    if row.status == "abandoned" or summary.get("status") == "abandoned":
+        return {"ok":False,"error":"experiment already abandoned"}
+    repair_id=summary.get("repair_id")
+    rollback_result=None
+    if rollback and repair_id:
+        rollback_result=rollback_repair_action(db, int(repair_id))
+        if not rollback_result.get("ok"):
+            return {"ok":False,"error":"rollback failed","rollback":rollback_result}
+    summary["status"]="abandoned"
+    summary["abandoned_at"]=datetime.utcnow().isoformat(timespec="seconds")
+    summary["rollback_requested"]=bool(rollback)
+    summary["rollback_result"]=rollback_result
+    row.status="abandoned"
+    row.finished_at=datetime.utcnow()
+    row.summary=json.dumps(summary, ensure_ascii=False)
+    db.merge(row)
+    audit={"ok":True,"action":"abandon_repair_experiment","experiment_id":experiment_id,"repair_id":repair_id,"rollback":bool(rollback),"rollback_result":rollback_result}
+    db.add(models.RunHistory(kind="repair_experiment_abandon", status="ok", summary=json.dumps(audit, ensure_ascii=False), finished_at=datetime.utcnow()))
+    db.commit()
+    return audit
 
 def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = None, seeds: list[str] | None = None) -> models.RunHistory:
     # recover stale runs from previous crashes/restarts so dashboard does not stay "running" forever

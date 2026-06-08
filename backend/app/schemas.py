@@ -53,6 +53,10 @@ class RepairExperimentIn(BaseModel):
     value: str | None = None
     force_run: bool = True
 
+class RepairExperimentAbandonIn(BaseModel):
+    experiment_id: int
+    rollback: bool = False
+
 class DiscoverySeedIn(BaseModel):
     seed: str
     depth: int | None = 2

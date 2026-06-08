@@ -114,3 +114,7 @@ def autopilot_experiment_start(payload: schemas.RepairExperimentIn, _: bool = De
 @router.get("/experiments")
 def autopilot_experiments(limit: int = 20, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     return services.list_repair_experiments(db, limit=max(1, min(100, limit)))
+
+@router.post("/experiment/abandon")
+def autopilot_experiment_abandon(payload: schemas.RepairExperimentAbandonIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    return services.abandon_repair_experiment(db, payload.experiment_id, rollback=payload.rollback)
