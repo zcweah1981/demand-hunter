@@ -32,7 +32,6 @@ export function AutopilotPanel({status}:{status:AutopilotStatus}){
   const summary=last?.summary||{}
   const running=status.running || last?.status==='running'
   const progress=running&&summary.total?Math.round((summary.current||0)*100/summary.total):last?.status==='ok'?100:0
-  const healthy=status.ready && !running
   const collectorStatus=status.collectors?.by_status||{}
   const collectorTop=status.collectors?.top_new||[]
   const collectorWeights=status.collectors?.source_weights||{}
@@ -43,6 +42,8 @@ export function AutopilotPanel({status}:{status:AutopilotStatus}){
   const activeExperiment=status.active_experiment
   const latestExperiment=status.latest_experiment
   const severityClass=diagnosis?.severity==='critical'?'border-rose-500/40 bg-rose-500/10 text-rose-100':diagnosis?.severity==='warning'?'border-amber-500/40 bg-amber-500/10 text-amber-100':'border-slate-800 bg-slate-900/60 text-slate-200'
+  const expLabel=activeExperiment?'等待评估':latestExperiment?.effect?.guard?.label||latestExperiment?.effect?.status||'无实验'
+  const expTone=activeExperiment?'text-blue-300':latestExperiment?.effect?.status==='improved'?'text-emerald-300':latestExperiment?.effect?.status==='regressed'?'text-rose-300':'text-slate-300'
 
   async function call(path:string){
     setError('')
@@ -60,6 +61,7 @@ export function AutopilotPanel({status}:{status:AutopilotStatus}){
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-2xl font-black text-white">{lang==='en'?'Autopilot':'自动猎手'}</h2>
           <span className={running?'badge badge-watch':status.ready?'badge badge-action':'badge badge-reject'}>{running?(lang==='en'?'Running':'运行中'):status.ready?(lang==='en'?'Ready':'就绪'):(lang==='en'?'Setup needed':'需初始化')}</span>
+          {diagnosis?.severity&&<span className="badge">diagnosis: {diagnosis.severity}</span>}
         </div>
         <p className="mt-2 max-w-3xl text-sm font-semibold text-slate-200">{status.next_action}</p>
         {running&&summary.keyword&&<p className="mt-2 text-sm text-blue-200">{lang==='en'?'Now checking':'正在检查'}：{summary.keyword}</p>}
@@ -76,33 +78,42 @@ export function AutopilotPanel({status}:{status:AutopilotStatus}){
       <div className="flex flex-wrap justify-between gap-2 text-xs text-slate-500"><span>#{last.id} · {last.status}</span><span>{progress}%</span></div>
     </div>}
 
-    {diagnosis&&<div className={`mt-4 rounded-2xl border p-4 ${severityClass}`}><div className="flex flex-wrap justify-between gap-3"><div><div className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">自动诊断</div><b className="mt-1 block">{diagnosis.issues?.[0]?.title||'诊断完成'}</b><p className="mt-1 text-sm opacity-90">{diagnosis.next_action}</p></div><span className="badge">{diagnosis.severity}</span></div>{!!diagnosis.issues?.length&&<div className="mt-3 flex flex-wrap gap-2">{diagnosis.issues.slice(0,3).map((i:any)=><span key={i.code} className="rounded-lg bg-slate-950/70 px-2 py-1 text-xs">{i.code}</span>)}</div>}{bestExperiment&&<div className="mt-4 rounded-2xl border border-blue-500/30 bg-blue-950/30 p-3"><div className="mb-2 text-xs font-semibold opacity-70">推荐实验</div><div className="flex flex-wrap items-center justify-between gap-3"><div><b>运行系统推荐的下一步实验</b><p className="mt-1 text-xs opacity-80">推荐项：{bestExperiment.label}</p></div><RecommendedExperimentButton action={bestExperiment}/></div></div>}{!bestExperiment&&diagnosis.repair_recommendation_fallback&&<div className="mt-4 rounded-2xl border border-slate-700 bg-slate-950/60 p-3 text-sm text-slate-300"><b>暂无推荐实验</b><p className="mt-1 text-xs text-slate-500">{diagnosis.repair_recommendation_fallback}{diagnosis.repair_recommendation_meta?.cooldown_until?` 冷却最早结束：${diagnosis.repair_recommendation_meta.cooldown_until}`:''}</p></div>}{!!manualRepairActions.length&&<details className="mt-3"><summary className="cursor-pointer text-xs opacity-70 hover:opacity-100">其它修复动作</summary><div className="mt-2 flex flex-wrap gap-2">{manualRepairActions.slice(0,4).map((a:any)=><span key={a.id||a.action} className="flex gap-1"><RepairActionButton action={a}/><ExperimentRepairButton action={a}/></span>)}</div></details>}</div>}
-
-    {activeExperiment&&<div className="mt-4 rounded-2xl border border-blue-500/30 bg-blue-500/10 p-4 text-blue-100"><div className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">实验队列</div><b className="mt-1 block">已有实验等待评估：#{activeExperiment.id} {activeExperiment.summary?.action}</b><p className="mt-1 text-sm opacity-90">为避免变量污染，新实验会被阻止，直到当前实验完成或处理。</p></div>}
-
-    {latestExperiment&&!activeExperiment&&<div className="mt-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-4"><div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">上次实验结果</div><div className="mt-1 flex flex-wrap items-center justify-between gap-3"><div><b className={latestExperiment.effect?.status==='improved'?'text-emerald-300':latestExperiment.effect?.status==='regressed'?'text-rose-300':'text-slate-200'}>{latestExperiment.effect?.guard?.label||latestExperiment.effect?.status||latestExperiment.status}</b><p className="mt-1 text-sm text-slate-400">#{latestExperiment.id} {latestExperiment.summary?.action} · {latestExperiment.effect?.guard?.recommendation||latestExperiment.effect?.recommendation||latestExperiment.effect?.note||'暂无摘要'}</p>{typeof latestExperiment.effect?.delta==='number'&&<p className="mt-1 text-xs text-slate-500">health score Δ {latestExperiment.effect.delta}</p>}</div>{latestExperiment.effect?.guard?.rollback_recommended&&latestExperiment.summary?.repair_id&&<RollbackRepairButton id={latestExperiment.summary.repair_id}/>}</div></div>}
-
     <div className="mt-5 grid gap-3 md:grid-cols-3">
       <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"><div className="kpi-label">待复核</div><b className="text-3xl text-amber-300">{status.counts.pending_review}</b></div>
       <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"><div className="kpi-label">行动 Action</div><b className="text-3xl text-emerald-300">{status.counts.action}</b></div>
       <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"><div className="kpi-label">观察 Watch</div><b className="text-3xl text-blue-300">{status.counts.watch}</b></div>
     </div>
 
-    <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><h3 className="font-bold text-slate-100">采集器候选池</h3><p className="mt-1 text-xs text-slate-500">采集器只发现候选；自动清洗后进入 Four-Find / SEO / LLM。</p></div>
-        <div className="flex gap-3 text-sm"><span className="text-blue-300">New {collectorStatus.new||0}</span><span className="text-emerald-300">Imported {collectorStatus.imported||0}</span><span className="text-rose-300">Rejected {collectorStatus.rejected||0}</span></div>
-      </div>
-      {collectorTop.length>0&&<div className="mt-3 grid gap-2 md:grid-cols-2">{collectorTop.slice(0,4).map((c:any)=><div key={c.id} className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-xs"><div className="flex justify-between gap-2"><b className="truncate text-slate-200">{c.keyword}</b><span className="text-blue-300">{Number(c.score||0).toFixed(2)}</span></div><p className="mt-1 truncate text-slate-500">{c.source} · {c.method}</p></div>)}</div>}
-      {Object.keys(collectorWeights).length>0&&<div className="mt-3 flex flex-wrap gap-2">{Object.entries(collectorWeights).slice(0,8).map(([source,row]:any)=><span key={source} className="rounded-lg bg-slate-950 px-2 py-1 text-xs text-slate-400">{source} ×{Number(row?.weight||1).toFixed(2)}</span>)}</div>}
-      {!!budgetPlan.active?.length&&<div className="mt-3 rounded-xl border border-slate-800 bg-slate-950 p-3"><div className="mb-2 text-xs font-semibold text-slate-500">本轮采集预算</div><div className="flex flex-wrap gap-2">{budgetPlan.active.map((row:any)=><span key={row.key} className="rounded-lg bg-slate-900 px-2 py-1 text-xs text-slate-300">{row.key}: {Math.round((row.share||0)*100)}% · {row.item_limit}</span>)}{!!budgetPlan.paused?.length&&<span className="rounded-lg bg-rose-950/40 px-2 py-1 text-xs text-rose-300">paused {budgetPlan.paused.length}</span>}</div></div>}
+    <div className="mt-4 grid gap-3 lg:grid-cols-3">
+      <div className={`rounded-2xl border p-4 ${severityClass}`}><div className="kpi-label">诊断</div><b>{diagnosis?.issues?.[0]?.title||'暂无诊断'}</b><p className="mt-1 truncate text-xs opacity-80">{diagnosis?.next_action||'等待下一轮数据。'}</p></div>
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4"><div className="kpi-label">实验</div><b className={expTone}>{expLabel}</b><p className="mt-1 truncate text-xs text-slate-500">{activeExperiment?`#${activeExperiment.id} ${activeExperiment.summary?.action}`:latestExperiment?`#${latestExperiment.id} ${latestExperiment.summary?.action}`:'没有实验记录'}</p></div>
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4"><div className="kpi-label">采集器</div><b className="text-slate-100">New {collectorStatus.new||0} · Imported {collectorStatus.imported||0}</b><p className="mt-1 truncate text-xs text-slate-500">Rejected {collectorStatus.rejected||0} · paused {budgetPlan.paused?.length||0}</p></div>
     </div>
+
+    {bestExperiment&&<div className="mt-4 rounded-2xl border border-blue-500/30 bg-blue-950/30 p-3"><div className="flex flex-wrap items-center justify-between gap-3"><div><div className="mb-1 text-xs font-semibold text-blue-200">推荐实验</div><b className="text-slate-100">运行系统推荐的下一步实验</b><p className="mt-1 text-xs text-slate-400">推荐项：{bestExperiment.label}</p></div><RecommendedExperimentButton action={bestExperiment}/></div></div>}
 
     {error&&<p className="mt-4 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</p>}
 
-    <details className="mt-4 text-sm text-slate-400">
-      <summary className="cursor-pointer text-slate-500 hover:text-slate-300">{lang==='en'?'System details':'系统细节'}</summary>
-      <div className="mt-3 grid gap-3 md:grid-cols-4">
+    <details className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-400">
+      <summary className="cursor-pointer font-semibold text-slate-300 hover:text-white">展开诊断 / 实验 / 采集详情</summary>
+
+      {diagnosis&&<div className={`mt-4 rounded-2xl border p-4 ${severityClass}`}><div className="flex flex-wrap justify-between gap-3"><div><div className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">自动诊断</div><b className="mt-1 block">{diagnosis.issues?.[0]?.title||'诊断完成'}</b><p className="mt-1 text-sm opacity-90">{diagnosis.next_action}</p></div><span className="badge">{diagnosis.severity}</span></div>{!!diagnosis.issues?.length&&<div className="mt-3 flex flex-wrap gap-2">{diagnosis.issues.slice(0,3).map((i:any)=><span key={i.code} className="rounded-lg bg-slate-950/70 px-2 py-1 text-xs">{i.code}</span>)}</div>}{!bestExperiment&&diagnosis.repair_recommendation_fallback&&<div className="mt-4 rounded-2xl border border-slate-700 bg-slate-950/60 p-3 text-sm text-slate-300"><b>暂无推荐实验</b><p className="mt-1 text-xs text-slate-500">{diagnosis.repair_recommendation_fallback}{diagnosis.repair_recommendation_meta?.cooldown_until?` 冷却最早结束：${diagnosis.repair_recommendation_meta.cooldown_until}`:''}</p></div>}{!!manualRepairActions.length&&<details className="mt-3"><summary className="cursor-pointer text-xs opacity-70 hover:opacity-100">其它修复动作</summary><div className="mt-2 flex flex-wrap gap-2">{manualRepairActions.slice(0,4).map((a:any)=><span key={a.id||a.action} className="flex gap-1"><RepairActionButton action={a}/><ExperimentRepairButton action={a}/></span>)}</div></details>}</div>}
+
+      {activeExperiment&&<div className="mt-4 rounded-2xl border border-blue-500/30 bg-blue-500/10 p-4 text-blue-100"><div className="text-xs font-semibold uppercase tracking-[0.2em] opacity-70">实验队列</div><b className="mt-1 block">已有实验等待评估：#{activeExperiment.id} {activeExperiment.summary?.action}</b><p className="mt-1 text-sm opacity-90">为避免变量污染，新实验会被阻止，直到当前实验完成或处理。</p></div>}
+
+      {latestExperiment&&!activeExperiment&&<div className="mt-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-4"><div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">上次实验结果</div><div className="mt-1 flex flex-wrap items-center justify-between gap-3"><div><b className={latestExperiment.effect?.status==='improved'?'text-emerald-300':latestExperiment.effect?.status==='regressed'?'text-rose-300':'text-slate-200'}>{latestExperiment.effect?.guard?.label||latestExperiment.effect?.status||latestExperiment.status}</b><p className="mt-1 text-sm text-slate-400">#{latestExperiment.id} {latestExperiment.summary?.action} · {latestExperiment.effect?.guard?.recommendation||latestExperiment.effect?.recommendation||latestExperiment.effect?.note||'暂无摘要'}</p>{typeof latestExperiment.effect?.delta==='number'&&<p className="mt-1 text-xs text-slate-500">health score Δ {latestExperiment.effect.delta}</p>}</div>{latestExperiment.effect?.guard?.rollback_recommended&&latestExperiment.summary?.repair_id&&<RollbackRepairButton id={latestExperiment.summary.repair_id}/>}</div></div>}
+
+      <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div><h3 className="font-bold text-slate-100">采集器候选池</h3><p className="mt-1 text-xs text-slate-500">采集器只发现候选；自动清洗后进入 Four-Find / SEO / LLM。</p></div>
+          <div className="flex gap-3 text-sm"><span className="text-blue-300">New {collectorStatus.new||0}</span><span className="text-emerald-300">Imported {collectorStatus.imported||0}</span><span className="text-rose-300">Rejected {collectorStatus.rejected||0}</span></div>
+        </div>
+        {collectorTop.length>0&&<div className="mt-3 grid gap-2 md:grid-cols-2">{collectorTop.slice(0,4).map((c:any)=><div key={c.id} className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-xs"><div className="flex justify-between gap-2"><b className="truncate text-slate-200">{c.keyword}</b><span className="text-blue-300">{Number(c.score||0).toFixed(2)}</span></div><p className="mt-1 truncate text-slate-500">{c.source} · {c.method}</p></div>)}</div>}
+        {Object.keys(collectorWeights).length>0&&<div className="mt-3 flex flex-wrap gap-2">{Object.entries(collectorWeights).slice(0,8).map(([source,row]:any)=><span key={source} className="rounded-lg bg-slate-950 px-2 py-1 text-xs text-slate-400">{source} ×{Number(row?.weight||1).toFixed(2)}</span>)}</div>}
+        {!!budgetPlan.active?.length&&<div className="mt-3 rounded-xl border border-slate-800 bg-slate-950 p-3"><div className="mb-2 text-xs font-semibold text-slate-500">本轮采集预算</div><div className="flex flex-wrap gap-2">{budgetPlan.active.map((row:any)=><span key={row.key} className="rounded-lg bg-slate-900 px-2 py-1 text-xs text-slate-300">{row.key}: {Math.round((row.share||0)*100)}% · {row.item_limit}</span>)}{!!budgetPlan.paused?.length&&<span className="rounded-lg bg-rose-950/40 px-2 py-1 text-xs text-rose-300">paused {budgetPlan.paused.length}</span>}</div></div>}
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-4">
         {status.checks.map(c=><div key={c.key} className="rounded-xl border border-slate-800 bg-slate-950 p-3"><div className="flex justify-between gap-2"><b className="text-slate-300">{c.label}</b><span className={c.ok?'text-emerald-300':'text-rose-300'}>{c.ok?'正常':'需处理'}</span></div><p className="mt-1 text-xs text-slate-500">{c.detail}</p></div>)}
       </div>
       <div className="mt-3 text-xs text-slate-500">搜索源：{status.providers.join(', ')||'无'} · 种子词：{status.seeds.slice(0,5).join(', ')||'无'}</div>
