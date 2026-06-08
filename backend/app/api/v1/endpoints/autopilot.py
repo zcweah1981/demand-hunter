@@ -35,6 +35,7 @@ def autopilot_status(_: bool = Depends(require_auth), db: Session = Depends(get_
     collector_summary = collectors.collector_pool_summary(db)
     experiments = services.list_repair_experiments(db, limit=5)
     active_experiment = next((x for x in experiments if x.get("status") == "running" or (x.get("effect") or {}).get("status") in {"pending", "no_baseline"}), None)
+    latest_experiment = experiments[0] if experiments else None
     last = auto.get("last_run")
     running = bool(last and last.get("status") == "running")
     ready_checks = [
@@ -70,6 +71,7 @@ def autopilot_status(_: bool = Depends(require_auth), db: Session = Depends(get_
         "collectors": collector_summary,
         "diagnosis": last.get("summary", {}).get("diagnosis") if last and isinstance(last.get("summary"), dict) else None,
         "active_experiment": active_experiment,
+        "latest_experiment": latest_experiment,
         "auto": auto,
     }
 
