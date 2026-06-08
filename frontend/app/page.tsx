@@ -9,7 +9,7 @@ export default async function Page(){
   api<any>('/api/autopilot/status').catch(()=>null),
  ])
  const review=cards.filter(c=>!c.feedback_label&&c.verdict!=='Reject').slice(0,4)
- const actions=cards.filter(c=>c.verdict==='Action').slice(0,4)
+ const actions=cards.filter(c=>!c.feedback_label&&c.verdict==='Action').slice(0,4)
  return <div className="space-y-6">
   <section className="rounded-3xl border border-blue-500/20 bg-gradient-to-br from-blue-950/60 via-slate-950 to-slate-950 p-7 shadow-2xl">
    <div className="flex flex-wrap items-start justify-between gap-4">

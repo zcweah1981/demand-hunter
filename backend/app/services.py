@@ -1859,6 +1859,12 @@ def test_search_provider(db: Session) -> dict:
 def apply_feedback(db: Session, card: models.OpportunityCard, label: str, note: str = "") -> models.OpportunityCard:
     card.feedback_label = label
     card.feedback_note = note
+    # Manual review is the final human verdict. Keep the visible card verdict in
+    # sync with feedback so reviewed Reject/Watch cards disappear from Action
+    # lists and exports immediately instead of remaining under their old model
+    # verdict.
+    if label in {"Action", "Watch", "Reject", "Block"}:
+        card.verdict = label
     if label not in {"Action", "Watch", "Reject", "Block"}:
         db.commit(); db.refresh(card); return card
     kw = db.get(models.Keyword, card.keyword_id)

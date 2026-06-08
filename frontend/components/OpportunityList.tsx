@@ -15,12 +15,13 @@ const VERDICTS=['全部','Action','Watch','Reject','Block']
 type Props={cards:any[]; empty?:string; showVerdictFilter?:boolean; mode?:'review'|'opportunity'}
 export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=true, mode='review'}:Props){
  const [localCards,setLocalCards]=useState<any[]>(cards||[])
+ const [reviewedCount,setReviewedCount]=useState(0)
  const [initialCount,setInitialCount]=useState((cards||[]).length)
  const [selected,setSelected]=useState<any|null>(null)
  const [sort,setSort]=useState('newest')
  const [verdict,setVerdict]=useState('全部')
  const [sourceKeyword,setSourceKeyword]=useState('全部')
- useEffect(()=>{setLocalCards(cards||[]); setInitialCount((cards||[]).length)},[cards])
+ useEffect(()=>{setLocalCards(cards||[]); setInitialCount((cards||[]).length); setReviewedCount(0)},[cards])
  const sourceOptions=useMemo(()=>['全部',...Array.from(new Set((localCards||[]).map(c=>c.source_keyword||'').filter(Boolean))).sort()], [localCards])
  const rows=useMemo(()=>{
   let xs=[...(localCards||[])]
@@ -41,6 +42,7 @@ export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=
   const idx=rows.findIndex(x=>x.id===card.id)
   await api(`/api/cards/${card.id}/feedback`,{method:'POST',body:JSON.stringify({label})})
   const remaining=rows.filter(x=>x.id!==card.id)
+  setReviewedCount(n=>n+1)
   setLocalCards(prev=>prev.filter(x=>x.id!==card.id))
   if(selected?.id===card.id){
    const next=remaining[Math.min(idx, remaining.length-1)] || null
@@ -70,7 +72,7 @@ export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=
   window.addEventListener('keydown', onKey)
   return ()=>window.removeEventListener('keydown', onKey)
  },[rows,selected,mode])
- const processed=Math.max(0, initialCount-localCards.length)
+ const processed=mode==='review'?reviewedCount:Math.max(0, initialCount-localCards.length)
  const remaining=localCards.length
  const progress=initialCount?Math.round(processed*100/initialCount):100
  return <>

@@ -15,11 +15,12 @@ export default async function Page({searchParams}:{searchParams?:Promise<Record<
  ])
  const minAction = Number(settings.find((s:any)=>s.key==='MIN_ACTION_SCORE')?.value || 74)
  const cards = rows.filter(r=>{
+  const finalVerdict = r.feedback_label || r.verdict
   if(verdict==='All') return true
-  if(r.verdict!==verdict) return false
-  if(verdict==='Action') return Number(r.score||0) >= minAction
+  if(finalVerdict!==verdict) return false
+  if(verdict==='Action') return !r.feedback_label && Number(r.score||0) >= minAction
   return true
- })
+ }).map(r=>r.feedback_label ? {...r, verdict:r.feedback_label} : r)
  const title=verdict==='All'?'全部卡片':verdictLabel(verdict)
  return <div className="space-y-6">
   <div className="flex flex-wrap items-start justify-between gap-3">
