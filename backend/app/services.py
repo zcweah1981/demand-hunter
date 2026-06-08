@@ -1,7 +1,7 @@
 from __future__ import annotations
 import json, re, itertools, os
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.parse import urlparse
 import requests
 from sqlalchemy.orm import Session
@@ -57,6 +57,7 @@ DEFAULT_SETTINGS = {
     "COLLECTOR_AUTO_SUGGEST_ENABLED": "true",
     "COLLECTOR_SOURCE_WEIGHTS": "{}",
     "COLLECTOR_AUTO_MIN_WEIGHT": "0.35",
+    "REPAIR_EXPERIMENT_COOLDOWN_HOURS": "24",
 
     # Collector / SEO data provider credentials. Store multiple keys where providers support rotation.
     "BING_WEBMASTER_API_KEYS": "",
@@ -1211,7 +1212,9 @@ def repair_strategy_stats(db: Session, limit: int = 80) -> dict:
         key=f"{summary.get('action','')}:{summary.get('source') or ''}"
         if not summary.get("action"):
             continue
-        entry=stats.setdefault(key,{"action":summary.get("action"),"source":summary.get("source"),"runs":0,"improved":0,"neutral":0,"regressed":0,"rolled_back":0,"pending":0,"delta_sum":0.0,"priority":1.0})
+        entry=stats.setdefault(key,{"action":summary.get("action"),"source":summary.get("source"),"runs":0,"improved":0,"neutral":0,"regressed":0,"rolled_back":0,"pending":0,"delta_sum":0.0,"priority":1.0,"last_experiment_at":None})
+        if not entry.get("last_experiment_at") or (row.started_at and row.started_at.isoformat() > entry.get("last_experiment_at")):
+            entry["last_experiment_at"] = row.started_at.isoformat() if row.started_at else None
         effect=evaluate_repair_effect(db,row)
         status=effect.get("status") or "unknown"
         entry["runs"] += 1
@@ -1230,8 +1233,26 @@ def repair_strategy_stats(db: Session, limit: int = 80) -> dict:
         entry["hide"]=entry["regressed"]>=2 and entry["improved"]==0
     return stats
 
+def _cooldown_hours_from_stats(strategy_stats: dict) -> float:
+    raw=(strategy_stats or {}).get("__cooldown_hours", 24)
+    try: return max(0.0, float(raw))
+    except Exception: return 24.0
+
+def _is_repair_in_cooldown(st: dict, cooldown_hours: float) -> tuple[bool, str | None]:
+    if cooldown_hours <= 0 or not st.get("last_experiment_at"):
+        return False, None
+    try:
+        last=datetime.fromisoformat(st["last_experiment_at"])
+        until=last + timedelta(hours=cooldown_hours)
+        if datetime.utcnow() < until:
+            return True, until.isoformat(timespec="seconds")
+    except Exception:
+        return False, None
+    return False, None
+
 def rank_repair_actions(actions: list[dict], strategy_stats: dict | None = None) -> list[dict]:
     strategy_stats=strategy_stats or {}
+    cooldown_hours=_cooldown_hours_from_stats(strategy_stats)
     out=[]; seen=set()
     for a in actions:
         key=_repair_action_key(a)
@@ -1240,6 +1261,9 @@ def rank_repair_actions(actions: list[dict], strategy_stats: dict | None = None)
         seen.add(key)
         st=strategy_stats.get(key) or strategy_stats.get(f"{a.get('action','')}:" ) or {}
         if st.get("hide"):
+            continue
+        in_cd, until = _is_repair_in_cooldown(st, cooldown_hours)
+        if in_cd:
             continue
         enriched={**a,"strategy":st or None,"priority":float(st.get("priority",1.0) if st else 1.0)}
         if st:
@@ -1316,6 +1340,9 @@ def diagnose_quality_report(report: dict, db: Session | None = None) -> dict:
     severity=max((i["severity"] for i in issues), key=lambda x: severity_order.get(x,0))
     next_action=actions[0] if actions else "继续观察下一轮。"
     strategy_stats=repair_strategy_stats(db) if db is not None else {}
+    if db is not None:
+        try: strategy_stats["__cooldown_hours"] = float(setting(db, "REPAIR_EXPERIMENT_COOLDOWN_HOURS") or "24")
+        except Exception: strategy_stats["__cooldown_hours"] = 24
     ranked_repairs=rank_repair_actions(repair_actions, strategy_stats)
     return {"severity":severity,"issues":issues,"recommended_actions":actions[:6],"repair_actions":ranked_repairs[:6],"recommended_experiment":ranked_repairs[0] if ranked_repairs else None,"repair_strategy_stats":strategy_stats,"next_action":next_action}
 
