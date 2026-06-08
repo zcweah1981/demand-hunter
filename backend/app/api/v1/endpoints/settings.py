@@ -80,7 +80,21 @@ def llm_models(payload: schemas.LLMModelsIn, _: bool = Depends(require_auth), db
 
 def _split_secret_values(value: str) -> list[str]:
     import re
-    return [x.strip() for x in re.split(r"[\n,]+", value or "") if x.strip()]
+    raw = (value or "").strip()
+    if not raw:
+        return []
+    # Secret-list values are stored one credential per line. Some credentials
+    # are JSON objects (DataForSEO login+password, Reddit credentials, etc.) and
+    # contain commas internally; never split those by comma or one credential
+    # appears as two rows in the UI.
+    lines = [x.strip() for x in raw.splitlines() if x.strip()]
+    if len(lines) > 1:
+        return lines
+    single = lines[0] if lines else raw
+    if single.startswith("{") or single.startswith("["):
+        return [single]
+    # Backward compatibility for old simple API key lists pasted as a,b,c.
+    return [x.strip() for x in re.split(r",+", single) if x.strip()]
 
 def _mask_entry(value: str) -> str:
     if not value:
