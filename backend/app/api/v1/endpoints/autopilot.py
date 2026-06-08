@@ -48,6 +48,25 @@ def autopilot_status(_: bool = Depends(require_auth), db: Session = Depends(get_
     ready = all(x["ok"] for x in ready_checks)
     if running:
         next_action = "系统正在跑，等结果生成后只需要复核 Watch/Action 卡。"
+    elif active_experiment:
+        next_action = f"推荐实验 #{active_experiment.get('id')} 正在等待评估；为避免变量污染，先等这一轮完成或在 /runs 放弃实验。"
+    elif latest_experiment and isinstance(latest_experiment.get("effect"), dict):
+        guard = (latest_experiment.get("effect") or {}).get("guard") or {}
+        status = guard.get("status") or (latest_experiment.get("effect") or {}).get("status")
+        if status == "rollback_recommended":
+            next_action = f"上次实验 #{latest_experiment.get('id')} 让质量变差，建议回滚关联 repair。"
+        elif status == "keep":
+            next_action = f"上次实验 #{latest_experiment.get('id')} 改善了漏斗，建议保留这次修复并继续观察。"
+        elif status == "observe":
+            next_action = f"上次实验 #{latest_experiment.get('id')} 效果不明显，建议再观察一轮或手动回滚。"
+        elif status == "pending":
+            next_action = f"上次实验 #{latest_experiment.get('id')} 还在等待评估，先等下一轮 daily run 完成。"
+        elif status == "abandoned":
+            next_action = "上次实验已放弃；可以根据最新诊断运行一个新的推荐实验。"
+        elif last and isinstance(last.get("summary"), dict) and last["summary"].get("diagnosis", {}).get("next_action"):
+            next_action = last["summary"]["diagnosis"]["next_action"]
+        else:
+            next_action = guard.get("recommendation") or "系统正常，等待下一轮自动运行；也可以手动启动一轮。"
     elif last and isinstance(last.get("summary"), dict) and last["summary"].get("diagnosis", {}).get("next_action"):
         next_action = last["summary"]["diagnosis"]["next_action"]
     elif not ready:
