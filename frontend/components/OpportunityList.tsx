@@ -3,6 +3,7 @@
 import {useEffect, useMemo, useState} from 'react'
 import {OpportunityCardView, verdictClass, verdictLabel} from './OpportunityCard'
 import {Feedback} from './Actions'
+import {api} from '../lib/api'
 
 function firstBusiness(card:any){return (card.evidence_json||[]).find((e:any)=>e.type==='business')||{}}
 function shortText(s:string, n=90){s=(s||'').replace(/\s+/g,' ').trim(); return s.length>n?s.slice(0,n)+'…':s}
@@ -36,9 +37,28 @@ export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=
   const id=new URLSearchParams(location.search).get('card')
   if(id){const found=(cards||[]).find(c=>String(c.id)===id); if(found) setSelected(found)}
  },[cards])
+ useEffect(()=>{
+  function isTypingTarget(t:any){const tag=(t?.tagName||'').toLowerCase(); return tag==='input'||tag==='textarea'||tag==='select'||t?.isContentEditable}
+  async function sendFeedback(label:string){if(!selected||mode!=='review') return; await api(`/api/cards/${selected.id}/feedback`,{method:'POST',body:JSON.stringify({label})}); location.reload()}
+  function move(delta:number){if(!rows.length) return; const cur=selected?rows.findIndex(x=>x.id===selected.id):-1; const next=rows[Math.max(0, Math.min(rows.length-1, (cur<0?0:cur)+delta))]; if(next) setSelected(next)}
+  function onKey(e:KeyboardEvent){
+   if(isTypingTarget(e.target)||e.metaKey||e.ctrlKey||e.altKey) return
+   const k=e.key.toLowerCase()
+   if(k==='escape'&&selected){e.preventDefault(); setSelected(null); return}
+   if(k==='j'){e.preventDefault(); move(1); return}
+   if(k==='k'){e.preventDefault(); move(-1); return}
+   const map:any={a:'Action',w:'Watch',r:'Reject',b:'Block'}
+   if(map[k]&&selected&&mode==='review'){
+    e.preventDefault()
+    if(confirm(`快捷键 ${k.toUpperCase()}：将 #${selected.id} 标记为 ${map[k]}？`)) sendFeedback(map[k])
+   }
+  }
+  window.addEventListener('keydown', onKey)
+  return ()=>window.removeEventListener('keydown', onKey)
+ },[rows,selected,mode])
  return <>
   <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-950/70 p-3">
-   <div className="text-sm text-slate-400">共 <b className="text-slate-100">{rows.length}</b> 条</div>
+   <div className="text-sm text-slate-400">共 <b className="text-slate-100">{rows.length}</b> 条{mode==='review'&&<span className="ml-3 text-xs text-slate-500">快捷键：J/K 切换 · A Action · W Watch · R Reject · B Block · Esc 关闭</span>}</div>
    <div className="flex flex-wrap gap-2">
     {showVerdictFilter&&<select className="input h-9 w-36 py-1 text-sm" value={verdict} onChange={e=>setVerdict(e.target.value)}>{VERDICTS.map(v=><option key={v} value={v}>{v==='全部'?'全部判断':verdictLabel(v)}</option>)}</select>}
     <select className="input h-9 w-52 py-1 text-sm" value={sourceKeyword} onChange={e=>setSourceKeyword(e.target.value)}>{sourceOptions.map(v=><option key={v} value={v}>{v==='全部'?'全部来源词':v}</option>)}</select>
@@ -66,7 +86,7 @@ export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=
    <button className="absolute inset-0 bg-black/60" aria-label="关闭详情" onClick={()=>setSelected(null)} />
    <aside className="absolute right-0 top-0 h-full w-full max-w-3xl overflow-y-auto border-l border-slate-800 bg-slate-950 p-5 shadow-2xl">
     <div className="mb-4 flex items-center justify-between gap-3">
-     <div><div className="text-xs uppercase tracking-[0.25em] text-blue-300">机会详情</div><h2 className="mt-1 text-xl font-bold text-white">{selected.title}</h2><p className="mt-1 text-xs text-slate-500">创建时间：{fmtDate(selected.created_at)} · 来源词：{selected.source_keyword||'-'} · {verdictLabel(selected.verdict)} · 分数 {selected.score}</p></div>
+     <div><div className="text-xs uppercase tracking-[0.25em] text-blue-300">机会详情</div><h2 className="mt-1 text-xl font-bold text-white">{selected.title}</h2><p className="mt-1 text-xs text-slate-500">创建时间：{fmtDate(selected.created_at)} · 来源词：{selected.source_keyword||'-'} · {verdictLabel(selected.verdict)} · 分数 {selected.score}{mode==='review'&&' · 快捷键 A/W/R/B'}</p></div>
      <button className="btn-secondary" onClick={()=>setSelected(null)}>关闭</button>
     </div>
     <OpportunityCardView card={selected} showFeedback={mode==='review'}/>
