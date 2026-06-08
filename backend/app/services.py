@@ -1290,6 +1290,79 @@ def _record_repair_audit(db: Session, payload: dict) -> models.RunHistory:
     db.commit(); db.refresh(row)
     return row
 
+def _parse_run_summary(row: models.RunHistory | None) -> dict:
+    if not row or not row.summary:
+        return {}
+    try:
+        return json.loads(row.summary or "{}") if row.summary.startswith("{") else {"raw": row.summary}
+    except Exception:
+        return {"raw": row.summary}
+
+def _latest_daily_with_quality(db: Session, before: datetime | None = None, after: datetime | None = None) -> models.RunHistory | None:
+    q=db.query(models.RunHistory).filter(models.RunHistory.kind=="daily", models.RunHistory.status=="ok")
+    if before is not None:
+        q=q.filter(models.RunHistory.started_at <= before)
+    if after is not None:
+        q=q.filter(models.RunHistory.started_at > after)
+    rows=q.order_by(models.RunHistory.started_at.desc() if before is not None else models.RunHistory.started_at.asc()).limit(25).all()
+    for row in rows:
+        summary=_parse_run_summary(row)
+        if isinstance(summary.get("quality_report"), dict):
+            return row
+    return None
+
+def _quality_health_score(report: dict) -> dict:
+    f=(report or {}).get("funnel") or {}
+    def n(key):
+        try: return float(f.get(key) or 0)
+        except Exception: return 0.0
+    seen=n("collector_seen"); saved=n("collector_saved"); scanned=n("clean_scanned"); clean_rejected=n("clean_rejected")
+    processed=n("keywords_processed"); serp_rejected=n("serp_rejected"); cards=n("cards"); action=n("action"); watch=n("watch")
+    save_rate=saved/max(1.0,seen)
+    clean_reject_rate=clean_rejected/max(1.0,scanned)
+    serp_reject_rate=serp_rejected/max(1.0,processed)
+    card_rate=cards/max(1.0,processed)
+    useful_rate=(action+watch)/max(1.0,cards)
+    score=50
+    score += min(15, save_rate*60)
+    score += min(15, card_rate*40)
+    score += min(15, useful_rate*25)
+    score -= min(25, clean_reject_rate*30)
+    score -= min(35, serp_reject_rate*45)
+    if action > 0: score += 8
+    elif watch > 0: score += 3
+    return {"score": round(max(0,min(100,score)),1), "save_rate":round(save_rate,3), "clean_reject_rate":round(clean_reject_rate,3), "serp_reject_rate":round(serp_reject_rate,3), "card_rate":round(card_rate,3), "useful_rate":round(useful_rate,3), "funnel": f}
+
+def evaluate_repair_effect(db: Session, repair_row: models.RunHistory) -> dict:
+    summary=_parse_run_summary(repair_row)
+    if summary.get("rolled_back"):
+        return {"status":"rolled_back", "note":"repair 已回滚，不再评估效果。"}
+    baseline=summary.get("baseline") or {}
+    baseline_report=baseline.get("quality_report") if isinstance(baseline, dict) else None
+    if not baseline_report:
+        before_row=_latest_daily_with_quality(db, before=repair_row.started_at)
+        before_summary=_parse_run_summary(before_row)
+        baseline_report=before_summary.get("quality_report")
+        if before_row and baseline_report:
+            baseline={"run_id":before_row.id,"started_at":before_row.started_at.isoformat(),"quality_report":baseline_report}
+    if not baseline_report:
+        return {"status":"no_baseline", "note":"repair 前没有可对比的 quality_report。"}
+    after_row=_latest_daily_with_quality(db, after=repair_row.started_at)
+    if not after_row:
+        return {"status":"pending", "note":"等待 repair 后第一轮 daily run 完成。", "before": _quality_health_score(baseline_report), "baseline_run_id": baseline.get("run_id")}
+    after_summary=_parse_run_summary(after_row)
+    after_report=after_summary.get("quality_report") or {}
+    before_score=_quality_health_score(baseline_report)
+    after_score=_quality_health_score(after_report)
+    delta=round(after_score["score"]-before_score["score"],1)
+    if delta >= 5:
+        status="improved"; recommendation="保留本次修复；继续观察下一轮。"
+    elif delta <= -5:
+        status="regressed"; recommendation="修复后质量下降，建议回滚或换另一种 repair action。"
+    else:
+        status="neutral"; recommendation="效果不明显；如果连续两轮无改善，再考虑回滚或换策略。"
+    return {"status":status,"delta":delta,"before":before_score,"after":after_score,"baseline_run_id":baseline.get("run_id"),"after_run_id":after_row.id,"after_started_at":after_row.started_at.isoformat(),"recommendation":recommendation}
+
 def apply_repair_action(db: Session, action: str, source: str | None = None, value: str | None = None, record: bool = True) -> dict:
     """Apply safe, reversible internal repairs suggested by diagnosis."""
     action=(action or "").strip()
@@ -1348,7 +1421,10 @@ def apply_repair_action(db: Session, action: str, source: str | None = None, val
         return {"ok":False,"error":"unknown repair action", "allowed":["add_commercial_seeds","prune_generic_seeds","increase_import_limit","enable_rewrite_recovery","lower_source_weight","pause_source"]}
     db.commit()
     after={k:setting(db,k) for k in changed}
-    result={"ok":True,"action":action,"source":source,"changed":changed,"before":before,"after":after,"rolled_back":False}
+    baseline_row=_latest_daily_with_quality(db)
+    baseline_summary=_parse_run_summary(baseline_row)
+    baseline={"run_id": baseline_row.id, "started_at": baseline_row.started_at.isoformat(), "quality_report": baseline_summary.get("quality_report")} if baseline_row and baseline_summary.get("quality_report") else None
+    result={"ok":True,"action":action,"source":source,"changed":changed,"before":before,"after":after,"rolled_back":False,"baseline":baseline}
     if record:
         audit=_record_repair_audit(db, result)
         result["repair_id"]=audit.id
@@ -1360,7 +1436,7 @@ def list_repair_audits(db: Session, limit: int = 20) -> list[dict]:
     for r in rows:
         try: summary=json.loads(r.summary or "{}")
         except Exception: summary={"raw":r.summary}
-        out.append({"id":r.id,"status":r.status,"started_at":r.started_at.isoformat() if r.started_at else None,"finished_at":r.finished_at.isoformat() if r.finished_at else None,"summary":summary})
+        out.append({"id":r.id,"status":r.status,"started_at":r.started_at.isoformat() if r.started_at else None,"finished_at":r.finished_at.isoformat() if r.finished_at else None,"summary":summary,"effect":evaluate_repair_effect(db,r)})
     return out
 
 def rollback_repair_action(db: Session, repair_id: int) -> dict:
