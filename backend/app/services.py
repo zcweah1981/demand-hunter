@@ -9,7 +9,7 @@ from . import models
 ROOT = Path(os.environ.get("DEMAND_HUNTER_ROOT", str(Path(__file__).resolve().parents[2])))
 
 DEFAULT_SETTINGS = {
-    "SEARXNG_URL": "http://127.0.0.1:8080",
+    "SEARXNG_URL": "",
     "SEARXNG_URLS": "",
     "SEARXNG_ENDPOINTS": "[]",
     "SEARXNG_API_TOKEN": "",
