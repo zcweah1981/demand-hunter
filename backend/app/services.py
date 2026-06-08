@@ -55,6 +55,7 @@ DEFAULT_SETTINGS = {
     "COLLECTOR_AUTO_SOURCE_RADAR_ENABLED": "true",
     "COLLECTOR_AUTO_SITEMAP_ENABLED": "true",
     "COLLECTOR_AUTO_SUGGEST_ENABLED": "true",
+    "COLLECTOR_ADVANCED_MAX_SECONDS": "90",
     "COLLECTOR_SOURCE_WEIGHTS": "{}",
     "COLLECTOR_AUTO_MIN_WEIGHT": "0.35",
     "REPAIR_EXPERIMENT_COOLDOWN_HOURS": "24",
@@ -140,6 +141,54 @@ def init_defaults(db: Session):
         if not db.query(models.Root).filter_by(term=term).first():
             db.add(models.Root(term=term, category=cat, weight=1.0))
     db.commit()
+
+def normalized_opportunity_key(text: str) -> str:
+    s=re.sub(r"[^a-z0-9\u4e00-\u9fff]+", " ", (text or "").lower())
+    drop={"best","top","free","online","software","tool","tools","app","apps","website","web","service","services","机会","任务","围绕","针对","面向","的","和","与","做"}
+    out=[]
+    for t in s.split():
+        if t in drop:
+            continue
+        if t not in out:
+            out.append(t)
+    return " ".join(out[:10])
+
+def opportunity_similarity(a: str, b: str) -> float:
+    ta=set(normalized_opportunity_key(a).split())
+    tb=set(normalized_opportunity_key(b).split())
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / max(1, len(ta | tb))
+
+def keyword_noise_reason(query: str, source: str = "") -> str:
+    q=(query or "").lower()
+    if any(x in q for x in ("pull request", "fix activejob", "attempt to", " labels ", "github", "documentation", "readme", "release notes", "changelog")):
+        return "developer_or_documentation_noise"
+    terms=normalized_opportunity_key(query).split()
+    if len(terms) < 2:
+        return "too_short"
+    if len(terms) > 9:
+        return "too_long"
+    # Generic calculator/template variants without a vertical or concrete job tend
+    # to create duplicate pseudo-opportunities.
+    if any(t in terms for t in {"calculator","template","generator"}) and not any(t in terms for t in {"invoice","tax","compliance","appointment","rental","clinic","shopify","woocommerce","hubspot","quickbooks","stripe","permit","contractor","patient","payment","fee","late","reminder","estimate"}):
+        return "generic_tool_modifier"
+    return ""
+
+def find_duplicate_card(db: Session, keyword: models.Keyword, threshold: float = 0.42) -> models.OpportunityCard | None:
+    target=keyword.query
+    rows=(db.query(models.OpportunityCard)
+        .join(models.Keyword, models.Keyword.id == models.OpportunityCard.keyword_id)
+        .order_by(models.OpportunityCard.created_at.desc())
+        .limit(80).all())
+    for card in rows:
+        existing_kw=db.get(models.Keyword, card.keyword_id)
+        if not existing_kw or existing_kw.id == keyword.id:
+            continue
+        sim=max(opportunity_similarity(target, existing_kw.query), opportunity_similarity(target, card.title))
+        if sim >= threshold:
+            return card
+    return None
 
 def classify_intent(query: str) -> str:
     q = query.lower()
@@ -1083,6 +1132,37 @@ def _llm_opportunity_analysis(db: Session, keyword: models.Keyword, serp: list[m
     return obj
 
 def make_card(db: Session, keyword: models.Keyword) -> models.OpportunityCard:
+    existing_reviewed = db.query(models.OpportunityCard).filter_by(keyword_id=keyword.id).filter(models.OpportunityCard.feedback_label.in_(["Action","Watch","Reject","Block"])).order_by(models.OpportunityCard.created_at.desc(), models.OpportunityCard.id.desc()).first()
+    if existing_reviewed:
+        # Human review is authoritative. Automatic rechecks may refresh future
+        # unreviewed candidates, but must never overwrite a reviewed card's
+        # verdict/feedback. This prevents Watch/Reject cards from reappearing as
+        # Action after a scheduled run.
+        existing_reviewed.verdict = existing_reviewed.feedback_label
+        keyword.status = existing_reviewed.feedback_label.lower()
+        keyword.score = existing_reviewed.score or keyword.score
+        db.commit(); db.refresh(existing_reviewed); return existing_reviewed
+    noise_reason = keyword_noise_reason(keyword.query, keyword.source)
+    if noise_reason:
+        keyword.status = "rejected"
+        keyword.intent = f"noise:{noise_reason}"[:80]
+        keyword.score = 0.0
+        existing = db.query(models.OpportunityCard).filter_by(keyword_id=keyword.id).order_by(models.OpportunityCard.created_at.desc(), models.OpportunityCard.id.desc()).first()
+        evidence=[{"type":"business","business_type":"rejected_noise","icp":"-","pain":"-","pay_trigger":"-","wedge":"-","commercial_mvp":"-","revenue_path":"-","pricing":"-","gtm":"-","first_sale_test":[],"key_assumption":"-","commercial_score":0.0,"go_no_go":"No-Go","verdict_reason":f"拒绝：关键词被识别为噪音（{noise_reason}），不生成机会卡。","analysis_source":"rules_noise_gate"}]
+        if existing:
+            existing.verdict="Reject"; existing.score=0.0; existing.mvp_score=0.0; existing.monetization_score=0.0; existing.mvp_plan=f"关键词噪音：{noise_reason}。不要推进。"; existing.evidence_json=json.dumps(evidence,ensure_ascii=False); existing.risks=json.dumps(["关键词来源噪音"],ensure_ascii=False)
+            card=existing
+        else:
+            card=models.OpportunityCard(keyword_id=keyword.id,title=f"拒绝：{keyword.query}", verdict="Reject", score=0.0, demand_score=0.0, serp_gap_score=0.0, competitor_weakness_score=0.0, mvp_score=0.0, monetization_score=0.0, monetization_type="rejected_noise", mvp_plan=f"关键词噪音：{noise_reason}。不要推进。", evidence_json=json.dumps(evidence,ensure_ascii=False), risks=json.dumps(["关键词来源噪音"],ensure_ascii=False))
+            db.add(card)
+        db.commit(); db.refresh(card); return card
+    duplicate = find_duplicate_card(db, keyword)
+    if duplicate:
+        keyword.status = "duplicate"
+        keyword.intent = f"duplicate_card:{duplicate.id}"[:80]
+        keyword.score = 0.0
+        db.commit(); db.refresh(duplicate)
+        return duplicate
     serp = db.query(models.SerpResult).filter_by(keyword_id=keyword.id).all() or run_serp(db, keyword)
     comps = analyze_competitors(db, keyword)
     socials = collect_social(db, keyword)
@@ -1150,7 +1230,7 @@ def make_card(db: Session, keyword: models.Keyword) -> models.OpportunityCard:
     if existing:
         card = existing
         card.title = title
-        card.verdict = verdict
+        card.verdict = existing.feedback_label if existing.feedback_label in {"Action", "Watch", "Reject", "Block"} else verdict
         card.score = total
         card.demand_score = round(demand,2)
         card.serp_gap_score = round(gap,2)
@@ -1164,7 +1244,7 @@ def make_card(db: Session, keyword: models.Keyword) -> models.OpportunityCard:
     else:
         card=models.OpportunityCard(keyword_id=keyword.id,title=title, verdict=verdict, score=total, demand_score=round(demand,2), serp_gap_score=round(gap,2), competitor_weakness_score=round(comp,2), mvp_score=commercial, monetization_score=mscore, monetization_type=mtype, mvp_plan=plan, evidence_json=json.dumps(evidence,ensure_ascii=False), risks=json.dumps(risks,ensure_ascii=False))
         db.add(card)
-    keyword.score=total; keyword.status=verdict.lower(); db.commit(); db.refresh(card); return card
+    keyword.score=total; keyword.status=card.verdict.lower(); db.commit(); db.refresh(card); return card
 
 def select_old_keywords_for_recheck(db: Session, limit: int = 4) -> list[models.Keyword]:
     """Pick existing keywords for periodic re-evaluation.
@@ -1178,7 +1258,7 @@ def select_old_keywords_for_recheck(db: Session, limit: int = 4) -> list[models.
     rows = (
         db.query(models.Keyword)
         .join(models.OpportunityCard, models.OpportunityCard.keyword_id == models.Keyword.id)
-        .filter(~models.Keyword.status.in_(["serp_reject", "rewrite_exhausted", "rejected"]))
+        .filter(~models.Keyword.status.in_(["serp_reject", "rewrite_exhausted", "rejected", "reject", "block", "duplicate"]))
         .order_by(models.Keyword.status.desc(), models.OpportunityCard.created_at.asc(), models.Keyword.id.asc())
         .limit(limit)
         .all()
@@ -1195,7 +1275,7 @@ def select_collector_keywords(db: Session, limit: int = 8) -> list[models.Keywor
     return (
         db.query(models.Keyword)
         .filter(models.Keyword.source.like("collector:%"))
-        .filter(~models.Keyword.status.in_(["rejected", "serp_reject", "rewrite_exhausted", "imported"]))
+        .filter(~models.Keyword.status.in_(["rejected", "reject", "block", "duplicate", "serp_reject", "rewrite_exhausted", "imported"]))
         .order_by(models.Keyword.score.desc(), models.Keyword.created_at.desc())
         .limit(limit)
         .all()
@@ -1318,7 +1398,7 @@ def diagnose_quality_report(report: dict, db: Session | None = None) -> dict:
         except Exception: return 0
     seen=n("collector_seen"); saved=n("collector_saved"); scanned=n("clean_scanned")
     clean_rejected=n("clean_rejected"); imported=n("imported_keywords")
-    processed=n("keywords_processed"); serp_rejected=n("serp_rejected"); cards=n("cards"); action=n("action"); watch=n("watch")
+    processed=n("keywords_processed"); serp_rejected=n("serp_rejected"); duplicates=n("duplicates"); cards=n("cards"); action=n("action"); watch=n("watch")
     errors=[]
     for row in collector.get("by_source") or []:
         if int(row.get("errors") or 0) > 0:
@@ -1361,8 +1441,13 @@ def diagnose_quality_report(report: dict, db: Session | None = None) -> dict:
             actions.append("查看 SERP Gate examples；如果明显误杀，调整 query variants 或接入更稳定 SERP provider。")
         repair_actions.append({"id":"enable_rewrite_recovery","label":"开启 SERP Reject 改写恢复","action":"enable_rewrite_recovery","safety":"可逆：只改内部开关"})
     if processed > 0 and cards == 0 and serp_rejected == 0:
-        issues.append({"severity":"warning","code":"no_cards_without_serp_reject","title":"关键词处理了但没有卡片","detail":"SERP 没被拒绝，但 cards=0。"})
-        actions.append("检查 make_card / LLM 配置与日志；这通常不是采集问题。")
+        if duplicates >= processed:
+            issues.append({"severity":"info","code":"all_keywords_duplicate","title":"本轮关键词都被去重拦截","detail":f"duplicates/processed={duplicates}/{processed}，未生成新卡是因为已有相近机会卡。"})
+            actions.append("减少重复 seeds/root_combo 预算，增加新的垂直种子；无需检查 LLM。")
+            repair_actions.append({"id":"prune_generic_seeds","label":"移除泛重复 seeds","action":"prune_generic_seeds","safety":"可逆：只改内部 seed 列表"})
+        else:
+            issues.append({"severity":"warning","code":"no_cards_without_serp_reject","title":"关键词处理了但没有卡片","detail":"SERP 没被拒绝，但 cards=0。"})
+            actions.append("检查 make_card / LLM 配置与日志；这通常不是采集问题。")
     if cards > 0 and action == 0 and watch == 0:
         issues.append({"severity":"info","code":"cards_low_quality","title":"生成了卡片但没有 Action/Watch","detail":f"cards={cards}，Action/Watch=0。"})
         actions.append("说明机会质量不足；把 Reject 来源反馈回 collector，系统会自动降权。")
@@ -1435,7 +1520,7 @@ def _quality_health_score(report: dict) -> dict:
         try: return float(f.get(key) or 0)
         except Exception: return 0.0
     seen=n("collector_seen"); saved=n("collector_saved"); scanned=n("clean_scanned"); clean_rejected=n("clean_rejected")
-    processed=n("keywords_processed"); serp_rejected=n("serp_rejected"); cards=n("cards"); action=n("action"); watch=n("watch")
+    processed=n("keywords_processed"); serp_rejected=n("serp_rejected"); duplicates=n("duplicates"); cards=n("cards"); action=n("action"); watch=n("watch")
     save_rate=saved/max(1.0,seen)
     clean_reject_rate=clean_rejected/max(1.0,scanned)
     serp_reject_rate=serp_rejected/max(1.0,processed)
@@ -1727,7 +1812,7 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
         skipped=[]
         processed=[]
         serp_gate_reasons={}
-        kws = [kw for kw in kws if kw.status not in {"rejected", "serp_reject", "rewrite_exhausted"}]
+        kws = [kw for kw in kws if kw.status not in {"rejected", "reject", "block", "duplicate", "serp_reject", "rewrite_exhausted"}]
         total_kws = len(kws[:limit])
         for idx, kw in enumerate(kws[:limit], 1):
             run.summary=json.dumps({"phase":"running", "current": idx, "total": total_kws, "keyword": kw.query, "cards": len(cards)}, ensure_ascii=False)
@@ -1744,6 +1829,9 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
                 processed.append({"keyword": kw.query, "source": kw.source, "source_family": source_family, "source_detail": source_detail, "status":"serp_reject", **gate})
                 continue
             card=make_card(db, kw)
+            if card.keyword_id != kw.id:
+                processed.append({"keyword": kw.query, "source": kw.source, "source_family": source_family, "source_detail": source_detail, "status":"duplicate", "duplicate_card_id": card.id})
+                continue
             cards.append(card)
             processed.append({"keyword": kw.query, "source": kw.source, "source_family": source_family, "source_detail": source_detail, "status":"card", "verdict": card.verdict, "score": card.score})
         rewrite_summary = None
@@ -1799,6 +1887,7 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
                 "imported_keywords": imported.get("imported", 0),
                 "keywords_processed": len(processed),
                 "serp_rejected": len(skipped),
+                "duplicates": sum(1 for p in processed if p.get("status") == "duplicate"),
                 "cards": len(cards),
                 "action": sum(1 for c in cards if c.verdict=="Action"),
                 "watch": sum(1 for c in cards if c.verdict=="Watch"),

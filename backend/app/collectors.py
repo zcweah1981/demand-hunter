@@ -1,5 +1,5 @@
 from __future__ import annotations
-import gzip, io, json, re
+import gzip, io, json, re, time
 from datetime import datetime
 from urllib.parse import urljoin, urlparse, unquote
 import requests
@@ -10,6 +10,13 @@ STOPWORDS={"best","top","free","online","app","apps","software","tool","tools","
 TOOL_INTENT_TERMS={"calculator","generator","template","checker","converter","tracker","dashboard","analyzer","builder","creator","planner","estimator","form","spreadsheet","invoice","policy","report","monitor","automation","integration","api"}
 COMMERCIAL_TERMS={"pricing","price","cost","fee","invoice","tax","compliance","shopify","woocommerce","quickbooks","hubspot","salesforce","stripe","paypal","b2b","business","agency","client","contractor","clinic","rental"}
 EARLY_SOURCE_BONUS={"sitemap":0.16,"advanced_search":0.12,"hn_algolia":0.10,"arxiv":0.08,"google_suggest":0.06,"duckduckgo":0.05}
+NOISE_DOMAINS={"github.com","raw.githubusercontent.com","gist.github.com"}
+NOISE_TITLE_PATTERNS=(
+    r"\bpull request\b", r"\bissue\b", r"\bcommit\b", r"\bmerge pull request\b",
+    r"\bfix\b.*\b(generator|bug|test|ci|build)\b", r"\battempt to\b",
+    r"\blabels?\b", r"\bmilestone\b", r"\brelease notes?\b", r"\bchangelog\b",
+    r"\bdocumentation\b", r"\bdocs?\b", r"\breadme\b",
+)
 
 def domain_of(url:str)->str:
     try: return urlparse(url).netloc.lower().removeprefix('www.')
@@ -49,9 +56,21 @@ def canonical_keyword(keyword:str)->str:
     return ' '.join(out[:8])
 
 def candidate_noise_reason(keyword:str, evidence:dict|None=None)->str:
+    evidence=evidence or {}
     kw=normalize_keyword(keyword)
     if not kw: return 'empty_or_too_short'
     terms=kw.split()
+    url=str(evidence.get('url') or evidence.get('source_url') or '')
+    title=str(evidence.get('title') or '')
+    query=str(evidence.get('query') or '')
+    d=domain_of(url)
+    text=f"{kw} {title} {url} {query}".lower()
+    if d in NOISE_DOMAINS:
+        return 'developer_platform_noise'
+    if any(re.search(p, text) for p in NOISE_TITLE_PATTERNS):
+        return 'developer_or_documentation_noise'
+    if re.search(r"\b(after|before):\d{4}-\d{2}-\d{2}\b", text) and not any(t in kw for t in TOOL_INTENT_TERMS|COMMERCIAL_TERMS):
+        return 'search_operator_noise'
     if len(terms)>9: return 'too_long'
     if len(terms)<2: return 'too_short'
     if len(set(terms)) < max(2, len(terms)-1): return 'repeated_terms'
@@ -199,6 +218,19 @@ def mark_sitemap_seen(db:Session, url:str, keyword:str)->bool:
 def upsert_candidate(db:Session, keyword:str, source:str, source_url:str='', source_domain:str='', method:str='', evidence:dict|None=None, score:float=0.0):
     kw=normalize_keyword(keyword)
     if not kw: return None
+    evidence=evidence or {}
+    evidence.setdefault('url', source_url or '')
+    evidence.setdefault('source_domain', source_domain or domain_of(source_url or ''))
+    reason=candidate_noise_reason(kw, evidence)
+    if reason:
+        # Store rejected evidence for observability, but never let obvious source
+        # noise enter the importable candidate pool.
+        q=db.query(models.CandidateKeyword).filter_by(keyword=kw, source=source, source_url=source_url or '').first()
+        ev={**evidence, 'reject_reason': reason, 'canonical_keyword': canonical_keyword(kw)}
+        if q:
+            q.status='rejected'; q.evidence_json=json.dumps({**(json.loads(q.evidence_json or '{}') if q.evidence_json else {}), **ev}, ensure_ascii=False); db.merge(q); return None
+        row=models.CandidateKeyword(keyword=kw, source=source, source_url=source_url or '', source_domain=source_domain or '', method=method, evidence_json=json.dumps(ev, ensure_ascii=False), score=0.0, status='rejected')
+        db.add(row); return None
     computed_score=round(max(0.0, min(1.0, score_candidate(kw, source, evidence, score) * collector_source_multiplier(db, source))), 3)
     q=db.query(models.CandidateKeyword).filter_by(keyword=kw, source=source, source_url=source_url or '').first()
     if q:
@@ -475,7 +507,7 @@ def _candidate_from_search_result(item:dict)->str:
         return kw
     return title_kw
 
-def run_advanced_search_collector(db:Session, roots:list[str], domains:list[str]|None=None, days:int=30, limit_per_query:int=8)->dict:
+def run_advanced_search_collector(db:Session, roots:list[str], domains:list[str]|None=None, days:int=30, limit_per_query:int=8, max_seconds:int|None=None)->dict:
     """Article method: advanced search demand discovery.
 
     Generates allintitle/site/date variants and uses the configured SERP provider
@@ -491,13 +523,27 @@ def run_advanced_search_collector(db:Session, roots:list[str], domains:list[str]
         for d in domains[:10]:
             queries.append((f'site:{d.strip()} "{root}" after:{after}', root, 'site_after'))
     providers=services.available_serp_providers(db)
+    try:
+        max_seconds = int(max_seconds if max_seconds is not None else (services.setting(db,'COLLECTOR_ADVANCED_MAX_SECONDS') or '90'))
+    except Exception:
+        max_seconds = 90
+    started=time.monotonic()
     saved=0; seen=0; errors=[]
     for q,root,variant in queries[:80]:
+        if time.monotonic() - started > max_seconds:
+            errors.append({'query':q,'error':f'time_budget_exceeded>{max_seconds}s'})
+            break
         provider_used=''
         items=[]
         for p in providers[:max(1, int(services.setting(db,'SERP_PROVIDER_ATTEMPT_LIMIT') or '3'))]:
+            if time.monotonic() - started > max_seconds:
+                break
             provider_used=p
-            res=services.provider_search(db,p,q,limit=limit_per_query)
+            try:
+                res=services.provider_search(db,p,q,limit=limit_per_query)
+            except Exception as e:
+                errors.append({'query':q,'provider':p,'error':str(e)[:180]})
+                continue
             if res and res[0].get('engine')!='error':
                 items=res; break
         if not items:
@@ -508,7 +554,7 @@ def run_advanced_search_collector(db:Session, roots:list[str], domains:list[str]
             if not kw: continue
             seen+=1
             url=item.get('url') or item.get('link') or ''
-            row=upsert_candidate(db, kw, 'advanced_search', url, domain_of(url), '高级搜索找需求', {'query':q,'root':root,'variant':variant,'provider':provider_used,'title':item.get('title','')}, 0.58)
+            row=upsert_candidate(db, kw, 'advanced_search', url, domain_of(url), '高级搜索找需求', {'query':q,'root':root,'variant':variant,'provider':provider_used,'title':item.get('title',''),'url':url}, 0.58)
             if row: saved+=1
     db.commit()
     return {'ok':True,'source':'advanced_search','queries':len(queries),'providers':providers,'candidates_seen':seen,'saved':saved,'errors':errors[:20]}
