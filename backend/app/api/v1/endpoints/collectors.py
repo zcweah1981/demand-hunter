@@ -55,6 +55,10 @@ def collector_runs(limit: int = 10, _: bool = Depends(require_auth), db: Session
     rows=db.query(models.RunHistory).filter_by(kind='collector_autopilot').order_by(models.RunHistory.started_at.desc()).limit(max(1, min(50, limit))).all()
     return [obj(r) for r in rows]
 
+@router.get("/roi")
+def collector_roi(limit: int = 12, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    return collectors.collector_roi_stats(db, limit=max(1, min(50, limit)))
+
 @router.post("/targets/{target_id}/status")
 def collector_target_status(target_id: int, payload: dict, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     row=db.get(models.CollectorTarget, target_id)

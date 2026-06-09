@@ -220,6 +220,38 @@ def collector_next_budget(db:Session, limit:int=24)->dict:
     source_plan=collector_budget_plan(db, limit=limit)
     return {'ok':True,'limit':limit,'target_segments':seg['summary'],'allocation':allocation,'source_plan':source_plan}
 
+def collector_roi_stats(db:Session, limit:int=12)->dict:
+    """Aggregate recent collector_autopilot replay history into source/segment ROI."""
+    rows=db.query(models.RunHistory).filter_by(kind='collector_autopilot').order_by(models.RunHistory.started_at.desc()).limit(max(1,min(50,limit))).all()
+    by_source={}; by_segment={}; runs=[]
+    for row in rows:
+        try: s=json.loads(row.summary or '{}')
+        except Exception: s={}
+        runs.append({'id':row.id,'started_at':row.started_at.isoformat() if row.started_at else None,'imported':(s.get('import') or {}).get('imported',0),'selected':(s.get('import') or {}).get('selected',0)})
+        for r in s.get('source_results') or []:
+            key=r.get('source') or 'unknown'
+            e=by_source.setdefault(key, {'source':key,'runs':0,'seen':0,'saved':0,'errors':0})
+            e['runs']+=1; e['seen']+=int(r.get('seen') or 0); e['saved']+=int(r.get('saved') or 0); e['errors']+=int(r.get('errors') or 0)
+        for seg, items in (s.get('selected_by_segment') or {}).items():
+            e=by_segment.setdefault(seg, {'segment':seg,'runs':0,'targets':0,'success_sum':0,'reject_sum':0,'priority_sum':0.0})
+            e['runs']+=1; e['targets']+=len(items or [])
+            for t in items or []:
+                e['success_sum']+=int(t.get('success') or 0); e['reject_sum']+=int(t.get('reject') or 0); e['priority_sum']+=float(t.get('priority') or 0)
+    for e in by_source.values():
+        e['save_rate']=round(e['saved']/max(1,e['seen']),3)
+        e['error_rate']=round(e['errors']/max(1,e['runs']),3)
+        if e['save_rate']>=0.25 and e['errors']<=max(2,e['runs']): e['verdict']='increase'
+        elif e['save_rate']<0.05 and e['seen']>=20: e['verdict']='decrease'
+        else: e['verdict']='watch'
+    for e in by_segment.values():
+        e['avg_success']=round(e['success_sum']/max(1,e['targets']),2)
+        e['avg_reject']=round(e['reject_sum']/max(1,e['targets']),2)
+        e['avg_priority']=round(e['priority_sum']/max(1,e['targets']),1)
+        if e['avg_success']>=2 and e['avg_reject']<=e['avg_success']*2: e['verdict']='increase'
+        elif e['avg_reject']>=5 and e['avg_success']==0: e['verdict']='decrease'
+        else: e['verdict']='watch'
+    return {'ok':True,'runs':runs,'by_source':sorted(by_source.values(), key=lambda x:(x['verdict']!='increase', -x['save_rate'], -x['saved'])),'by_segment':sorted(by_segment.values(), key=lambda x:(x['verdict']!='increase', -x['avg_success'], -x['avg_priority']))}
+
 def select_budgeted_collector_targets(db:Session, limit:int=24)->dict:
     """Select unique targets according to the same segment budget preview."""
     budget=collector_next_budget(db, limit=limit)
