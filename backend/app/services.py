@@ -254,6 +254,89 @@ def append_duplicate_evidence(db: Session, card: models.OpportunityCard, keyword
     db.merge(keyword); db.merge(card); db.commit(); db.refresh(card)
     return card
 
+def opportunity_group_for_card(db: Session, card: models.OpportunityCard) -> dict:
+    """Build a user-facing opportunity group around a representative card.
+
+    A card is only the current representative. Similar keywords, duplicate
+    variants, archived/rejected candidates, and older cards should remain as a
+    supporting evidence chain. The group probability estimates how likely the
+    cluster is a real opportunity, not whether one keyword string is perfect.
+    """
+    kw=db.get(models.Keyword, card.keyword_id)
+    canonical=normalized_opportunity_key(kw.query if kw else card.title)
+    terms=set(canonical.split())
+    evidence=[]
+    try:
+        raw=json.loads(card.evidence_json or "[]")
+        if isinstance(raw, list): evidence.extend([x for x in raw if isinstance(x,dict)])
+    except Exception:
+        pass
+    variant_keyword_ids={int(x.get("keyword_id")) for x in evidence if x.get("type")=="duplicate_keyword_evidence" and x.get("keyword_id")}
+    keyword_rows=[]
+    if kw: keyword_rows.append(kw)
+    for kid in variant_keyword_ids:
+        row=db.get(models.Keyword, kid)
+        if row and row.id not in {x.id for x in keyword_rows}: keyword_rows.append(row)
+    # Also find close variants not yet explicitly merged. Keep this bounded.
+    for row in db.query(models.Keyword).order_by(models.Keyword.created_at.desc()).limit(300).all():
+        if row.id in {x.id for x in keyword_rows}: continue
+        rterms=set(normalized_opportunity_key(row.query).split())
+        if not rterms or not terms: continue
+        overlap=len(terms & rterms)/max(1, min(len(terms), len(rterms)))
+        if overlap >= 0.66 and ("calculator" in terms or "template" in terms or "tracker" in terms or "automation" in terms):
+            keyword_rows.append(row)
+        if len(keyword_rows)>=18: break
+    card_rows=[]
+    for row in keyword_rows:
+        card_rows.extend(db.query(models.OpportunityCard).filter_by(keyword_id=row.id).all())
+    candidate_rows=[]
+    for cand in db.query(models.CandidateKeyword).order_by(models.CandidateKeyword.created_at.desc()).limit(600).all():
+        cterms=set(normalized_opportunity_key(cand.keyword).split())
+        if not cterms or not terms: continue
+        overlap=len(terms & cterms)/max(1, min(len(terms), len(cterms)))
+        if overlap>=0.66:
+            candidate_rows.append(cand)
+        if len(candidate_rows)>=30: break
+    sources=sorted({x.source for x in keyword_rows if x.source} | {x.source for x in candidate_rows if x.source})
+    variants=[]; seen=set()
+    for row in keyword_rows:
+        if row.query in seen: continue
+        seen.add(row.query)
+        variants.append({"type":"keyword","id":row.id,"keyword":row.query,"source":row.source,"status":row.status,"score":row.score,"intent":row.intent})
+    for cand in candidate_rows[:20]:
+        if cand.keyword in seen: continue
+        seen.add(cand.keyword)
+        variants.append({"type":"candidate","id":cand.id,"keyword":cand.keyword,"source":cand.source,"status":cand.status,"score":cand.score,"method":cand.method,"source_url":cand.source_url})
+    positive=sum(1 for c in card_rows if c.verdict in {"Action","Watch"} or c.feedback_label in {"Action","Watch"})
+    negative=sum(1 for c in card_rows if c.verdict in {"Reject","Block"} or c.feedback_label in {"Reject","Block"})
+    archived=sum(1 for v in variants if str(v.get("status") or "").startswith("archived"))
+    explicit_action=any(c.feedback_label=="Action" or c.verdict=="Action" for c in card_rows)
+    base=0.25
+    base += min(0.24, 0.04*len(variants))
+    base += min(0.18, 0.04*len(sources))
+    base += min(0.22, 0.08*positive)
+    base -= min(0.18, 0.05*negative)
+    if explicit_action: base += 0.18
+    probability=round(max(0.05, min(0.98, base)), 2)
+    if probability>=0.78: label="高置信机会组"
+    elif probability>=0.58: label="可继续验证机会组"
+    else: label="弱信号机会组"
+    return {
+        "group_id": f"og-{card.id}-{abs(hash(canonical))%100000}",
+        "canonical_keyword": canonical or (kw.query if kw else card.title),
+        "representative_card_id": card.id,
+        "probability": probability,
+        "label": label,
+        "evidence_count": len(variants)+len(card_rows),
+        "variant_count": len(variants),
+        "source_count": len(sources),
+        "positive_cards": positive,
+        "negative_cards": negative,
+        "archived_items": archived,
+        "sources": sources,
+        "variants": variants[:24],
+    }
+
 def classify_intent(query: str) -> str:
     q = query.lower()
     for w, intent in INTENT_WORDS.items():

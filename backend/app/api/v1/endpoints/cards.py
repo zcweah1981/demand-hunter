@@ -74,6 +74,7 @@ def cards(include_duplicates: bool = Query(False), _: bool = Depends(require_aut
             d["keyword_intent"] = ""
             d["keyword_status"] = ""
             d["collector_lineage"] = None
+        d["opportunity_group"] = services.opportunity_group_for_card(db, x)
         rows.append(d)
     return rows
 

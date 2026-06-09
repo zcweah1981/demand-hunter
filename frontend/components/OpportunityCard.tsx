@@ -37,6 +37,18 @@ export function OpportunityCardView({card,compact=false,showFeedback=true,onFeed
    {[['Demand',card.demand_score],['SERP',card.serp_gap_score],['Weakness',card.competitor_weakness_score],['Commercial',card.mvp_score],['Money',card.monetization_score]].map(([k,v])=><div className="rounded-xl bg-slate-950/80 p-2" key={k as string}><div className="text-slate-500">{labels[k as string]}</div><b>{v as any}</b></div>)}
   </div>
 
+  {card.opportunity_group&&<section className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-4">
+   <div className="flex flex-wrap items-center justify-between gap-3">
+    <div><div className="text-xs font-semibold tracking-wide text-cyan-200">相似机会组 / 证据链</div><p className="mt-1 text-sm text-slate-300">{card.opportunity_group.label} · 组概率 {Math.round((card.opportunity_group.probability||0)*100)}%</p></div>
+    <div className="grid grid-cols-3 gap-2 text-center text-xs">
+     <div className="rounded-xl bg-slate-950/70 px-3 py-2"><b className="text-white">{card.opportunity_group.variant_count}</b><div className="text-slate-500">变体</div></div>
+     <div className="rounded-xl bg-slate-950/70 px-3 py-2"><b className="text-white">{card.opportunity_group.source_count}</b><div className="text-slate-500">来源</div></div>
+     <div className="rounded-xl bg-slate-950/70 px-3 py-2"><b className="text-white">{card.opportunity_group.evidence_count}</b><div className="text-slate-500">证据</div></div>
+    </div>
+   </div>
+   {!compact&&card.opportunity_group.variants?.length>0&&<div className="mt-3 flex flex-wrap gap-2">{card.opportunity_group.variants.slice(0,10).map((v:any)=><span key={`${v.type}-${v.id}`} className="rounded-full border border-slate-700 bg-slate-950/80 px-3 py-1 text-xs text-slate-300">{v.keyword} <span className="text-slate-500">· {v.source||'-'} · {v.status||'-'}</span></span>)}</div>}
+  </section>}
+
   {!compact&&mode==='execute'&&business&&<section className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
    <div className="mb-3 text-xs font-semibold tracking-wide text-emerald-200">执行摘要</div>
    <div className="grid gap-3 text-sm text-slate-200 md:grid-cols-2">
