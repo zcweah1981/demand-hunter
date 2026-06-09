@@ -168,6 +168,37 @@ def apply_collector_target_health(db:Session)->dict:
     db.commit()
     return {'ok':True,'scanned':len(rows),'cooled':cooled,'promoted':promoted,'active':active}
 
+def collector_target_segments(db:Session, limit:int=200)->dict:
+    """Segment targets for budget decisions and operator review."""
+    rows=db.query(models.CollectorTarget).order_by(models.CollectorTarget.priority.desc(), models.CollectorTarget.created_at.desc()).limit(limit).all()
+    out={'winner':[],'promising':[],'noisy':[],'exhausted':[],'cooldown':[],'new':[]}
+    seen_values=set()
+    for t in rows:
+        value_key=(t.target_type,t.value,t.status)
+        if value_key in seen_values:
+            continue
+        seen_values.add(value_key)
+        success=t.success_count or 0
+        reject=t.reject_count or 0
+        priority=t.priority or 0
+        item={'id':t.id,'target_type':t.target_type,'value':t.value,'topic':t.topic,'priority':priority,'status':t.status,'success_count':success,'reject_count':reject,'last_seen_at':t.last_seen_at.isoformat() if t.last_seen_at else None,'last_success_at':t.last_success_at.isoformat() if t.last_success_at else None,'notes':t.notes}
+        if t.status=='cooldown':
+            out['cooldown'].append(item)
+        elif t.status in {'rejected','exhausted'}:
+            out['exhausted'].append(item)
+        elif success >= 3 and priority >= 85 and reject <= max(3, success*2):
+            out['winner'].append(item)
+        elif reject >= 8 and success == 0:
+            out['noisy'].append(item)
+        elif reject >= 12 and reject >= success*4:
+            out['noisy'].append(item)
+        elif success > 0 or priority >= 80:
+            out['promising'].append(item)
+        else:
+            out['new'].append(item)
+    summary={k:len(v) for k,v in out.items()}
+    return {'ok':True,'summary':summary,'segments':out}
+
 def _domain_topics(db:Session, domain:str)->list[str]:
     with db.no_autoflush:
         rows=db.query(models.CollectorTarget).filter_by(target_type='domain',value=domain,status='active').order_by(models.CollectorTarget.priority.desc()).limit(5).all()

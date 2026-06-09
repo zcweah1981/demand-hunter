@@ -42,6 +42,10 @@ def collector_targets_refresh(_: bool = Depends(require_auth), db: Session = Dep
 def collector_targets_health(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
     return collectors.apply_collector_target_health(db)
 
+@router.get("/targets/segments")
+def collector_targets_segments(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    return collectors.collector_target_segments(db)
+
 @router.post("/targets/{target_id}/status")
 def collector_target_status(target_id: int, payload: dict, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     row=db.get(models.CollectorTarget, target_id)
