@@ -89,15 +89,15 @@ export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=
    <div className={`hidden gap-3 border-b border-slate-800 px-4 py-3 text-xs font-semibold text-slate-500 md:grid ${mode==='review'?'grid-cols-[56px_110px_1.1fr_1fr_100px_70px_1fr_170px]':'grid-cols-[56px_110px_1.1fr_1fr_100px_70px_1fr_110px]'}`}>
     <div>序号</div><div>日期</div><div>来源词</div><div>标题</div><div>判断</div><div>分数</div><div>摘要</div><div>{mode==='review'?'复核':'操作'}</div>
    </div>
-   {rows.length?rows.map((card,idx)=>{const biz=firstBusiness(card); return <div key={card.id} className={`grid gap-3 border-b border-slate-800 px-4 py-4 last:border-b-0 md:items-center ${mode==='review'?'md:grid-cols-[56px_110px_1.1fr_1fr_100px_70px_1fr_170px]':'md:grid-cols-[56px_110px_1.1fr_1fr_100px_70px_1fr_110px]'}`}>
+   {rows.length?rows.map((card,idx)=>{const biz=firstBusiness(card); return <div key={card.id} role="button" tabIndex={0} onClick={()=>setSelected(card)} onKeyDown={(e)=>{if(e.key==='Enter'||e.key===' '){e.preventDefault(); setSelected(card)}}} className={`grid cursor-pointer gap-3 border-b border-slate-800 px-4 py-4 transition hover:bg-slate-900/60 focus:outline-none focus:ring-2 focus:ring-blue-500/60 last:border-b-0 md:items-center ${mode==='review'?'md:grid-cols-[56px_110px_1.1fr_1fr_100px_70px_1fr_170px]':'md:grid-cols-[56px_110px_1.1fr_1fr_100px_70px_1fr_110px]'}`}>
     <div className="text-sm text-slate-500">#{idx+1}</div>
     <div className="text-xs text-slate-500">{fmtDate(card.created_at)}</div>
-    <div className="safe-text text-xs text-slate-400"><button className="text-left hover:text-blue-200" onClick={()=>setSourceKeyword(card.source_keyword||'全部')}>{card.source_keyword||'-'}</button><div className="mt-1 text-slate-600">{card.keyword_source||''}</div></div>
-    <button className="safe-text text-left font-semibold text-blue-200 hover:text-blue-100" onClick={()=>setSelected(card)}>{card.title}</button>
+    <div className="safe-text text-xs text-slate-400"><button className="text-left hover:text-blue-200" onClick={(e)=>{e.stopPropagation(); setSourceKeyword(card.source_keyword||'全部')}}>{card.source_keyword||'-'}</button><div className="mt-1 text-slate-600">{card.keyword_source||''}</div></div>
+    <button className="safe-text text-left font-semibold text-blue-200 hover:text-blue-100" onClick={(e)=>{e.stopPropagation(); setSelected(card)}}>{card.title}</button>
     <div><span className={verdictClass(card.verdict)}>{verdictLabel(card.verdict)}</span></div>
     <div className="text-sm text-slate-300">{card.score}</div>
     <div className="safe-text text-sm text-slate-400">{shortText(biz.verdict_reason||card.mvp_plan||biz.pain||card.monetization_type)}</div>
-    <div>{mode==='review'?<InlineRowFeedback onFeedback={(label)=>applyFeedback(card,label)}/>:<a className="btn-secondary" href={`/review?card=${card.id}`}>去复核</a>}</div>
+    <div onClick={(e)=>e.stopPropagation()}>{mode==='review'?<div className="flex flex-wrap items-center gap-2"><button className="btn-secondary" onClick={()=>setSelected(card)}>详情</button><InlineRowFeedback onFeedback={(label)=>applyFeedback(card,label)}/></div>:<div className="flex flex-wrap items-center gap-2"><button className="btn-secondary" onClick={()=>setSelected(card)}>详情</button><a className="btn-secondary" href={`/review?card=${card.id}`}>去复核</a></div>}</div>
    </div>}):mode==='review'&&initialCount>0?<ReviewComplete processed={processed}/>:<div className="p-6 text-sm text-slate-500">{empty}</div>}
   </div>
 
