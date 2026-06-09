@@ -1635,6 +1635,7 @@ def run_collector_autopilot(db:Session, limit:int=24, import_limit:int=12)->dict
     payload={'enabled':True,'target_refresh':target_refresh,'target_health':target_health,'budgeted_targets':{'allocation':budgeted_targets['budget'].get('allocation'),'by_segment':budgeted_targets['by_segment']},'seeds':seeds,'domains':domains,'auto_targets':{'keywords':target_keywords[:20],'domains':target_domains[:20]},'budget_plan':plan,'results':results,'errors':errors[:20],'clean':clean,'import':imported,'summary':collector_pool_summary(db)}
     # Persist a compact replay record so the operator can compare budget vs.
     # actual results across runs.
+    replay_row=None
     try:
         replay={
             'limit': limit,
@@ -1646,10 +1647,27 @@ def run_collector_autopilot(db:Session, limit:int=24, import_limit:int=12)->dict
             'target_health': target_health,
             'errors': errors[:10],
         }
-        db.add(models.RunHistory(kind='collector_autopilot', status='ok', summary=json.dumps(replay, ensure_ascii=False), finished_at=datetime.utcnow()))
+        replay_row=models.RunHistory(kind='collector_autopilot', status='ok', summary=json.dumps(replay, ensure_ascii=False), finished_at=datetime.utcnow())
+        db.add(replay_row)
         db.commit()
     except Exception:
         db.rollback()
+    safe_repair=None
+    if (services.setting(db,'COLLECTOR_SAFE_REPAIR_AFTER_RUN') or 'true').lower() in {'1','true','yes','on'}:
+        try:
+            safe_repair=run_safe_repair_autopilot(db, allow_cleanup=False, force=False)
+            payload['safe_repair']=safe_repair
+            if replay_row is not None:
+                replay['safe_repair']={
+                    'applied_count': safe_repair.get('applied_count'),
+                    'blocked_count': safe_repair.get('blocked_count'),
+                    'actions': [{'repair':a.get('repair'),'applied':bool(a.get('applied') and a['applied'].get('ok')),'blocked_reason':a.get('blocked_reason'),'safety':a.get('safety')} for a in safe_repair.get('actions',[])],
+                }
+                replay_row.summary=json.dumps(replay, ensure_ascii=False)
+                db.merge(replay_row); db.commit()
+        except Exception as e:
+            db.rollback()
+            payload['safe_repair']={'ok':False,'error':str(e)[:180]}
     return payload
 
 from datetime import timedelta
