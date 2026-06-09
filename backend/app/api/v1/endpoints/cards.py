@@ -85,6 +85,20 @@ def feedback(card_id: int, payload: schemas.FeedbackIn, _: bool = Depends(requir
         raise HTTPException(404, "card not found")
     return obj(services.apply_feedback(db, card, payload.label, payload.note))
 
+@router.post("/bulk-feedback")
+def bulk_feedback(payload: dict, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    ids=[int(x) for x in (payload.get("card_ids") or [])]
+    label=str(payload.get("label") or "")
+    note=str(payload.get("note") or "")
+    if label not in {"Action","Watch","Reject","Block"}:
+        raise HTTPException(400, "invalid feedback label")
+    out=[]
+    for cid in ids[:100]:
+        card=db.get(models.OpportunityCard, cid)
+        if card:
+            out.append(obj(services.apply_feedback(db, card, label, note)))
+    return {"ok": True, "label": label, "updated": len(out), "cards": out}
+
 @router.get("/{card_id}/markdown")
 def card_markdown(card_id: int, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     try:

@@ -6,10 +6,9 @@ import {usePathname} from 'next/navigation'
 import {LogoutButton} from './LogoutButton'
 import {useLang} from '../lib/i18n'
 
-const mainItems = [
-  ['/', 'autopilot'],
-  ['/review', 'review'],
-  ['/cards', 'cards'],
+const hunterItems = [
+  ['/hunter', '总览'],
+  ['/hunter/opportunities', '机会'],
 ]
 
 const collectorItems = [
@@ -39,10 +38,11 @@ const advancedItems = [
 export function Nav() {
   const {lang, setLang, t} = useLang()
   const pathname = usePathname()
-  const [open, setOpen] = useState<'collectors'|'settings'|'advanced'|null>(null)
+  const [open, setOpen] = useState<'hunter'|'collectors'|'settings'|'advanced'|null>(null)
 
   useEffect(() => {
-    if (pathname.startsWith('/collectors')) setOpen('collectors')
+    if (pathname === '/' || pathname.startsWith('/hunter') || pathname.startsWith('/review') || pathname.startsWith('/cards')) setOpen('hunter')
+    else if (pathname.startsWith('/collectors')) setOpen('collectors')
     else if (pathname.startsWith('/settings')) setOpen('settings')
     else if (advancedItems.some(([href]) => pathname.startsWith(href))) setOpen('advanced')
   }, [pathname])
@@ -52,10 +52,10 @@ export function Nav() {
     return `block rounded-xl px-3 py-2 text-sm no-underline transition ${active ? 'bg-blue-600/20 text-blue-100 ring-1 ring-blue-500/40' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`
   }
   const childClass = (href:string) => {
-    const active = pathname.startsWith(href)
+    const active = href === '/hunter' ? (pathname === '/' || pathname === '/hunter') : pathname.startsWith(href)
     return `block rounded-xl px-3 py-2 text-sm no-underline transition ${active ? 'bg-blue-600/20 text-blue-100' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`
   }
-  const sectionButton = (id:'collectors'|'settings'|'advanced', label:string) => (
+  const sectionButton = (id:'hunter'|'collectors'|'settings'|'advanced', label:string) => (
     <button
       type="button"
       onClick={() => setOpen(open === id ? null : id)}
@@ -79,9 +79,12 @@ export function Nav() {
       </div>
 
       <nav className="mt-4 flex gap-2 overflow-x-auto pb-1 md:mt-8 md:block md:space-y-2 md:overflow-visible md:pb-0">
-        {mainItems.map(([href, key]) => (
-          <Link className={`shrink-0 ${linkClass(href)}`} href={href} key={href} onClick={()=>setOpen(null)}>{t(key)}</Link>
-        ))}
+        <div className="min-w-[170px] shrink-0 md:min-w-0">
+          {sectionButton('hunter', '机会猎手')}
+          {open==='hunter'&&<div className="mt-2 space-y-1 rounded-2xl border border-slate-800 bg-slate-900/50 p-2">
+            {hunterItems.map(([href, label]) => <Link key={href} className={childClass(href)} href={href}>{label}</Link>)}
+          </div>}
+        </div>
         <div className="min-w-[170px] shrink-0 md:min-w-0">
           {sectionButton('collectors', t('collectors'))}
           {open==='collectors'&&<div className="mt-2 space-y-1 rounded-2xl border border-slate-800 bg-slate-900/50 p-2">

@@ -12,8 +12,8 @@ function fmtDate(s:string){if(!s) return '-'; const d=new Date(s); if(Number.isN
 const SORTS:any={newest:'最新优先',oldest:'最早优先',score_desc:'分数高到低',score_asc:'分数低到高',verdict:'按判断分类'}
 const VERDICTS=['全部','Action','Watch','Reject','Block']
 
-type Props={cards:any[]; empty?:string; showVerdictFilter?:boolean; mode?:'review'|'opportunity'}
-export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=true, mode='review'}:Props){
+type Props={cards:any[]; empty?:string; showVerdictFilter?:boolean; mode?:'review'|'opportunity'; enableBulk?:boolean}
+export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=true, mode='review', enableBulk=false}:Props){
  const [localCards,setLocalCards]=useState<any[]>(cards||[])
  const [reviewedCount,setReviewedCount]=useState(0)
  const [initialCount,setInitialCount]=useState((cards||[]).length)
@@ -22,6 +22,7 @@ export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=
  const [verdict,setVerdict]=useState('全部')
  const [sourceKeyword,setSourceKeyword]=useState('全部')
  const [learning,setLearning]=useState<any|null>(null)
+ const [selectedIds,setSelectedIds]=useState<Set<number>>(new Set())
  useEffect(()=>{setLocalCards(cards||[]); setInitialCount((cards||[]).length); setReviewedCount(0)},[cards])
  const sourceOptions=useMemo(()=>['全部',...Array.from(new Set((localCards||[]).map(c=>c.source_keyword||'').filter(Boolean))).sort()], [localCards])
  const rows=useMemo(()=>{
@@ -51,6 +52,14 @@ export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=
    const next=remaining[Math.min(idx, remaining.length-1)] || null
    setSelected(next)
   }
+ }
+ async function applyBulk(label:string){
+  if(!enableBulk||!selectedIds.size) return
+  if(!confirm(`批量标记 ${selectedIds.size} 个机会为 ${label}？`)) return
+  const res:any=await api('/api/cards/bulk-feedback',{method:'POST',body:JSON.stringify({card_ids:Array.from(selectedIds),label,note:'bulk review from opportunities page'})})
+  setLocalCards(prev=>prev.map(c=>selectedIds.has(c.id)?{...c,feedback_label:label,verdict:label}:c))
+  setReviewedCount(n=>n+(res.updated||selectedIds.size))
+  setSelectedIds(new Set())
  }
  useEffect(()=>{
   const id=new URLSearchParams(location.search).get('card')
@@ -82,6 +91,7 @@ export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=
   <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-950/70 p-3">
    <div className="min-w-[260px] flex-1 text-sm text-slate-400"><div>本次队列：已处理 <b className="text-emerald-300">{processed}</b> / <b className="text-slate-100">{initialCount}</b> · 剩余 <b className="text-amber-300">{remaining}</b>{mode==='review'&&<span className="ml-3 text-xs text-slate-500">快捷键：J/K · A/W/R/B · Esc</span>}</div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-800"><div className="h-full rounded-full bg-emerald-500" style={{width:`${progress}%`}} /></div></div>
    <div className="flex flex-wrap gap-2">
+    {enableBulk&&<><button className="btn-secondary" onClick={()=>setSelectedIds(new Set(rows.map((r:any)=>r.id)))}>全选当前</button><button className="btn-secondary" onClick={()=>setSelectedIds(new Set())}>清空选择</button>{['Action','Watch','Reject','Block'].map(x=><button key={x} className="btn-secondary" disabled={!selectedIds.size} onClick={()=>applyBulk(x)}>批量{x} {selectedIds.size?`(${selectedIds.size})`:''}</button>)}</>}
     {showVerdictFilter&&<select className="input h-9 w-36 py-1 text-sm" value={verdict} onChange={e=>setVerdict(e.target.value)}>{VERDICTS.map(v=><option key={v} value={v}>{v==='全部'?'全部判断':verdictLabel(v)}</option>)}</select>}
     <select className="input h-9 w-52 py-1 text-sm" value={sourceKeyword} onChange={e=>setSourceKeyword(e.target.value)}>{sourceOptions.map(v=><option key={v} value={v}>{v==='全部'?'全部来源词':v}</option>)}</select>
     <select className="input h-9 w-36 py-1 text-sm" value={sort} onChange={e=>setSort(e.target.value)}>{Object.entries(SORTS).map(([k,v])=><option key={k} value={k}>{v as string}</option>)}</select>
@@ -91,12 +101,12 @@ export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=
 
   <div className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-950/70">
    <div className={`hidden gap-3 border-b border-slate-800 px-4 py-3 text-xs font-semibold text-slate-500 md:grid ${mode==='review'?'grid-cols-[56px_110px_1.1fr_1fr_100px_70px_1fr_170px]':'grid-cols-[56px_110px_1.1fr_1fr_100px_70px_1fr_110px]'}`}>
-    <div>序号</div><div>日期</div><div>来源词</div><div>标题</div><div>判断</div><div>分数</div><div>摘要</div><div>{mode==='review'?'复核':'操作'}</div>
+    <div>{enableBulk?'选择':'序号'}</div><div>日期</div><div>机会组</div><div>标题</div><div>判断</div><div>分数</div><div>摘要</div><div>{mode==='review'?'复核':'操作'}</div>
    </div>
    {rows.length?rows.map((card,idx)=>{const biz=firstBusiness(card); return <div key={card.id} role="button" tabIndex={0} onClick={()=>setSelected(card)} onKeyDown={(e)=>{if(e.key==='Enter'||e.key===' '){e.preventDefault(); setSelected(card)}}} className={`grid cursor-pointer gap-3 border-b border-slate-800 px-4 py-4 transition hover:bg-slate-900/60 focus:outline-none focus:ring-2 focus:ring-blue-500/60 last:border-b-0 md:items-center ${mode==='review'?'md:grid-cols-[56px_110px_1.1fr_1fr_100px_70px_1fr_170px]':'md:grid-cols-[56px_110px_1.1fr_1fr_100px_70px_1fr_110px]'}`}>
-    <div className="text-sm text-slate-500">#{idx+1}</div>
+    <div className="text-sm text-slate-500" onClick={(e)=>e.stopPropagation()}>{enableBulk?<input type="checkbox" checked={selectedIds.has(card.id)} onChange={e=>setSelectedIds(prev=>{const n=new Set(prev); e.target.checked?n.add(card.id):n.delete(card.id); return n})}/>:`#${idx+1}`}</div>
     <div className="text-xs text-slate-500">{fmtDate(card.created_at)}</div>
-    <div className="safe-text text-xs text-slate-400"><button className="text-left hover:text-blue-200" onClick={(e)=>{e.stopPropagation(); setSourceKeyword(card.source_keyword||'全部')}}>{card.source_keyword||'-'}</button><div className="mt-1 text-slate-600">{card.keyword_source||''}</div></div>
+    <div className="safe-text text-xs text-slate-400"><button className="text-left hover:text-blue-200" onClick={(e)=>{e.stopPropagation(); setSourceKeyword(card.source_keyword||'全部')}}>{card.opportunity_group?.canonical_keyword||card.source_keyword||'-'}</button><div className="mt-1 text-slate-600">组概率 {Math.round((card.opportunity_group?.probability||0)*100)}% · {card.opportunity_group?.variant_count||0} 变体</div></div>
     <button className="safe-text text-left font-semibold text-blue-200 hover:text-blue-100" onClick={(e)=>{e.stopPropagation(); setSelected(card)}}>{card.title}</button>
     <div><span className={verdictClass(card.verdict)}>{verdictLabel(card.verdict)}</span></div>
     <div className="text-sm text-slate-300">{card.score}</div>
