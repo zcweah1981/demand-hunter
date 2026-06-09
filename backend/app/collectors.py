@@ -225,6 +225,13 @@ def _collector_target_source_effectiveness(db:Session, target_ids:list[int], sca
         fs=ev.get('feedback_stats') or {}
         good=int(fs.get('Action') or 0)+int(fs.get('Watch') or 0)
         bad=int(fs.get('Reject') or 0)+int(fs.get('Block') or 0)
+        # Backfill/source attribution for older data: CollectorTarget has only
+        # aggregate success/reject counts. Candidate status still tells us which
+        # source produced usable vs rejected leads for that target.
+        if not good and c.status in {'new','imported','promoted'}:
+            good=1
+        if not bad and c.status == 'rejected':
+            bad=1
         source=c.source or 'unknown'
         for tid in tids:
             row=acc[tid].setdefault(source, {'source':source,'leads':0,'success':0,'reject':0,'last_label':None,'last_keyword':None,'last_at':None})
