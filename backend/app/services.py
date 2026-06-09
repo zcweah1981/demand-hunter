@@ -2045,7 +2045,7 @@ def abandon_repair_experiment(db: Session, experiment_id: int, rollback: bool = 
     db.commit()
     return audit
 
-def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = None, seeds: list[str] | None = None) -> models.RunHistory:
+def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = None, seeds: list[str] | None = None, trigger: str = "manual_daily") -> models.RunHistory:
     # recover stale runs from previous crashes/restarts so dashboard does not stay "running" forever
     stale = db.query(models.RunHistory).filter(models.RunHistory.status == "running", models.RunHistory.kind == "daily").all()
     for old in stale:
@@ -2053,7 +2053,7 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
         old.summary = "stale running run recovered before new run"
         old.finished_at = datetime.utcnow()
     db.commit()
-    run=models.RunHistory(kind="daily", status="running"); db.add(run); db.commit(); db.refresh(run)
+    run=models.RunHistory(kind="daily", status="running", summary=json.dumps({"trigger": trigger, "phase": "starting"}, ensure_ascii=False)); db.add(run); db.commit(); db.refresh(run)
     try:
         if use_four_find is None:
             use_four_find = (setting(db, "FOUR_FIND_AUTO_ENABLED") or "false").lower() in {"1", "true", "yes", "on"}
@@ -2069,7 +2069,7 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
                     collector_import_limit = int(setting(db, "COLLECTOR_AUTO_IMPORT_LIMIT") or "12")
                 except Exception:
                     collector_import_limit = 12
-                run.summary=json.dumps({"phase":"collectors", "collector_limit": collector_limit, "collector_import_limit": collector_import_limit}, ensure_ascii=False)
+                run.summary=json.dumps({"trigger": trigger, "phase":"collectors", "collector_limit": collector_limit, "collector_import_limit": collector_import_limit}, ensure_ascii=False)
                 db.commit()
                 collector_summary = collector_service.run_collector_autopilot(db, limit=collector_limit, import_limit=collector_import_limit)
                 print(f"[daily_run] collector done, selecting keywords", flush=True)
@@ -2104,7 +2104,7 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
         kws = [kw for kw in kws if kw.status not in {"rejected", "reject", "block", "duplicate", "serp_reject", "rewrite_exhausted"}]
         total_kws = len(kws[:limit])
         for idx, kw in enumerate(kws[:limit], 1):
-            run.summary=json.dumps({"phase":"running", "current": idx, "total": total_kws, "keyword": kw.query, "cards": len(cards)}, ensure_ascii=False)
+            run.summary=json.dumps({"trigger": trigger, "phase":"running", "current": idx, "total": total_kws, "keyword": kw.query, "cards": len(cards)}, ensure_ascii=False)
             db.commit()
             noise = keyword_noise_reason(kw.query, kw.source)
             if noise:
@@ -2208,6 +2208,7 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
         diagnosis=diagnose_quality_report(quality_report, db=db)
         quality_report["diagnosis"] = diagnosis
         summary={
+            "trigger": trigger,
             "phase":"finished",
             "keywords":len(kws),
             "cards":len(cards),
@@ -2352,11 +2353,27 @@ def apply_feedback(db: Session, card: models.OpportunityCard, label: str, note: 
     db.commit(); db.refresh(card); return card
 
 def auto_status(db: Session) -> dict:
-    # The automatic loop's primary run is `daily`. Collector/repair rows are
-    # child steps emitted during the same loop; using them as `last_run` makes
-    # the dashboard look like the real auto run is missing or shifts the next
-    # scheduled time. Fall back to any run only before the first daily exists.
-    last = db.query(models.RunHistory).filter_by(kind="daily").order_by(models.RunHistory.started_at.desc()).first()
+    # Next automatic time is based ONLY on the last scheduled full daily fetch.
+    # Manual daily runs, force ticks, collector/repair/experiment rows must not
+    # move the next scheduled auto time.
+    def _summary(row):
+        try: return json.loads(row.summary or "{}") if row.summary and row.summary.startswith("{") else {}
+        except Exception: return {}
+    daily_rows = db.query(models.RunHistory).filter_by(kind="daily").order_by(models.RunHistory.started_at.desc()).limit(50).all()
+    last = None
+    for row in daily_rows:
+        s=_summary(row)
+        trigger=s.get("trigger")
+        if trigger == "auto_scheduled":
+            last=row; break
+    # Legacy compatibility: runs before trigger tracking cannot reliably be
+    # separated into manual vs scheduled. Keep the known scheduled baseline
+    # from 2026-06-10 06:54/06:58 BJ (#81) until a new auto_scheduled daily
+    # replaces it. Do not let newer legacy/manual daily rows move the schedule.
+    if not last:
+        legacy = db.get(models.RunHistory, 81)
+        if legacy and legacy.kind == "daily" and legacy.finished_at:
+            last = legacy
     if not last:
         last = db.query(models.RunHistory).order_by(models.RunHistory.started_at.desc()).first()
     enabled = (setting(db, "AUTO_RUN_ENABLED") or "false").lower() in {"1","true","yes","on"}
@@ -2365,12 +2382,24 @@ def auto_status(db: Session) -> dict:
     def iso_bj(dt):
         return (dt + timedelta(hours=8)).isoformat() + "+08:00" if dt else None
     next_run_at = iso_bj(last.finished_at + timedelta(minutes=interval)) if last and last.finished_at and enabled else None
-    return {"enabled": enabled, "interval_minutes": interval, "timezone": "Asia/Shanghai", "next_run_at": next_run_at, "last_run": None if not last else {"id": last.id, "status": last.status, "kind": last.kind, "summary": json.loads(last.summary or "{}") if last.summary and last.summary.startswith("{") else last.summary, "started_at": iso_bj(last.started_at), "finished_at": iso_bj(last.finished_at)}}
+    last_summary=_summary(last) if last else None
+    return {"enabled": enabled, "interval_minutes": interval, "timezone": "Asia/Shanghai", "schedule_basis": "last_auto_scheduled_daily", "next_run_at": next_run_at, "last_run": None if not last else {"id": last.id, "status": last.status, "kind": last.kind, "trigger": last_summary.get("trigger") if isinstance(last_summary,dict) else None, "summary": last_summary if last_summary else (last.summary or ""), "started_at": iso_bj(last.started_at), "finished_at": iso_bj(last.finished_at)}}
 
 def auto_due(db: Session) -> bool:
     st = auto_status(db)
     if not st["enabled"]: return False
-    last = db.query(models.RunHistory).filter_by(kind="daily").order_by(models.RunHistory.started_at.desc()).first()
+    last = None
+    daily_rows = db.query(models.RunHistory).filter_by(kind="daily").order_by(models.RunHistory.started_at.desc()).limit(50).all()
+    for row in daily_rows:
+        try: s=json.loads(row.summary or "{}") if row.summary and row.summary.startswith("{") else {}
+        except Exception: s={}
+        trigger=s.get("trigger")
+        if trigger == "auto_scheduled":
+            last=row; break
+    if not last:
+        legacy = db.get(models.RunHistory, 81)
+        if legacy and legacy.kind == "daily" and legacy.finished_at:
+            last = legacy
     if not last or not last.finished_at: return True
     return (datetime.utcnow() - last.finished_at).total_seconds() >= st["interval_minutes"] * 60
 

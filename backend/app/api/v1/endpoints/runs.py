@@ -20,7 +20,7 @@ def run_daily(payload: schemas.DailyRunIn, _: bool = Depends(require_auth), db: 
             return
         local = SessionLocal()
         try:
-            services.daily_run(local, payload.limit, payload.roots, use_four_find=payload.use_four_find, seeds=payload.seeds)
+            services.daily_run(local, payload.limit, payload.roots, use_four_find=payload.use_four_find, seeds=payload.seeds, trigger="manual_daily")
             services.export_latest_markdown(local)
         finally:
             local.close()

@@ -12,12 +12,13 @@ def run_daily_background(force: bool = False):
     try:
         db = SessionLocal()
         try:
-            if force or services.auto_due(db):
+            due = services.auto_due(db)
+            if force or due:
                 try:
                     limit = int(services.setting(db, "AUTO_RUN_LIMIT") or "24")
                 except Exception:
                     limit = 24
-                run = services.daily_run(db, limit=limit)
+                run = services.daily_run(db, limit=limit, trigger="manual_force" if force else "auto_scheduled")
                 services.export_latest_markdown(db)
                 return {"started": True, "run_id": run.id, "status": run.status}
             return {"started": False, "reason": "not_due"}
