@@ -4,6 +4,7 @@ import {verdictLabel} from '../../../components/OpportunityCard'
 import {ExportActionsButton} from '../../../components/Actions'
 
 const VERDICTS=['All','Adopted','Action','Watch','Reject','Block']
+function tabClass(v:string, active:boolean){const tone:any={All:'border-slate-700 bg-slate-800 text-slate-100',Adopted:'border-purple-500/50 bg-purple-500/10 text-purple-200',Action:'border-emerald-500/50 bg-emerald-500/10 text-emerald-200',Watch:'border-blue-500/50 bg-blue-500/10 text-blue-200',Reject:'border-amber-500/50 bg-amber-500/10 text-amber-200',Block:'border-rose-500/50 bg-rose-500/10 text-rose-200'}; return `rounded-xl border px-3 py-2 text-sm no-underline transition ${tone[v]||tone.All} ${active?'ring-2 ring-white/30':'opacity-80 hover:opacity-100'}`}
 
 export default async function Page({searchParams}:{searchParams?:Promise<Record<string,string|string[]|undefined>>}){
  const params=(await (searchParams||Promise.resolve({}))) as Record<string,string|string[]|undefined>
@@ -24,7 +25,7 @@ export default async function Page({searchParams}:{searchParams?:Promise<Record<
    </div>
    <div className="flex flex-wrap gap-2">
     <ExportActionsButton/>
-    {VERDICTS.map(v=><a key={v} className={verdict===v?'btn':'btn-secondary'} href={`/hunter/opportunities?verdict=${v}`}>{v==='All'?'全部':verdictLabel(v)}</a>)}
+    {VERDICTS.map(v=><a key={v} className={tabClass(v, verdict===v)} href={`/hunter/opportunities?verdict=${v}`}>{v==='All'?'全部':verdictLabel(v)}</a>)}
    </div>
   </div>
   <section className="panel">
