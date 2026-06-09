@@ -422,9 +422,36 @@ def apply_missing_tool_intent_repair(db:Session)->dict:
     row=db.get(models.Setting,'COLLECTOR_SOURCE_RADAR_TECH_ONLY') or models.Setting(key='COLLECTOR_SOURCE_RADAR_TECH_ONLY', value='true', secret=False)
     row.value='true'; row.secret=False; db.merge(row)
     audit={'changes':changes,'source_radar_tech_only':True,'top_reasons':dist.get('by_reason',[])[:8],'top_sources':dist.get('by_source',[])[:8]}
+    audit['repair_safety']=repair_safety_score(audit)
     db.add(models.RunHistory(kind='collector_repair', status='ok', summary=json.dumps({'repair':'missing_tool_intent','result':audit}, ensure_ascii=False), finished_at=datetime.utcnow()))
     db.commit()
     return {'ok':True, **audit}
+
+def repair_safety_score(result:dict)->dict:
+    """Score a repair result for overreach/noise risk.
+
+    This is intentionally conservative. A repair that generates hundreds of
+    candidates or rejects many records is not automatically bad, but it should
+    be marked for review so the operator can inspect replay output.
+    """
+    score=100; issues=[]
+    variants=int(result.get('variants_saved') or 0)
+    rewritten=int(result.get('rewritten') or 0)
+    rejected=int(result.get('rejected') or 0)
+    scanned=int(result.get('scanned') or result.get('scanned_generic_short_tail') or 0)
+    changes=len(result.get('changes') or [])
+    if variants >= 300:
+        score-=35; issues.append({'code':'large_candidate_injection','text':f'{variants} rewrite candidates generated'})
+    elif variants >= 100:
+        score-=18; issues.append({'code':'medium_candidate_injection','text':f'{variants} rewrite candidates generated'})
+    if scanned and rejected / max(1, scanned) >= 0.75:
+        score-=12; issues.append({'code':'large_rejection_batch','text':f'rejected {rejected}/{scanned} scanned records'})
+    if rewritten >= 80:
+        score-=15; issues.append({'code':'large_rewrite_batch','text':f'{rewritten} rejected short-tail records rewritten'})
+    if changes >= 4:
+        score-=10; issues.append({'code':'many_source_weight_changes','text':f'{changes} source weights changed'})
+    status='safe' if score>=80 else ('needs_review' if score>=55 else 'risky')
+    return {'score':max(0,min(100,score)),'status':status,'issues':issues}
 
 def apply_generic_short_tail_repair(db:Session, limit:int=300)->dict:
     """Rewrite rejected generic short-tail candidates into concrete task variants."""
@@ -447,6 +474,7 @@ def apply_generic_short_tail_repair(db:Session, limit:int=300)->dict:
         if len(examples)<10: examples.append({'original':r.keyword,'variants':variants})
     db.commit()
     audit={'scanned_generic_short_tail':scanned,'rewritten':rewritten,'variants_saved':variants_saved,'examples':examples}
+    audit['repair_safety']=repair_safety_score(audit)
     db.add(models.RunHistory(kind='collector_repair', status='ok', summary=json.dumps({'repair':'generic_short_tail','result':audit}, ensure_ascii=False), finished_at=datetime.utcnow()))
     db.commit()
     return {'ok':True, **audit}
@@ -468,6 +496,7 @@ def apply_sitemap_editorial_path_repair(db:Session, limit:int=500)->dict:
         db.merge(r); rejected+=1
         if len(examples)<10: examples.append({'id':r.id,'keyword':r.keyword,'url':r.source_url})
     audit={'scanned':scanned,'rejected':rejected,'examples':examples,'sitemap_path_gate':'task_pages_only'}
+    audit['repair_safety']=repair_safety_score(audit)
     db.add(models.RunHistory(kind='collector_repair', status='ok', summary=json.dumps({'repair':'sitemap_editorial_path','result':audit}, ensure_ascii=False), finished_at=datetime.utcnow()))
     db.commit()
     return {'ok':True, **audit}

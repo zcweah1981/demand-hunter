@@ -85,7 +85,18 @@ def collector_runs(limit: int = 10, _: bool = Depends(require_auth), db: Session
 @router.get("/repairs")
 def collector_repairs(limit: int = 10, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     rows=db.query(models.RunHistory).filter_by(kind='collector_repair').order_by(models.RunHistory.started_at.desc()).limit(max(1, min(50, limit))).all()
-    return [obj(r) for r in rows]
+    out=[]
+    for r in rows:
+        d=obj(r)
+        try:
+            result=(d.get('summary') or {}).get('result') or {}
+            if result and not result.get('repair_safety'):
+                result['repair_safety']=collectors.repair_safety_score(result)
+                d['summary']['result']=result
+        except Exception:
+            pass
+        out.append(d)
+    return out
 
 @router.get("/roi")
 def collector_roi(limit: int = 12, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
