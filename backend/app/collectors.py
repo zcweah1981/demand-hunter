@@ -199,9 +199,53 @@ def apply_collector_target_health(db:Session)->dict:
     db.commit()
     return {'ok':True,'scanned':len(rows),'cooled':cooled,'promoted':promoted,'active':active}
 
+def _collector_target_source_effectiveness(db:Session, target_ids:list[int], scan_limit:int=4000)->dict[int,list[dict]]:
+    """Attribute target success/reject counts back to collector sources.
+
+    CollectorTarget keeps aggregate success/reject counts, but the operator also
+    needs to know which discovery source caused those outcomes. Candidate
+    evidence stores collector_target_ids and feedback_stats; aggregate that into
+    per-target source rows for UI traceability.
+    """
+    wanted={int(x) for x in target_ids if x}
+    if not wanted: return {}
+    acc={tid:{} for tid in wanted}
+    rows=db.query(models.CandidateKeyword).order_by(models.CandidateKeyword.created_at.desc()).limit(max(100, scan_limit)).all()
+    for c in rows:
+        try: ev=json.loads(c.evidence_json or '{}')
+        except Exception: ev={}
+        tids=[]
+        for tid in ev.get('collector_target_ids') or []:
+            try:
+                tid=int(tid)
+            except Exception:
+                continue
+            if tid in wanted: tids.append(tid)
+        if not tids: continue
+        fs=ev.get('feedback_stats') or {}
+        good=int(fs.get('Action') or 0)+int(fs.get('Watch') or 0)
+        bad=int(fs.get('Reject') or 0)+int(fs.get('Block') or 0)
+        source=c.source or 'unknown'
+        for tid in tids:
+            row=acc[tid].setdefault(source, {'source':source,'leads':0,'success':0,'reject':0,'last_label':None,'last_keyword':None,'last_at':None})
+            row['leads']+=1
+            row['success']+=good
+            row['reject']+=bad
+            if ev.get('last_feedback_label'):
+                row['last_label']=ev.get('last_feedback_label')
+                row['last_keyword']=c.keyword
+                row['last_at']=ev.get('last_feedback_at')
+    out={}
+    for tid, by_source in acc.items():
+        rows=list(by_source.values())
+        rows.sort(key=lambda r: (-(r.get('success') or 0), (r.get('reject') or 0), -(r.get('leads') or 0), r.get('source') or ''))
+        out[tid]=rows[:8]
+    return out
+
 def collector_target_segments(db:Session, limit:int=200)->dict:
     """Segment targets for budget decisions and operator review."""
     rows=db.query(models.CollectorTarget).order_by(models.CollectorTarget.priority.desc(), models.CollectorTarget.created_at.desc()).limit(limit).all()
+    source_effectiveness=_collector_target_source_effectiveness(db, [r.id for r in rows])
     out={'winner':[],'promising':[],'noisy':[],'exhausted':[],'cooldown':[],'new':[]}
     seen_values=set()
     for t in rows:
@@ -212,7 +256,7 @@ def collector_target_segments(db:Session, limit:int=200)->dict:
         success=t.success_count or 0
         reject=t.reject_count or 0
         priority=t.priority or 0
-        item={'id':t.id,'target_type':t.target_type,'value':t.value,'topic':t.topic,'priority':priority,'status':t.status,'success_count':success,'reject_count':reject,'last_seen_at':t.last_seen_at.isoformat() if t.last_seen_at else None,'last_success_at':t.last_success_at.isoformat() if t.last_success_at else None,'notes':t.notes}
+        item={'id':t.id,'target_type':t.target_type,'value':t.value,'topic':t.topic,'priority':priority,'status':t.status,'success_count':success,'reject_count':reject,'source_effectiveness':source_effectiveness.get(t.id,[]),'last_seen_at':t.last_seen_at.isoformat() if t.last_seen_at else None,'last_success_at':t.last_success_at.isoformat() if t.last_success_at else None,'notes':t.notes}
         if t.status=='cooldown':
             out['cooldown'].append(item)
         elif t.status in {'rejected','exhausted'}:
