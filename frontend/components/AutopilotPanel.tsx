@@ -80,12 +80,12 @@ export function AutopilotPanel({status}:{status:AutopilotStatus}){
     </div>}
 
     <div className="mt-5 grid gap-3 md:grid-cols-2 lg:grid-cols-6">
-      <KpiCard label="总数" help="当前所有机会组数量。按 opportunity group 去重后统计，不是原始卡片数；同一机会的关键词变体只算 1 个。" value={status.counts.cards} tone="text-slate-100" />
-      <KpiCard label="采纳 Adopted" help="你已经决定采纳、准备进入 MVP/执行阶段的机会组。Adopted 优先级最高；同组里旧的 Action/Watch 变体不会再单独计数。" value={status.counts.adopted||0} tone="text-purple-300" />
-      <KpiCard label="Action" help={`达到行动门槛、可以进入小规模验证的机会组。模型 Action 需要分数 ≥ ${status.counts.min_action_score??74}；人工改成 Action 的机会按你的判断优先。`} value={status.counts.action} tone="text-emerald-300" />
-      <KpiCard label="Watch" help="方向可能成立，但还缺关键证据的机会组。通常需要补搜索量/CPC/KD/趋势、SERP 缺口、社媒痛点或首个付费验证。" value={status.counts.watch} tone="text-blue-300" />
-      <KpiCard label="Reject" help="当前不建议推进的机会组。原因可能是搜索意图错、强竞品过多、缺口弱、关键词噪音、无法定义明确付费验证等。" value={status.counts.reject||0} tone="text-amber-300" />
-      <KpiCard label="Block" help="永久屏蔽的机会组。标准：明确判断该方向不应再进入机会流，通常用于垃圾词、反复误报、错误来源、无关行业或会持续污染采集器的方向。Block 会比 Reject 更强地影响后续采集和权重。" value={status.counts.block||0} tone="text-rose-300" />
+      <KpiCard href="/hunter/opportunities?verdict=All" label="总数" help="当前所有机会组数量。按 opportunity group 去重后统计，不是原始卡片数；同一机会的关键词变体只算 1 个。" value={status.counts.cards} tone="text-slate-100" />
+      <KpiCard href="/hunter/opportunities?verdict=Adopted" label="采纳 Adopted" help="你已经决定采纳、准备进入 MVP/执行阶段的机会组。Adopted 优先级最高；同组里旧的 Action/Watch 变体不会再单独计数。" value={status.counts.adopted||0} tone="text-purple-300" />
+      <KpiCard href="/hunter/opportunities?verdict=Action" label="Action" help={`达到行动门槛、可以进入小规模验证的机会组。模型 Action 需要分数 ≥ ${status.counts.min_action_score??74}；人工改成 Action 的机会按你的判断优先。`} value={status.counts.action} tone="text-emerald-300" />
+      <KpiCard href="/hunter/opportunities?verdict=Watch" label="Watch" help="方向可能成立，但还缺关键证据的机会组。通常需要补搜索量/CPC/KD/趋势、SERP 缺口、社媒痛点或首个付费验证。" value={status.counts.watch} tone="text-blue-300" />
+      <KpiCard href="/hunter/opportunities?verdict=Reject" label="Reject" help="当前不建议推进的机会组。原因可能是搜索意图错、强竞品过多、缺口弱、关键词噪音、无法定义明确付费验证等。" value={status.counts.reject||0} tone="text-amber-300" />
+      <KpiCard href="/hunter/opportunities?verdict=Block" label="Block" help="永久屏蔽的机会组。标准：明确判断该方向不应再进入机会流，通常用于垃圾词、反复误报、错误来源、无关行业或会持续污染采集器的方向。Block 会比 Reject 更强地影响后续采集和权重。" value={status.counts.block||0} tone="text-rose-300" />
     </div>
 
     <div className="mt-4 grid gap-3 lg:grid-cols-3">
@@ -125,4 +125,4 @@ export function AutopilotPanel({status}:{status:AutopilotStatus}){
   </section>
 }
 
-function KpiCard({label,help,value,tone}:{label:string;help:string;value:any;tone:string}){return <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"><div className="kpi-label flex items-center gap-1">{label}<span className="group relative inline-flex h-4 w-4 cursor-help items-center justify-center rounded border border-slate-600 text-[10px] text-slate-400">?<span className="pointer-events-none absolute left-1/2 top-5 z-20 hidden w-52 -translate-x-1/2 rounded-lg border border-slate-700 bg-slate-950 p-2 text-left text-xs leading-5 text-slate-300 shadow-xl group-hover:block">{help}</span></span></div><b className={`text-3xl ${tone}`}>{value}</b></div>}
+function KpiCard({label,help,value,tone,href}:{label:string;help:string;value:any;tone:string;href:string}){return <a href={href} className="block rounded-2xl border border-slate-800 bg-slate-900/70 p-4 no-underline transition hover:border-blue-500/50 hover:bg-slate-900"><div className="kpi-label flex items-center gap-1">{label}<span className="group relative inline-flex h-4 w-4 cursor-help items-center justify-center rounded border border-slate-600 text-[10px] text-slate-400" onClick={(e)=>e.preventDefault()}>?<span className="pointer-events-none absolute left-1/2 top-5 z-20 hidden w-52 -translate-x-1/2 rounded-lg border border-slate-700 bg-slate-950 p-2 text-left text-xs leading-5 text-slate-300 shadow-xl group-hover:block">{help}</span></span></div><b className={`text-3xl ${tone}`}>{value}</b><div className="mt-1 text-xs text-slate-500">点击查看明细</div></a>}
