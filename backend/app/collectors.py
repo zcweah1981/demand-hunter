@@ -199,6 +199,27 @@ def collector_target_segments(db:Session, limit:int=200)->dict:
     summary={k:len(v) for k,v in out.items()}
     return {'ok':True,'summary':summary,'segments':out}
 
+def collector_next_budget(db:Session, limit:int=24)->dict:
+    """Preview next collector budget allocation before a run."""
+    seg=collector_target_segments(db, limit=300)
+    weights={'winner':0.40,'promising':0.38,'new':0.14,'manual':0.08,'noisy':0.0,'cooldown':0.0,'exhausted':0.0}
+    allocation=[]
+    used=0
+    for key,label in [('winner','Winner targets'),('promising','Promising targets'),('new','New targets'),('manual','Manual fallback'),('noisy','Noisy targets'),('cooldown','Cooldown targets'),('exhausted','Exhausted/Rejected')]:
+        count=len(seg['segments'].get(key,[])) if key!='manual' else len(_split_setting_list(services.setting(db,'COLLECTOR_AUTO_SEEDS')))+len(_split_setting_list(services.setting(db,'COLLECTOR_AUTO_DOMAINS')))
+        budget=0 if weights[key]<=0 or count==0 else max(1, round(limit*weights[key]))
+        used+=budget
+        allocation.append({'segment':key,'label':label,'weight':weights[key],'available':count,'budget':budget,'targets':(seg['segments'].get(key,[])[:8] if key!='manual' else [])})
+    # Normalize if rounding exceeded limit; remove from lower priority positive buckets.
+    overflow=max(0, used-limit)
+    if overflow:
+        for row in reversed(allocation):
+            if row['segment'] in {'manual','new','promising'} and row['budget']>0 and overflow>0:
+                take=min(row['budget'], overflow)
+                row['budget']-=take; overflow-=take
+    source_plan=collector_budget_plan(db, limit=limit)
+    return {'ok':True,'limit':limit,'target_segments':seg['summary'],'allocation':allocation,'source_plan':source_plan}
+
 def _domain_topics(db:Session, domain:str)->list[str]:
     with db.no_autoflush:
         rows=db.query(models.CollectorTarget).filter_by(target_type='domain',value=domain,status='active').order_by(models.CollectorTarget.priority.desc()).limit(5).all()

@@ -46,6 +46,10 @@ def collector_targets_health(_: bool = Depends(require_auth), db: Session = Depe
 def collector_targets_segments(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
     return collectors.collector_target_segments(db)
 
+@router.get("/budget/next")
+def collector_budget_next(limit: int = 24, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    return collectors.collector_next_budget(db, limit=max(1, limit))
+
 @router.post("/targets/{target_id}/status")
 def collector_target_status(target_id: int, payload: dict, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     row=db.get(models.CollectorTarget, target_id)
