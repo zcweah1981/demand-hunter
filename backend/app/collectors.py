@@ -290,7 +290,7 @@ def collector_system_health(db:Session)->dict:
     pool=collector_pool_summary(db)
     budget=collector_next_budget(db, limit=24)
     latest=db.query(models.RunHistory).filter_by(kind='collector_autopilot').order_by(models.RunHistory.started_at.desc()).first()
-    issues=[]; strengths=[]; score=100
+    issues=[]; strengths=[]; repairs=[]; score=100
     summary=seg.get('summary') or {}
     active=summary.get('winner',0)+summary.get('promising',0)+summary.get('new',0)
     noisy=summary.get('noisy',0)+summary.get('cooldown',0)+summary.get('exhausted',0)
@@ -315,6 +315,8 @@ def collector_system_health(db:Session)->dict:
     total=pool.get('total') or 0
     if total and rejected/max(1,total) > 0.75:
         score-=10; issues.append({'code':'candidate_reject_heavy','severity':'info','text':f'rejected candidates are {round(rejected/max(1,total)*100)}% of pool'})
+        repairs.append({'id':'inspect_rejected_reasons','label':'查看 rejected reason 分布','safety':'只读','endpoint':'/api/collectors/rejected-reasons'})
+        repairs.append({'id':'cleanup_old_rejected','label':'清理旧 rejected candidates','safety':'可逆性低：删除 rejected 候选记录，不影响 keywords/cards','endpoint':'/api/collectors/candidates/rejected/cleanup'})
     if new_candidates > 0:
         strengths.append({'code':'candidate_pool_has_work','text':f'{new_candidates} new candidates waiting'})
     if latest:
@@ -333,7 +335,29 @@ def collector_system_health(db:Session)->dict:
     if score>=80: status='healthy'
     elif score>=60: status='watch'
     else: status='needs_attention'
-    return {'ok':True,'score':score,'status':status,'summary':{'usable_targets':active,'bad_targets':noisy,'new_candidates':new_candidates,'source_increase':source_increase,'source_decrease':source_decrease,'latest_run_id':latest.id if latest else None},'issues':issues,'strengths':strengths,'target_segments':summary,'source_roi':roi.get('by_source',[])[:8]}
+    return {'ok':True,'score':score,'status':status,'summary':{'usable_targets':active,'bad_targets':noisy,'new_candidates':new_candidates,'source_increase':source_increase,'source_decrease':source_decrease,'latest_run_id':latest.id if latest else None},'issues':issues,'strengths':strengths,'repairs':repairs,'target_segments':summary,'source_roi':roi.get('by_source',[])[:8]}
+
+def rejected_candidate_reasons(db:Session, limit:int=500)->dict:
+    rows=db.query(models.CandidateKeyword).filter_by(status='rejected').order_by(models.CandidateKeyword.created_at.desc()).limit(max(1,min(5000,limit))).all()
+    by_reason={}; by_source={}; examples=[]
+    for r in rows:
+        try: ev=json.loads(r.evidence_json or '{}')
+        except Exception: ev={}
+        reason=ev.get('reject_reason') or 'unknown'
+        by_reason[reason]=by_reason.get(reason,0)+1
+        by_source[r.source or 'unknown']=by_source.get(r.source or 'unknown',0)+1
+        if len(examples)<20:
+            examples.append({'id':r.id,'keyword':r.keyword,'source':r.source,'reason':reason,'source_url':r.source_url})
+    return {'ok':True,'scanned':len(rows),'by_reason':sorted([{'reason':k,'count':v} for k,v in by_reason.items()], key=lambda x:x['count'], reverse=True),'by_source':sorted([{'source':k,'count':v} for k,v in by_source.items()], key=lambda x:x['count'], reverse=True),'examples':examples}
+
+def cleanup_rejected_candidates(db:Session, keep_latest:int=300)->dict:
+    rows=db.query(models.CandidateKeyword).filter_by(status='rejected').order_by(models.CandidateKeyword.created_at.desc()).all()
+    delete_rows=rows[max(0,keep_latest):]
+    deleted=0
+    for r in delete_rows:
+        db.delete(r); deleted+=1
+    db.commit()
+    return {'ok':True,'kept':min(len(rows),keep_latest),'deleted':deleted,'total_rejected_before':len(rows)}
 
 def collector_roi_weight_recommendations(db:Session, limit:int=12, min_runs:int=2)->dict:
     """Recommend persistent COLLECTOR_SOURCE_WEIGHTS changes from ROI.

@@ -23,6 +23,15 @@ def candidate_list(limit: int = 100, status: str = "new", _: bool = Depends(requ
         out.append(d)
     return out
 
+@router.get("/rejected-reasons")
+def rejected_reasons(limit: int = 500, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    return collectors.rejected_candidate_reasons(db, limit=limit)
+
+@router.post("/candidates/rejected/cleanup")
+def rejected_cleanup(payload: dict | None = None, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    payload=payload or {}
+    return collectors.cleanup_rejected_candidates(db, keep_latest=max(0, int(payload.get('keep_latest') or 300)))
+
 @router.get("/summary")
 def collector_summary(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
     return collectors.collector_pool_summary(db)
