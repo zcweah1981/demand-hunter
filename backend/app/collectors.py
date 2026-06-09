@@ -1100,7 +1100,25 @@ def run_collector_autopilot(db:Session, limit:int=24, import_limit:int=12)->dict
     clean=clean_candidate_pool(db, limit=max(200, limit*10))
     imported=import_candidates_to_keywords(db, limit=max(1, import_limit))
     target_health=apply_collector_target_health(db)
-    return {'enabled':True,'target_refresh':target_refresh,'target_health':target_health,'budgeted_targets':{'allocation':budgeted_targets['budget'].get('allocation'),'by_segment':budgeted_targets['by_segment']},'seeds':seeds,'domains':domains,'auto_targets':{'keywords':target_keywords[:20],'domains':target_domains[:20]},'budget_plan':plan,'results':results,'errors':errors[:20],'clean':clean,'import':imported,'summary':collector_pool_summary(db)}
+    payload={'enabled':True,'target_refresh':target_refresh,'target_health':target_health,'budgeted_targets':{'allocation':budgeted_targets['budget'].get('allocation'),'by_segment':budgeted_targets['by_segment']},'seeds':seeds,'domains':domains,'auto_targets':{'keywords':target_keywords[:20],'domains':target_domains[:20]},'budget_plan':plan,'results':results,'errors':errors[:20],'clean':clean,'import':imported,'summary':collector_pool_summary(db)}
+    # Persist a compact replay record so the operator can compare budget vs.
+    # actual results across runs.
+    try:
+        replay={
+            'limit': limit,
+            'import_limit': import_limit,
+            'selected_by_segment': {k:[{'id':t.get('id'),'type':t.get('target_type'),'value':t.get('value'),'priority':t.get('priority'),'success':t.get('success_count'),'reject':t.get('reject_count')} for t in v[:20]] for k,v in budgeted_targets['by_segment'].items()},
+            'source_results': [{'source':r.get('source'),'saved':r.get('saved'),'seen':r.get('candidates_seen') or r.get('seen') or r.get('urls_seen') or r.get('pages_seen'),'errors':len(r.get('errors') or [])} for r in results if isinstance(r,dict)],
+            'clean': clean,
+            'import': imported,
+            'target_health': target_health,
+            'errors': errors[:10],
+        }
+        db.add(models.RunHistory(kind='collector_autopilot', status='ok', summary=json.dumps(replay, ensure_ascii=False), finished_at=datetime.utcnow()))
+        db.commit()
+    except Exception:
+        db.rollback()
+    return payload
 
 from datetime import timedelta
 

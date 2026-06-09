@@ -50,6 +50,11 @@ def collector_targets_segments(_: bool = Depends(require_auth), db: Session = De
 def collector_budget_next(limit: int = 24, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     return collectors.collector_next_budget(db, limit=max(1, limit))
 
+@router.get("/runs")
+def collector_runs(limit: int = 10, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    rows=db.query(models.RunHistory).filter_by(kind='collector_autopilot').order_by(models.RunHistory.started_at.desc()).limit(max(1, min(50, limit))).all()
+    return [obj(r) for r in rows]
+
 @router.post("/targets/{target_id}/status")
 def collector_target_status(target_id: int, payload: dict, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     row=db.get(models.CollectorTarget, target_id)
