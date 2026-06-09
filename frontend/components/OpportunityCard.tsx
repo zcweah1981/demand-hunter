@@ -29,7 +29,7 @@ export function OpportunityCardView({card,compact=false,showFeedback=true,onFeed
   {showFeedback&&!compact&&mode==='review'&&<div className="rounded-2xl border border-blue-500/30 bg-blue-500/10 p-3">
    <div className="mb-2 text-xs font-semibold tracking-wide text-blue-200">复核决策</div>
    <div className="flex flex-wrap items-center justify-between gap-3">
-    <span className="text-xs text-slate-400">改变机会状态：Watch / Action / Adopted / Reject / Block</span>
+    <span className="text-xs text-slate-400">改变机会状态：Adopted / Action / Watch / Reject / Block</span>
     {onFeedback?<InlineFeedback onFeedback={onFeedback}/>:<Feedback id={card.id}/>} 
    </div>
   </div>}
@@ -123,4 +123,4 @@ function InfoBox({title,text}:{title:string;text?:string}){return <div className
 function ListBox({title,items}:{title:string;items:string[]}){return <div className="rounded-xl bg-slate-950/70 p-3"><b className="text-slate-100">{title}</b>{items?.length?<ul className="mt-2 list-disc pl-5 text-sm text-slate-300">{items.map((x:string)=><li key={x}>{x}</li>)}</ul>:<p className="mt-1 text-sm text-slate-500">暂无。</p>}</div>}
 
 function fbClass(x:string){const m:any={Watch:'border-blue-500/40 bg-blue-500/10 text-blue-200 hover:bg-blue-500/20',Action:'border-emerald-500/40 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20',Adopted:'border-purple-500/40 bg-purple-500/10 text-purple-200 hover:bg-purple-500/20',Reject:'border-amber-500/40 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20',Block:'border-rose-500/40 bg-rose-500/10 text-rose-200 hover:bg-rose-500/20'}; return `rounded border px-2 py-1 text-xs ${m[x]}`}
-function InlineFeedback({onFeedback}:{onFeedback:(label:string)=>void}){const labels:any={Watch:'观察',Action:'行动',Adopted:'采纳',Reject:'拒绝',Block:'屏蔽'}; return <div className="flex flex-wrap gap-2">{['Watch','Action','Adopted','Reject','Block'].map(x=><button key={x} title={x} className={fbClass(x)} onClick={()=>onFeedback(x)}>{labels[x]} <span className="opacity-60">{x}</span></button>)}</div>}
+function InlineFeedback({onFeedback}:{onFeedback:(label:string)=>void}){const labels:any={Adopted:'采纳',Action:'行动',Watch:'观察',Reject:'拒绝',Block:'屏蔽'}; return <div className="flex flex-wrap gap-2">{['Adopted','Action','Watch','Reject','Block'].map(x=><button key={x} title={x} className={fbClass(x)} onClick={()=>onFeedback(x)}>{labels[x]} <span className="opacity-60">{x}</span></button>)}</div>}

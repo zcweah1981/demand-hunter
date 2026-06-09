@@ -20,7 +20,7 @@ export default async function Page({searchParams}:{searchParams?:Promise<Record<
   <div className="flex flex-wrap items-start justify-between gap-3">
    <div>
     <h1 className="text-3xl font-bold">机会</h1>
-    <p className="mt-2 text-slate-400">这里不再是“复核队列”，而是机会状态管理。每个机会组可以在 Watch / Action / Adopted / Reject / Block 之间切换。</p>
+    <p className="mt-2 text-slate-400">这里不再是“复核队列”，而是机会状态管理。每个机会组可以在 Adopted / Action / Watch / Reject / Block 之间切换。</p>
     <p className="mt-1 text-xs text-slate-500">当前 Action 分数门槛：{minAction}</p>
    </div>
    <div className="flex flex-wrap gap-2">
