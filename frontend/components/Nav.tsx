@@ -9,6 +9,7 @@ import {useLang} from '../lib/i18n'
 const hunterItems = [
   ['/hunter', '总览'],
   ['/hunter/opportunities', '机会'],
+  ['/hunter/progress', '机会推进'],
 ]
 
 const collectorItems = [

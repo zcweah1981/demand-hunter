@@ -189,3 +189,68 @@ class SitemapSeenUrl(Base):
     last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     seen_count: Mapped[int] = mapped_column(Integer, default=1)
     last_keyword: Mapped[str] = mapped_column(String(260), default="")
+
+class MvpProject(Base):
+    """Post-Adopted opportunity validation and MVP progress project."""
+    __tablename__ = "mvp_projects"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    opportunity_group_id: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    canonical_keyword: Mapped[str] = mapped_column(String(260), index=True)
+    representative_card_id: Mapped[int] = mapped_column(Integer, index=True)
+    status: Mapped[str] = mapped_column(String(40), default="needs_prd")
+    prd_path: Mapped[str] = mapped_column(Text, default="")
+    prd_version: Mapped[int] = mapped_column(Integer, default=0)
+    prd_content: Mapped[str] = mapped_column(Text, default="")
+    feasibility_score: Mapped[float] = mapped_column(Float, default=0.0)
+    risk_level: Mapped[str] = mapped_column(String(40), default="unknown")
+    next_action: Mapped[str] = mapped_column(Text, default="上传或填写 PRD 后开始验证。")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_validated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+class MvpValidationRun(Base):
+    __tablename__ = "mvp_validation_runs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(Integer, index=True)
+    kind: Mapped[str] = mapped_column(String(60), default="full_validation")
+    status: Mapped[str] = mapped_column(String(40), default="running")
+    summary_json: Mapped[str] = mapped_column(Text, default="{}")
+    score_delta: Mapped[float] = mapped_column(Float, default=0.0)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+class TrackedCompetitor(Base):
+    __tablename__ = "tracked_competitors"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(Integer, index=True)
+    domain: Mapped[str] = mapped_column(String(255), index=True)
+    name: Mapped[str] = mapped_column(String(255), default="")
+    url: Mapped[str] = mapped_column(Text, default="")
+    pricing_url: Mapped[str] = mapped_column(Text, default="")
+    sitemap_url: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(40), default="tracking")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+class CompetitorSnapshot(Base):
+    __tablename__ = "competitor_snapshots"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    competitor_id: Mapped[int] = mapped_column(Integer, index=True)
+    snapshot_type: Mapped[str] = mapped_column(String(60), default="page")
+    url: Mapped[str] = mapped_column(Text, default="")
+    title: Mapped[str] = mapped_column(Text, default="")
+    content_hash: Mapped[str] = mapped_column(String(120), default="")
+    summary_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+class MvpStrategyRecommendation(Base):
+    __tablename__ = "mvp_strategy_recommendations"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(Integer, index=True)
+    type: Mapped[str] = mapped_column(String(60), default="strategy")
+    title: Mapped[str] = mapped_column(Text, default="")
+    content: Mapped[str] = mapped_column(Text, default="")
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    status: Mapped[str] = mapped_column(String(40), default="open")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

@@ -1,4 +1,4 @@
-import {ExportCardMarkdownButton, Feedback, ReanalyzeCardButton} from './Actions'
+import {CreateProgressButton, ExportCardMarkdownButton, Feedback, ReanalyzeCardButton} from './Actions'
 import {I18nText} from './I18nText'
 
 export function verdictClass(v:string){return v==='Adopted'?'badge badge-action':v==='Action'?'badge badge-action':v==='Watch'?'badge badge-watch':'badge badge-reject'}
@@ -22,7 +22,7 @@ export function OpportunityCardView({card,compact=false,showFeedback=true,onFeed
     <span className={verdictClass(card.verdict)}>{verdictLabel(card.verdict)} · {card.score}</span>
     {business?.go_no_go&&<span className="badge badge-watch">商业判断：{business.go_no_go} · {Math.round((business.commercial_score||0)*100)}</span>}
     {business?.analysis_source&&<span className={String(business.analysis_source).startsWith('llm')?'badge badge-action':'badge badge-reject'}>{String(business.analysis_source).startsWith('llm')?'LLM 分析':'非 LLM / 模板分析'}：{business.analysis_source}</span>}
-    {!compact&&<div className="ml-auto flex flex-wrap gap-2"><ReanalyzeCardButton id={card.id}/><ExportCardMarkdownButton id={card.id}/></div>} 
+    {!compact&&<div className="ml-auto flex flex-wrap gap-2">{(card.feedback_label||card.verdict)==='Adopted'&&<CreateProgressButton id={card.id}/>}<ReanalyzeCardButton id={card.id}/><ExportCardMarkdownButton id={card.id}/></div>} 
    </div>
   </div>
 
