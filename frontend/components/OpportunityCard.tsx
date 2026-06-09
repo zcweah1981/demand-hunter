@@ -62,14 +62,15 @@ export function OpportunityCardView({card,compact=false,showFeedback=true,onFeed
   </section>}
 
   {!compact&&mode==='review'&&business&&<section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-   <div className="mb-3 text-xs font-semibold tracking-wide text-slate-500">决策摘要</div>
-   {business.verdict_reason&&<p className="mb-3 text-sm leading-6 text-slate-200"><b>判断理由：</b>{shortText(business.verdict_reason,260)}</p>}
+   <div className="mb-3 flex items-center justify-between gap-2"><div className="text-xs font-semibold tracking-wide text-slate-500">决策摘要</div>{business.analysis_source&&<span className={String(business.analysis_source).startsWith('llm')?'badge badge-action':'badge badge-reject'}>{String(business.analysis_source).startsWith('llm')?'LLM':'非 LLM'}</span>}</div>
+   {business.verdict_reason&&<div className="mb-3 rounded-xl border border-slate-800 bg-slate-900/70 p-3"><b className="text-sm text-slate-100">判断理由</b><p className="mt-1 text-sm leading-6 text-slate-300">{business.verdict_reason}</p></div>}
    {business.missing_evidence?.length>0&&<div className="mb-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100"><b>待补证据：</b>{business.missing_evidence.join('、')}</div>}
    <div className="grid gap-3 text-sm text-slate-300 md:grid-cols-2">
-    <div><b className="text-slate-100">目标用户</b><p className="mt-1 text-slate-400">{shortText(business.icp,160)||'-'}</p></div>
-    <div><b className="text-slate-100">付费触发</b><p className="mt-1 text-slate-400">{shortText(business.pay_trigger,160)||'-'}</p></div>
-    <div><b className="text-slate-100">最小商业 MVP</b><p className="mt-1 text-slate-400">{shortText(business.commercial_mvp,180)||shortText(card.mvp_plan,180)||'-'}</p></div>
-    <div><b className="text-slate-100">收入路径</b><p className="mt-1 text-slate-400">{shortText(business.revenue_path,160)||card.monetization_type||'-'}</p></div>
+    <InfoBox title="目标用户" text={business.icp}/>
+    <InfoBox title="付费触发" text={business.pay_trigger}/>
+    <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 md:col-span-2"><b className="text-emerald-100">最小商业 MVP</b><p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-300">{business.commercial_mvp||card.mvp_plan||'-'}</p></div>
+    <InfoBox title="收入路径" text={business.revenue_path||card.monetization_type}/>
+    <InfoBox title="定价测试" text={business.pricing}/>
    </div>
   </section>}
 
