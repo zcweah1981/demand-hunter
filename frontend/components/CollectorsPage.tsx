@@ -126,7 +126,54 @@ function Conditions({seg,goodTargets,weakTargets,budget,busy,refreshTargets,appl
 
 function Modules({sourceRows}:any){const perf=Object.fromEntries((sourceRows||[]).map((r:any)=>[r.source,r])); return <section className="panel"><h2 className="text-xl font-bold">采集模块</h2><p className="mt-1 text-sm text-slate-400">每个模块负责一种找机会的方法。这里只展示输入、产出和最近表现。</p><div className="mt-5 grid gap-4 xl:grid-cols-2">{collectorModules.map(m=>{const p=perf[m.id]||{}; return <article key={m.id} className="rounded-3xl border border-slate-800 bg-slate-950/70 p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="text-xs uppercase tracking-[0.25em] text-blue-300">{m.layer}</div><h3 className="mt-2 text-lg font-bold text-white">{m.name}</h3></div><span className="badge badge-action">{m.status}</span></div><p className="mt-3 text-sm leading-6 text-slate-300">{m.goal}</p><div className="mt-4 grid gap-2 text-xs md:grid-cols-2"><div className="rounded-xl bg-slate-900 p-3"><b className="text-slate-300">输入</b><div className="mt-1 text-slate-500">{m.input}</div></div><div className="rounded-xl bg-slate-900 p-3"><b className="text-slate-300">产出</b><div className="mt-1 text-slate-500">{m.output}</div></div></div><div className="mt-4 rounded-xl bg-slate-900 p-3 text-sm"><b className="text-slate-300">最近表现：</b><span className="ml-2 text-emerald-300">saved {p.saved??'-'}</span><span className="ml-2 text-blue-300">seen {p.seen??'-'}</span><span className="ml-2 text-slate-500">errors {p.errors??'-'}</span></div></article>})}</div></section>}
 
-function Results({runs,runCollectorAuto,busy}:any){return <section className="panel"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-bold">运行结果</h2><p className="mt-1 text-sm text-slate-400">每轮只看结果。技术日志在“优化日志”弹窗里。</p></div><button className="btn" disabled={busy} onClick={runCollectorAuto}>运行采集</button></div><div className="mt-4 space-y-3">{runs.length?runs.map((run:any)=>{const s=run.summary||{}; return <details key={run.id} className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4"><summary className="cursor-pointer text-sm font-semibold text-slate-200">#{run.id} · {fmtTime(run.started_at)} · imported {s.import?.imported||0}/{s.import?.selected||0} · clean rejected {s.clean?.rejected||0}</summary><div className="mt-4 grid gap-3 md:grid-cols-2">{(s.source_results||[]).map((r:any,i:number)=><div key={i} className="rounded-xl bg-slate-900 p-3 text-sm"><b>{r.source}</b><span className="ml-2 text-emerald-300">saved {r.saved||0}</span><span className="ml-2 text-blue-300">seen {r.seen??'-'}</span><span className="ml-2 text-slate-500">err {r.errors||0}</span></div>)}</div></details>}):<p className="text-sm text-slate-500">暂无运行记录。</p>}</div></section>}
+function Results({runs,runCollectorAuto,busy}:any){
+ const [sourceFilter,setSourceFilter]=useState('all')
+ const [statusFilter,setStatusFilter]=useState('all')
+ const rows=(runs||[]).flatMap((run:any)=>{
+  const s=run.summary||{}
+  const selected=s.selected_by_segment||{}
+  const selectedCount=Object.values(selected).reduce((acc:any,items:any)=>acc+(Array.isArray(items)?items.length:0),0)
+  return (s.source_results||[]).map((r:any,i:number)=>{
+   const saved=Number(r.saved||0), seen=Number(r.seen||0), errors=Number(r.errors||0)
+   const status=saved>0?'有产出':errors>0?'有错误':'无产出'
+   return {id:`${run.id}-${i}`,runId:run.id,time:run.started_at,source:r.source||'unknown',saved,seen,errors,status,imported:s.import?.imported||0,selected:s.import?.selected||0,cleanRejected:s.clean?.rejected||0,targetCooled:s.target_health?.cooled||0,selectedCount,summary:s,raw:r}
+  })
+ })
+ const sources=['all',...Array.from(new Set(rows.map((r:any)=>r.source)))]
+ const filtered=rows.filter((r:any)=>(sourceFilter==='all'||r.source===sourceFilter)&&(statusFilter==='all'||r.status===statusFilter))
+ const totalSaved=filtered.reduce((a:number,r:any)=>a+r.saved,0)
+ const totalSeen=filtered.reduce((a:number,r:any)=>a+r.seen,0)
+ const totalErrors=filtered.reduce((a:number,r:any)=>a+r.errors,0)
+ return <section className="panel">
+  <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-bold">运行结果</h2><p className="mt-1 text-sm text-slate-400">每次自动抓取的结果列表。可按采集器、状态筛选，并追溯到具体 run 和当轮条件。</p></div><button className="btn" disabled={busy} onClick={runCollectorAuto}>运行采集</button></div>
+  <div className="mt-4 grid gap-3 md:grid-cols-4">
+   <div className="rounded-xl bg-slate-950 p-3"><div className="text-xs text-slate-500">结果行</div><b className="text-2xl text-white">{filtered.length}</b></div>
+   <div className="rounded-xl bg-slate-950 p-3"><div className="text-xs text-slate-500">Saved</div><b className="text-2xl text-emerald-300">{totalSaved}</b></div>
+   <div className="rounded-xl bg-slate-950 p-3"><div className="text-xs text-slate-500">Seen</div><b className="text-2xl text-blue-300">{totalSeen||'-'}</b></div>
+   <div className="rounded-xl bg-slate-950 p-3"><div className="text-xs text-slate-500">Errors</div><b className={totalErrors?'text-2xl text-amber-300':'text-2xl text-slate-500'}>{totalErrors}</b></div>
+  </div>
+  <div className="mt-4 flex flex-wrap gap-3 rounded-2xl border border-slate-800 bg-slate-950 p-3">
+   <label className="text-sm text-slate-300">采集器 <select className="ml-2 rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-slate-100" value={sourceFilter} onChange={e=>setSourceFilter(e.target.value)}>{sources.map((x:any)=><option key={x} value={x}>{x==='all'?'全部':x}</option>)}</select></label>
+   <label className="text-sm text-slate-300">状态 <select className="ml-2 rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-slate-100" value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>{['all','有产出','无产出','有错误'].map(x=><option key={x} value={x}>{x==='all'?'全部':x}</option>)}</select></label>
+  </div>
+  <div className="mt-4 overflow-hidden rounded-2xl border border-slate-800">
+   <div className="grid grid-cols-[82px_110px_1fr_80px_80px_70px_110px_110px] gap-2 border-b border-slate-800 bg-slate-900/70 px-3 py-2 text-xs font-semibold text-slate-500">
+    <div>Run</div><div>时间</div><div>采集器</div><div>Saved</div><div>Seen</div><div>Errors</div><div>导入</div><div>状态</div>
+   </div>
+   {filtered.length?filtered.map((r:any)=><details key={r.id} className="border-b border-slate-800 last:border-b-0">
+    <summary className="grid cursor-pointer grid-cols-[82px_110px_1fr_80px_80px_70px_110px_110px] gap-2 px-3 py-3 text-sm hover:bg-slate-900/50">
+     <b className="text-blue-300">#{r.runId}</b><span className="text-slate-400">{fmtTime(r.time)}</span><span className="font-semibold text-slate-100">{r.source}</span><span className="text-emerald-300">{r.saved}</span><span className="text-blue-300">{r.seen||'-'}</span><span className={r.errors?'text-amber-300':'text-slate-500'}>{r.errors}</span><span className="text-purple-300">{r.imported}/{r.selected}</span><span className={r.status==='有产出'?'text-emerald-300':r.status==='有错误'?'text-amber-300':'text-slate-500'}>{r.status}</span>
+    </summary>
+    <div className="grid gap-4 bg-slate-950/70 p-4 text-sm xl:grid-cols-3">
+     <div className="rounded-xl bg-slate-900 p-3"><b className="text-slate-200">当轮处理</b><div className="mt-2 text-slate-400">清洗拒绝：{r.cleanRejected}</div><div className="text-slate-400">条件冷却：{r.targetCooled}</div><div className="text-slate-400">当轮选中条件数：{r.selectedCount}</div></div>
+     <div className="rounded-xl bg-slate-900 p-3"><b className="text-slate-200">追溯字段</b><div className="mt-2 text-slate-400">Run ID：#{r.runId}</div><div className="text-slate-400">Source：{r.source}</div><div className="text-slate-400">Result：saved {r.saved} / seen {r.seen||'-'} / errors {r.errors}</div></div>
+     <div className="rounded-xl bg-slate-900 p-3"><b className="text-slate-200">原始摘要</b><pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap text-xs text-slate-400">{JSON.stringify(r.raw,null,2)}</pre></div>
+     <div className="xl:col-span-3 rounded-xl bg-slate-900 p-3"><b className="text-slate-200">本轮采集条件</b><div className="mt-2 flex flex-wrap gap-2">{Object.entries(r.summary.selected_by_segment||{}).flatMap(([seg,items]:any)=>(items||[]).slice(0,8).map((t:any)=><span key={`${r.id}-${seg}-${t.id}`} className="rounded-lg bg-slate-950 px-2 py-1 text-xs text-slate-300">{seg}: {t.value}</span>))}</div></div>
+    </div>
+   </details>):<div className="px-4 py-6 text-sm text-slate-500">暂无符合筛选条件的运行结果。</div>}
+  </div>
+ </section>
+}
 
 function TargetPreview({title,items}:{title:string;items:any[]}){return <section className="panel"><h2 className="text-xl font-bold">{title}</h2><div className="mt-4 space-y-2">{items.length?items.map((t:any)=><div key={t.id} className="rounded-xl bg-slate-950 p-3 text-sm"><b className="text-slate-100">{t.value}</b><span className="ml-2 text-slate-500">{t.target_type} · {t.status} · P{Math.round(t.priority||0)} · S{t.success_count||0}/R{t.reject_count||0}</span></div>):<p className="text-sm text-slate-500">暂无</p>}</div></section>}
 function SourcePreview({rows}:{rows:any[]}){return <section className="panel"><h2 className="text-xl font-bold">最近采集源表现</h2><div className="mt-4 space-y-2">{rows?.length?rows.map((r:any,i:number)=><div key={i} className="grid grid-cols-[1fr_80px_80px_80px] gap-2 rounded-xl bg-slate-950 p-3 text-sm"><b className="text-slate-100">{r.source}</b><span className="text-emerald-300">saved {r.saved||0}</span><span className="text-blue-300">seen {r.seen??'-'}</span><span className={r.errors?'text-amber-300':'text-slate-500'}>err {r.errors||0}</span></div>):<p className="text-sm text-slate-500">暂无运行记录。</p>}</div></section>}
