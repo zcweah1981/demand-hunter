@@ -21,7 +21,7 @@ export function OpportunityCardView({card,compact=false,showFeedback=true,onFeed
    <div className="flex shrink-0 flex-col items-end gap-2">
     <span className={verdictClass(card.verdict)}>{verdictLabel(card.verdict)} · {card.score}</span>
     {business?.go_no_go&&<span className="badge badge-watch">商业判断：{business.go_no_go} · {Math.round((business.commercial_score||0)*100)}</span>}
-    {business?.analysis_source&&<span className={business.analysis_source.includes('llm')?'badge badge-action':'badge badge-reject'}>{business.analysis_source.includes('llm')?'LLM 分析':'非 LLM / 模板分析'}：{business.analysis_source}</span>}
+    {business?.analysis_source&&<span className={String(business.analysis_source).startsWith('llm')?'badge badge-action':'badge badge-reject'}>{String(business.analysis_source).startsWith('llm')?'LLM 分析':'非 LLM / 模板分析'}：{business.analysis_source}</span>}
     {!compact&&<div className="flex flex-wrap justify-end gap-2"><ReanalyzeCardButton id={card.id}/><ExportCardMarkdownButton id={card.id}/></div>} 
    </div>
   </div>
