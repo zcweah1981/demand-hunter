@@ -32,6 +32,10 @@ def rejected_cleanup(payload: dict | None = None, _: bool = Depends(require_auth
     payload=payload or {}
     return collectors.cleanup_rejected_candidates(db, keep_latest=max(0, int(payload.get('keep_latest') or 300)))
 
+@router.post("/repairs/missing-tool-intent")
+def repair_missing_tool_intent(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    return collectors.apply_missing_tool_intent_repair(db)
+
 @router.get("/summary")
 def collector_summary(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
     return collectors.collector_pool_summary(db)

@@ -19,6 +19,7 @@ NOISE_TITLE_PATTERNS=(
     r"\bdocumentation\b", r"\bdocs?\b", r"\breadme\b",
 )
 BLOCK_TARGET_DOMAINS={"google.com","youtube.com","wikipedia.org","reddit.com","facebook.com","linkedin.com","x.com","twitter.com","github.com","support.google.com","dictionary.com","merriam-webster.com","dictionary.cambridge.org","bestbuy.com","bestwestern.com","alternativeto.net","pinterest.com","capitalone.com","card.com","creditcards.chase.com","usafacts.org","apps.microsoft.com","play.google.com"}
+TECH_SOURCE_RADAR_TERMS={"ai","llm","rag","mcp","agent","agents","model","models","openai","anthropic","claude","gemini","vector","embedding","eval","benchmark","inference","gpu","workflow automation"}
 def is_blocked_domain(domain:str)->bool:
     d=(domain or '').lower().removeprefix('www.')
     return any(d==b or d.endswith('.'+b) for b in BLOCK_TARGET_DOMAINS)
@@ -316,6 +317,7 @@ def collector_system_health(db:Session)->dict:
     if total and rejected/max(1,total) > 0.75:
         score-=10; issues.append({'code':'candidate_reject_heavy','severity':'info','text':f'rejected candidates are {round(rejected/max(1,total)*100)}% of pool'})
         repairs.append({'id':'inspect_rejected_reasons','label':'查看 rejected reason 分布','safety':'只读','endpoint':'/api/collectors/rejected-reasons'})
+        repairs.append({'id':'repair_missing_tool_intent','label':'修复 missing_tool_intent 噪音','safety':'可逆：调整 source 权重并开启 source_radar tech-only','endpoint':'/api/collectors/repairs/missing-tool-intent'})
         repairs.append({'id':'cleanup_old_rejected','label':'清理旧 rejected candidates','safety':'可逆性低：删除 rejected 候选记录，不影响 keywords/cards','endpoint':'/api/collectors/candidates/rejected/cleanup'})
     if new_candidates > 0:
         strengths.append({'code':'candidate_pool_has_work','text':f'{new_candidates} new candidates waiting'})
@@ -358,6 +360,39 @@ def cleanup_rejected_candidates(db:Session, keep_latest:int=300)->dict:
         db.delete(r); deleted+=1
     db.commit()
     return {'ok':True,'kept':min(len(rows),keep_latest),'deleted':deleted,'total_rejected_before':len(rows)}
+
+def apply_missing_tool_intent_repair(db:Session)->dict:
+    """Reduce future missing_tool_intent noise by tightening source radar and demoting noisy sources."""
+    dist=rejected_candidate_reasons(db, limit=1000)
+    missing_by_source={}
+    total_by_source={}
+    for r in db.query(models.CandidateKeyword).filter_by(status='rejected').order_by(models.CandidateKeyword.created_at.desc()).limit(1000):
+        try: ev=json.loads(r.evidence_json or '{}')
+        except Exception: ev={}
+        total_by_source[r.source or 'unknown']=total_by_source.get(r.source or 'unknown',0)+1
+        if (ev.get('reject_reason') or '') == 'missing_tool_intent':
+            missing_by_source[r.source or 'unknown']=missing_by_source.get(r.source or 'unknown',0)+1
+    weights=_collector_source_weights(db)
+    changes=[]
+    for source,count in missing_by_source.items():
+        total=total_by_source.get(source, count)
+        if count >= 8 or count/max(1,total) >= 0.45:
+            entry=weights.get(source,{}) if isinstance(weights.get(source,{}),dict) else {}
+            old=float(entry.get('weight',1.0))
+            new=round(max(0.25, old*0.82),3)
+            if new != old:
+                entry['weight']=new
+                entry.setdefault('repair_stats',{})['missing_tool_intent_demoted_at']=datetime.utcnow().isoformat(timespec='seconds')
+                entry['repair_stats']['missing_tool_intent_count']=count
+                weights[source]=entry
+                changes.append({'source':source,'old':old,'new':new,'missing_tool_intent':count,'rejected_total':total})
+    _save_collector_source_weights(db, weights)
+    row=db.get(models.Setting,'COLLECTOR_SOURCE_RADAR_TECH_ONLY') or models.Setting(key='COLLECTOR_SOURCE_RADAR_TECH_ONLY', value='true', secret=False)
+    row.value='true'; row.secret=False; db.merge(row)
+    audit={'changes':changes,'source_radar_tech_only':True,'top_reasons':dist.get('by_reason',[])[:8],'top_sources':dist.get('by_source',[])[:8]}
+    db.add(models.RunHistory(kind='collector_repair', status='ok', summary=json.dumps({'repair':'missing_tool_intent','result':audit}, ensure_ascii=False), finished_at=datetime.utcnow()))
+    db.commit()
+    return {'ok':True, **audit}
 
 def collector_roi_weight_recommendations(db:Session, limit:int=12, min_runs:int=2)->dict:
     """Recommend persistent COLLECTOR_SOURCE_WEIGHTS changes from ROI.
@@ -1405,7 +1440,11 @@ def run_source_radar(db:Session, seeds:list[str], limit_per_seed:int=10, max_sec
         max_seconds = 45
     started=time.monotonic()
     saved=0; seen=0; errors=[]
+    tech_only=(services.setting(db,'COLLECTOR_SOURCE_RADAR_TECH_ONLY') or 'true').lower() in {'1','true','yes','on'}
     for seed in [s.strip() for s in seeds if s.strip()]:
+        if tech_only and not (set(normalize_keyword(seed).split()) & TECH_SOURCE_RADAR_TERMS):
+            errors.append({'source':'source_radar','seed':seed,'error':'skipped_non_tech_seed'})
+            continue
         if time.monotonic() - started > max_seconds:
             errors.append({'source':'source_radar','seed':seed,'error':f'time_budget_exceeded>{max_seconds}s'})
             break
