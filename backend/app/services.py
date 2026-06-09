@@ -2176,15 +2176,26 @@ def export_latest_markdown(db: Session) -> str:
     cards = db.query(models.OpportunityCard).order_by(models.OpportunityCard.score.desc()).limit(30).all()
     lines = ["# Demand Hunter Latest Cards", "", f"Generated: {datetime.utcnow().isoformat()}Z", ""]
     latest_daily = db.query(models.RunHistory).filter_by(kind="daily", status="ok").order_by(models.RunHistory.started_at.desc()).first()
+    audit_report=None; audit_label=None
     if latest_daily:
         try: daily_summary=json.loads(latest_daily.summary or "{}")
         except Exception: daily_summary={}
         sr=((daily_summary.get("quality_report") or {}).get("collector") or {}).get("self_repair_report") or {}
         if sr.get("ok") and sr.get("report"):
-            lines += ["## Collector Autopilot / Safe Repair Audit", "", f"Daily Run: #{latest_daily.id}", "", "```text", sr.get("report"), "```", ""]
+            audit_report=sr.get("report"); audit_label=f"Daily Run: #{latest_daily.id}"
         elif (daily_summary.get("collector_summary") or {}).get("safe_repair"):
             safe=(daily_summary.get("collector_summary") or {}).get("safe_repair") or {}
-            lines += ["## Collector Autopilot / Safe Repair Audit", "", f"Daily Run: #{latest_daily.id}", f"- Safe repair applied: {safe.get('applied_count')}", f"- Safe repair blocked: {safe.get('blocked_count')}", ""]
+            audit_report=f"Safe repair applied: {safe.get('applied_count')}\nSafe repair blocked: {safe.get('blocked_count')}"; audit_label=f"Daily Run: #{latest_daily.id}"
+    if not audit_report:
+        try:
+            from . import collectors as collector_service
+            sr=collector_service.collector_autopilot_self_repair_report(db)
+            if sr.get("ok") and sr.get("report"):
+                audit_report=sr.get("report"); audit_label=f"Collector Run: #{sr.get('run_id')}"
+        except Exception:
+            audit_report=None
+    if audit_report:
+        lines += ["## Collector Autopilot / Safe Repair Audit", "", audit_label or "Latest Collector Run", "", "```text", audit_report, "```", ""]
     for c in cards:
         kw = db.get(models.Keyword, c.keyword_id)
         lines += [f"## {c.verdict} · {c.score} · {kw.query if kw else c.title}", "", f"- Monetization: {c.monetization_type}", f"- Demand: {c.demand_score}", f"- SERP Gap: {c.serp_gap_score}", f"- Competitor Weakness: {c.competitor_weakness_score}", f"- Commercial: {c.mvp_score}", "", "Commercialization:", c.mvp_plan, ""]
