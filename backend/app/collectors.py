@@ -666,6 +666,56 @@ def run_safe_repair_autopilot(db:Session, allow_cleanup:bool=False, force:bool=F
     db.commit()
     return {'ok':True, **summary}
 
+def collector_autopilot_self_repair_report(db:Session, run_id:int|None=None)->dict:
+    """Build a compact, readable audit report for a collector autopilot run."""
+    q=db.query(models.RunHistory).filter_by(kind='collector_autopilot')
+    if run_id:
+        q=q.filter(models.RunHistory.id==run_id)
+    run=q.order_by(models.RunHistory.started_at.desc()).first()
+    if not run:
+        return {'ok':False,'error':'no collector_autopilot run found'}
+    try: s=json.loads(run.summary or '{}')
+    except Exception: s={}
+    source_results=s.get('source_results') or []
+    safe=s.get('safe_repair') or {}
+    import_s=s.get('import') or {}
+    clean=s.get('clean') or {}
+    target_health=s.get('target_health') or {}
+    health=collector_system_health(db)
+    lines=[]
+    lines.append(f"Collector Autopilot #{run.id} 审计")
+    lines.append(f"导入：{import_s.get('imported',0)}/{import_s.get('selected',0)} keywords；clean rejected={clean.get('rejected',0)}；target cooled={target_health.get('cooled',0)}")
+    if source_results:
+        best=sorted(source_results, key=lambda x:int(x.get('saved') or 0), reverse=True)[:5]
+        lines.append("采集源产出：" + "；".join([f"{x.get('source')} saved={x.get('saved',0)}/seen={x.get('seen',0)} errors={x.get('errors',0)}" for x in best]))
+    else:
+        lines.append("采集源产出：本轮无 source result")
+    actions=safe.get('actions') or []
+    if actions:
+        applied=[a for a in actions if a.get('applied')]
+        blocked=[a for a in actions if a.get('blocked_reason') and a.get('blocked_reason') not in {'no_changes','cleanup_disabled'}]
+        skipped=[a for a in actions if a.get('blocked_reason') in {'no_changes','cleanup_disabled'}]
+        lines.append(f"Safe Repair：applied={safe.get('applied_count',len(applied))} blocked={safe.get('blocked_count',len(blocked))}")
+        if applied:
+            lines.append("已自动修复：" + "；".join([f"{a.get('repair')} safety={a.get('safety',{}).get('status')}/{a.get('safety',{}).get('score')}" for a in applied]))
+        if blocked:
+            lines.append("被阻止修复：" + "；".join([f"{a.get('repair')} reason={a.get('blocked_reason')} safety={a.get('safety',{}).get('status')}/{a.get('safety',{}).get('score')}" for a in blocked]))
+        if skipped:
+            lines.append("跳过：" + "；".join([f"{a.get('repair')}={a.get('blocked_reason')}" for a in skipped]))
+    else:
+        lines.append("Safe Repair：本轮未记录 safe_repair 摘要")
+    risks=[]
+    if health.get('issues'):
+        risks.extend([x.get('text') for x in health.get('issues',[])[:3]])
+    if import_s.get('imported',0)==0:
+        risks.append('本轮未导入 keyword，需要检查候选质量或预算目标')
+    noisy_sources=[x for x in source_results if int(x.get('errors') or 0)>0 and int(x.get('saved') or 0)==0]
+    if noisy_sources:
+        risks.append('部分 source 有错误且无产出：' + ', '.join([x.get('source') for x in noisy_sources[:4]]))
+    lines.append('下一轮关注：' + ('；'.join(dict.fromkeys([r for r in risks if r])) if risks else '暂无明显风险'))
+    report='\n'.join(lines)
+    return {'ok':True,'run_id':run.id,'started_at':run.started_at.isoformat() if run.started_at else None,'finished_at':run.finished_at.isoformat() if run.finished_at else None,'report':report,'summary':{'imported':import_s.get('imported',0),'selected':import_s.get('selected',0),'clean_rejected':clean.get('rejected',0),'target_cooled':target_health.get('cooled',0),'safe_repair_applied':safe.get('applied_count'),'safe_repair_blocked':safe.get('blocked_count'),'health_score':health.get('score'),'health_status':health.get('status')},'source_results':source_results,'safe_repair':safe,'health':health}
+
 def collector_roi_weight_recommendations(db:Session, limit:int=12, min_runs:int=2)->dict:
     """Recommend persistent COLLECTOR_SOURCE_WEIGHTS changes from ROI.
 
