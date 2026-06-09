@@ -19,6 +19,9 @@ NOISE_TITLE_PATTERNS=(
     r"\bdocumentation\b", r"\bdocs?\b", r"\breadme\b",
 )
 BLOCK_TARGET_DOMAINS={"google.com","youtube.com","wikipedia.org","reddit.com","facebook.com","linkedin.com","x.com","twitter.com","github.com","support.google.com","dictionary.com","merriam-webster.com","dictionary.cambridge.org","bestbuy.com","bestwestern.com","alternativeto.net","pinterest.com","capitalone.com","card.com","creditcards.chase.com","usafacts.org","apps.microsoft.com","play.google.com"}
+def is_blocked_domain(domain:str)->bool:
+    d=(domain or '').lower().removeprefix('www.')
+    return any(d==b or d.endswith('.'+b) for b in BLOCK_TARGET_DOMAINS)
 
 def _target_topic(text:str)->str:
     kw=normalize_keyword(text)
@@ -32,7 +35,7 @@ def _upsert_collector_target(db:Session, target_type:str, value:str, source_type
         if not value or candidate_noise_reason(value): return None
     if target_type=='domain':
         value=value.removeprefix('www.')
-        if value in BLOCK_TARGET_DOMAINS or any(value.endswith('.gov') for _ in [0]): return None
+        if is_blocked_domain(value) or any(value.endswith('.gov') for _ in [0]): return None
     source_id=str(source_id)
     for obj in list(db.new):
         if isinstance(obj, models.CollectorTarget) and obj.target_type==target_type and obj.value==value and obj.source_type==source_type and str(obj.source_id)==source_id:
@@ -100,7 +103,7 @@ def refresh_collector_targets_from_cards(db:Session, limit:int=80)->dict:
                 texts.append(str(e.get('title') or ''))
                 url=e.get('url') or ''
                 d=domain_of(url)
-                if d and d not in BLOCK_TARGET_DOMAINS:
+                if d and not is_blocked_domain(d):
                     key=('domain',d,'opportunity_card',str(card.id))
                     if key in seen_targets: continue
                     seen_targets.add(key)
@@ -109,7 +112,7 @@ def refresh_collector_targets_from_cards(db:Session, limit:int=80)->dict:
         # also use stored SERP rows because evidence_json can be sparse.
         for serp in db.query(models.SerpResult).filter_by(keyword_id=kw.id).order_by(models.SerpResult.rank).limit(10):
             d=(serp.domain or domain_of(serp.url or '')).lower().removeprefix('www.')
-            if d and d not in BLOCK_TARGET_DOMAINS:
+            if d and not is_blocked_domain(d):
                 key=('domain',d,'opportunity_card',str(card.id))
                 if key in seen_targets: continue
                 seen_targets.add(key)
@@ -239,6 +242,7 @@ def candidate_noise_reason(keyword:str, evidence:dict|None=None)->str:
     if len(terms) <= 2 and not any(t in TOOL_INTENT_TERMS for t in terms): return 'generic_short_tail'
     if re.search(r"\bhow to\b", kw) and not any(t in TOOL_INTENT_TERMS for t in terms): return 'tutorial_intent_not_tool'
     if any(t in {"youtube","reddit","github"} for t in terms): return 'platform_title_residue'
+    if any(t in {"job","jobs","employment","hiring","freelancer"} for t in terms): return 'jobs_or_hiring_noise'
     return ''
 
 def candidate_quality_reject_reason(keyword:str, source:str, evidence:dict|None=None)->str:
@@ -622,12 +626,12 @@ def run_alternatives_collector(db:Session, domains:list[str], max_seconds:int|No
             for item in items[:5]:
                 url=item.get('url') or item.get('link') or ''
                 cd=domain_of(url)
-                if not cd or cd in BLOCK_TARGET_DOMAINS or cd==d: continue
+                if not cd or is_blocked_domain(cd) or cd==d: continue
                 seen+=1
                 title=item.get('title') or ''
                 kw=keyword_from_title(title) or normalize_keyword(f'{brand} alternatives')
                 # Avoid dictionary/app-store false positives from bare brand searches.
-                if cd in BLOCK_TARGET_DOMAINS or re.search(r"\b(definition|meaning|download|hotel|video downloader)\b", (title or '').lower()):
+                if is_blocked_domain(cd) or re.search(r"\b(definition|meaning|download|hotel|video downloader)\b", (title or '').lower()):
                     _touch_collector_target(db,'domain',d,reject=True)
                     continue
                 if topics and not any(_title_matches_topic(title, topic) for topic in topics):
@@ -678,7 +682,7 @@ def run_hot_topic_collector(db:Session, topics:list[str]|None=None, max_seconds:
                 title=item.get('title') or ''
                 url=item.get('url') or item.get('link') or ''
                 d=domain_of(url)
-                if not d or d in BLOCK_TARGET_DOMAINS: continue
+                if not d or is_blocked_domain(d): continue
                 if not _title_matches_topic(title, topic): continue
                 kw=keyword_from_title(title) or normalize_keyword(q)
                 evidence={'query':q,'topic':topic,'modifier':mod,'title':title,'url':url,'provider':provider_used}
