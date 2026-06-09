@@ -12,6 +12,21 @@ router = APIRouter(prefix="/api/reports", tags=["reports"])
 def export_report(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
     return {"path": services.export_latest_markdown(db)}
 
+@router.get("/download/latest")
+def download_latest_report(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    path = services.export_latest_markdown(db)
+    return FileResponse(path, media_type="text/markdown; charset=utf-8", filename="demand_cards_latest.md")
+
+@router.get("/daily-digest")
+def daily_digest(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    path = services.export_latest_markdown(db)
+    try:
+        from app import collectors
+        audit = collectors.collector_autopilot_self_repair_report(db)
+    except Exception as e:
+        audit = {"ok": False, "error": str(e)[:180]}
+    return {"ok": True, "path": path, "collector_audit": audit}
+
 @router.post("/export/actions")
 def export_action_report(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
     return {"path": services.export_action_execution_markdown(db)}
