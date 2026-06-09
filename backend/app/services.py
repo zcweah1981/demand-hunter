@@ -224,6 +224,36 @@ def find_duplicate_card(db: Session, keyword: models.Keyword, threshold: float =
             return card
     return None
 
+def append_duplicate_evidence(db: Session, card: models.OpportunityCard, keyword: models.Keyword, similarity_note: str = "") -> models.OpportunityCard:
+    """Attach a duplicate/variant keyword to the main opportunity evidence chain.
+
+    Duplicate does not mean delete. It means this keyword becomes supporting
+    evidence for the canonical opportunity card so the signal is preserved and
+    traceable.
+    """
+    try:
+        evidence=json.loads(card.evidence_json or "[]")
+        if not isinstance(evidence, list): evidence=[evidence]
+    except Exception:
+        evidence=[]
+    marker={
+        "type":"duplicate_keyword_evidence",
+        "keyword_id":keyword.id,
+        "keyword":keyword.query,
+        "source":keyword.source,
+        "score":keyword.score,
+        "intent":keyword.intent,
+        "note":similarity_note or "Merged as evidence chain; not deleted.",
+    }
+    exists=any(isinstance(x,dict) and x.get("type")=="duplicate_keyword_evidence" and x.get("keyword_id")==keyword.id for x in evidence)
+    if not exists:
+        evidence.append(marker)
+        card.evidence_json=json.dumps(evidence, ensure_ascii=False)
+    keyword.status="duplicate_evidence"
+    keyword.intent=f"evidence_for_card:{card.id}"[:80]
+    db.merge(keyword); db.merge(card); db.commit(); db.refresh(card)
+    return card
+
 def classify_intent(query: str) -> str:
     q = query.lower()
     for w, intent in INTENT_WORDS.items():
@@ -1238,11 +1268,7 @@ def make_card(db: Session, keyword: models.Keyword) -> models.OpportunityCard:
         db.commit(); db.refresh(card); return card
     duplicate = find_duplicate_card(db, keyword)
     if duplicate:
-        keyword.status = "duplicate"
-        keyword.intent = f"duplicate_card:{duplicate.id}"[:80]
-        keyword.score = 0.0
-        db.commit(); db.refresh(duplicate)
-        return duplicate
+        return append_duplicate_evidence(db, duplicate, keyword, similarity_note="Auto-detected duplicate/variant; merged into this opportunity evidence chain.")
     serp = db.query(models.SerpResult).filter_by(keyword_id=keyword.id).all() or run_serp(db, keyword)
     comps = analyze_competitors(db, keyword)
     socials = collect_social(db, keyword)

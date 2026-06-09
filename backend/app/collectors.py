@@ -484,12 +484,19 @@ def cleanup_rejected_candidates(db:Session, keep_latest:int=300, force:bool=Fals
     preview=preview_cleanup_rejected_candidates(db, keep_latest=keep_latest)
     if preview.get('repair_safety',{}).get('status')=='risky' and not force:
         return {'ok':False,'blocked':True,'reason':'cleanup_preview_risky','preview':preview,'message':'cleanup rejected candidates is risky; increase keep_latest or run with force=true'}
-    delete_rows=rows[max(0,keep_latest):]
-    deleted=0
-    for r in delete_rows:
-        db.delete(r); deleted+=1
-    audit={'kept':min(len(rows),keep_latest),'deleted':deleted,'total_rejected_before':len(rows),'keep_latest':keep_latest,'force':force}
-    audit['repair_safety']=repair_safety_score({'rejected':deleted,'scanned':len(rows)})
+    archive_rows=rows[max(0,keep_latest):]
+    archived=0
+    for r in archive_rows:
+        try: ev=json.loads(r.evidence_json or '{}')
+        except Exception: ev={}
+        ev['archived_from']='rejected'
+        ev['archive_reason']='cleanup_rejected_candidates_preserve_evidence'
+        ev['archived_at']=datetime.utcnow().isoformat()
+        r.evidence_json=json.dumps(ev, ensure_ascii=False)
+        r.status='archived_rejected'
+        db.merge(r); archived+=1
+    audit={'kept':min(len(rows),keep_latest),'archived':archived,'deleted':0,'total_rejected_before':len(rows),'keep_latest':keep_latest,'force':force,'preserve_evidence':True}
+    audit['repair_safety']=repair_safety_score({'rejected':archived,'scanned':len(rows)})
     db.add(models.RunHistory(kind='collector_repair', status='ok', summary=json.dumps({'repair':'cleanup_rejected_candidates','result':audit}, ensure_ascii=False), finished_at=datetime.utcnow()))
     db.commit()
     return {'ok':True, **audit}
@@ -504,7 +511,7 @@ def preview_cleanup_rejected_candidates(db:Session, keep_latest:int=300)->dict:
         except Exception: ev={}
         reason=ev.get('reject_reason') or 'unknown'
         by_reason[reason]=by_reason.get(reason,0)+1
-    result={'keep_latest':keep_latest,'will_delete':len(delete_rows),'total_rejected':len(rows),'by_source':sorted([{'source':k,'count':v} for k,v in by_source.items()], key=lambda x:x['count'], reverse=True)[:12],'by_reason':sorted([{'reason':k,'count':v} for k,v in by_reason.items()], key=lambda x:x['count'], reverse=True)[:12],'preview':True}
+    result={'keep_latest':keep_latest,'will_archive':len(delete_rows),'will_delete':0,'total_rejected':len(rows),'preserve_evidence':True,'by_source':sorted([{'source':k,'count':v} for k,v in by_source.items()], key=lambda x:x['count'], reverse=True)[:12],'by_reason':sorted([{'reason':k,'count':v} for k,v in by_reason.items()], key=lambda x:x['count'], reverse=True)[:12],'preview':True}
     result['repair_safety']=repair_safety_score({'rejected':len(delete_rows),'scanned':len(rows)})
     return {'ok':True, **result}
 
