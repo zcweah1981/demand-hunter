@@ -262,7 +262,7 @@ def candidate_quality_reject_reason(keyword:str, source:str, evidence:dict|None=
         return 'tool_category_slug'
     if tool_count >= 2 and commercial_count <= 1 and source in {'advanced_search','hn_algolia','arxiv'}:
         return 'tool_word_stack'
-    if source in {'advanced_search','hn_algolia','arxiv','domain_web','alternatives'}:
+    if source in {'advanced_search','hn_algolia','arxiv','domain_web','alternatives','hot_topic'}:
         if source in {'domain_web','alternatives'} and ({'compliance','tax','invoice','vendor'} & terms and {'checklist','deadline','requirements','cost','roi','automation','calculator','tracker'} & terms):
             return ''
         if not has_tool:
@@ -642,6 +642,54 @@ def run_alternatives_collector(db:Session, domains:list[str], max_seconds:int|No
     db.commit()
     return {'ok':True,'source':'alternatives','domains':len(domains),'seen':seen,'saved':saved,'errors':errors[:20]}
 
+def run_hot_topic_collector(db:Session, topics:list[str]|None=None, max_seconds:int|None=None)->dict:
+    """Lightweight hot-topic collector from active target topics.
+
+    Uses public SERP providers with freshness/modifier queries instead of paid
+    trends APIs. Candidates still go through normal quality gates.
+    """
+    try: max_seconds=int(max_seconds if max_seconds is not None else (services.setting(db,'COLLECTOR_HOT_TOPIC_MAX_SECONDS') or '35'))
+    except Exception: max_seconds=35
+    if not topics:
+        rows=db.query(models.CollectorTarget).filter_by(status='active').order_by(models.CollectorTarget.priority.desc()).limit(40).all()
+        topics=[]
+        for r in rows:
+            topic=normalize_keyword(r.topic or r.value or '')
+            if topic and topic not in topics: topics.append(topic)
+    topics=[t for t in topics if t][:12]
+    providers=services.available_serp_providers(db)
+    started=time.monotonic(); seen=0; saved=0; errors=[]
+    modifiers=['2026','deadline','new regulation','ai tool','template','calculator','checklist','automation']
+    for topic in topics:
+        _touch_collector_target(db,'keyword',topic)
+        if time.monotonic()-started>max_seconds:
+            errors.append({'topic':topic,'error':f'time_budget_exceeded>{max_seconds}s'}); break
+        for mod in modifiers[:4]:
+            if time.monotonic()-started>max_seconds: break
+            q=f'{topic} {mod}'
+            items=[]; provider_used=''
+            for p in providers[:2]:
+                try:
+                    provider_used=p; res=services.provider_search(db,p,q,limit=5)
+                    if res and res[0].get('engine')!='error': items=res; break
+                except Exception as e:
+                    errors.append({'query':q,'provider':p,'error':str(e)[:160]})
+            for item in items[:5]:
+                title=item.get('title') or ''
+                url=item.get('url') or item.get('link') or ''
+                d=domain_of(url)
+                if not d or d in BLOCK_TARGET_DOMAINS: continue
+                if not _title_matches_topic(title, topic): continue
+                kw=keyword_from_title(title) or normalize_keyword(q)
+                evidence={'query':q,'topic':topic,'modifier':mod,'title':title,'url':url,'provider':provider_used}
+                row=upsert_candidate(db, kw, 'hot_topic', url, d, '热点词/新鲜度找词', evidence, 0.61)
+                seen+=1
+                if row:
+                    saved+=1
+                    _touch_collector_target(db,'keyword',topic,success=True)
+    db.commit()
+    return {'ok':True,'source':'hot_topic','topics':len(topics),'seen':seen,'saved':saved,'errors':errors[:20]}
+
 def suggest_queries(seed:str, timeout:float=5)->list[dict]:
     out=[]
     seed=seed.strip()
@@ -865,6 +913,10 @@ def run_collector_autopilot(db:Session, limit:int=24, import_limit:int=12)->dict
         try: results.append(run_advanced_search_collector(db, roots, domains[:6], days=45, limit_per_query=active['advanced_search'].get('limit_per_query',5), max_seconds=min(remaining, int(services.setting(db,'COLLECTOR_ADVANCED_MAX_SECONDS') or '90'))))
         except Exception as e: errors.append({'collector':'advanced_search','error':str(e)[:180]})
         print(f"[collector] advanced_search done, elapsed={time.monotonic()-started:.1f}s", flush=True)
+    if seeds and budget_left() and (services.setting(db,'COLLECTOR_HOT_TOPIC_ENABLED') or 'true').lower() in {'1','true','yes','on'}:
+        remaining=max(5, int(max_seconds - (time.monotonic() - started)))
+        try: results.append(run_hot_topic_collector(db, topics=seeds[:max(2,min(6,limit//2))], max_seconds=min(remaining, int(services.setting(db,'COLLECTOR_HOT_TOPIC_MAX_SECONDS') or '20'))))
+        except Exception as e: errors.append({'collector':'hot_topic','error':str(e)[:180]})
     if seeds and 'source_radar' in active and budget_left():
         remaining=max(5, int(max_seconds - (time.monotonic() - started)))
         print(f"[collector] starting source_radar, budget_left={remaining}s", flush=True)
