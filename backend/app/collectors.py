@@ -343,6 +343,7 @@ def collector_system_health(db:Session)->dict:
         repairs.append({'id':'inspect_rejected_reasons','label':'查看 rejected reason 分布','safety':'只读','endpoint':'/api/collectors/rejected-reasons'})
         repairs.append({'id':'repair_missing_tool_intent','label':'修复 missing_tool_intent 噪音','safety':'可逆：调整 source 权重并开启 source_radar tech-only','endpoint':'/api/collectors/repairs/missing-tool-intent'})
         repairs.append({'id':'repair_generic_short_tail','label':'改写 generic_short_tail 短头词','safety':'可逆：新增 rewrite candidates，保留原 rejected','endpoint':'/api/collectors/repairs/generic-short-tail'})
+        repairs.append({'id':'repair_sitemap_editorial_path','label':'修复 sitemap_editorial_path 噪音','safety':'可逆：仅将 sitemap editorial candidates 标记 rejected','endpoint':'/api/collectors/repairs/sitemap-editorial-path'})
         repairs.append({'id':'cleanup_old_rejected','label':'清理旧 rejected candidates','safety':'可逆性低：删除 rejected 候选记录，不影响 keywords/cards','endpoint':'/api/collectors/candidates/rejected/cleanup'})
     if new_candidates > 0:
         strengths.append({'code':'candidate_pool_has_work','text':f'{new_candidates} new candidates waiting'})
@@ -441,6 +442,27 @@ def apply_generic_short_tail_repair(db:Session, limit:int=300)->dict:
     db.commit()
     audit={'scanned_generic_short_tail':scanned,'rewritten':rewritten,'variants_saved':variants_saved,'examples':examples}
     db.add(models.RunHistory(kind='collector_repair', status='ok', summary=json.dumps({'repair':'generic_short_tail','result':audit}, ensure_ascii=False), finished_at=datetime.utcnow()))
+    db.commit()
+    return {'ok':True, **audit}
+
+def apply_sitemap_editorial_path_repair(db:Session, limit:int=500)->dict:
+    """Move editorial sitemap URL-path candidates out of the importable pool."""
+    rows=db.query(models.CandidateKeyword).filter(models.CandidateKeyword.source=='sitemap').order_by(models.CandidateKeyword.created_at.desc()).limit(max(1,min(2000,limit))).all()
+    scanned=0; rejected=0; examples=[]
+    for r in rows:
+        scanned+=1
+        if sitemap_url_is_task_page(r.source_url or ''):
+            continue
+        try: ev=json.loads(r.evidence_json or '{}')
+        except Exception: ev={}
+        ev['reject_reason']='sitemap_editorial_path'
+        ev['repair_note']='URL path is editorial/blog/resource; use domain_web title/meta collector instead'
+        r.status='rejected'
+        r.evidence_json=json.dumps(ev, ensure_ascii=False)
+        db.merge(r); rejected+=1
+        if len(examples)<10: examples.append({'id':r.id,'keyword':r.keyword,'url':r.source_url})
+    audit={'scanned':scanned,'rejected':rejected,'examples':examples,'sitemap_path_gate':'task_pages_only'}
+    db.add(models.RunHistory(kind='collector_repair', status='ok', summary=json.dumps({'repair':'sitemap_editorial_path','result':audit}, ensure_ascii=False), finished_at=datetime.utcnow()))
     db.commit()
     return {'ok':True, **audit}
 
@@ -588,6 +610,21 @@ def keyword_from_url(url:str)->str:
     # Prefer last meaningful slug, but keep 2-6 terms.
     tail=parts[-6:]
     return ' '.join(tail).strip()
+
+def sitemap_url_is_task_page(url:str)->bool:
+    """Allow sitemap URL-path extraction only for task/tool-like pages.
+
+    Editorial/blog/resource paths are handled by Domain Web Collector where
+    title/meta/h1 can prove tool intent; URL path alone is too noisy.
+    """
+    path=(urlparse(url).path or '').lower()
+    if re.search(r"/(tools?|templates?|calculators?|checklists?|pricing|features|compare|alternatives?|integrations?|apps?)/", path):
+        return True
+    if re.search(r"\b(calculator|template|checklist|tracker|generator|estimator|automation|dashboard|api|integration|alternative)\b", path):
+        return True
+    if re.search(r"/(blog|blogs|resources?|articles?|news|guides?)/", path):
+        return False
+    return False
 
 def keyword_from_title(title:str)->str:
     title=html.unescape(title or '')
@@ -927,7 +964,7 @@ def parse_sitemap_urls(sitemap_url:str, max_urls=200)->tuple[list[str], list[str
     return page_locs[:max_urls], sitemap_locs[:20]
 
 def run_sitemap_watcher(db:Session, domains:list[str], max_urls_per_domain=80, only_new:bool=True)->dict:
-    total=0; imported=0; new_urls=0; old_urls=0; errors=[]
+    total=0; imported=0; new_urls=0; old_urls=0; skipped_editorial=0; errors=[]
     for d in domains:
         try:
             queue=discover_sitemaps(d); seen=set(); pages=[]
@@ -942,6 +979,9 @@ def run_sitemap_watcher(db:Session, domains:list[str], max_urls_per_domain=80, o
                 except Exception as e:
                     errors.append({'domain':d,'sitemap':sm,'error':str(e)[:180]})
             for url in pages[:max_urls_per_domain]:
+                if not sitemap_url_is_task_page(url):
+                    skipped_editorial+=1
+                    continue
                 kw=keyword_from_url(url)
                 if not kw: continue
                 total+=1
@@ -956,7 +996,7 @@ def run_sitemap_watcher(db:Session, domains:list[str], max_urls_per_domain=80, o
         except Exception as e:
             errors.append({'domain':d,'error':str(e)[:180]})
     db.commit()
-    return {'ok':True,'source':'sitemap','domains':len(domains),'urls_seen':total,'new_urls':new_urls,'old_urls':old_urls,'saved':imported,'only_new':only_new,'errors':errors[:20]}
+    return {'ok':True,'source':'sitemap','domains':len(domains),'urls_seen':total,'new_urls':new_urls,'old_urls':old_urls,'skipped_editorial':skipped_editorial,'saved':imported,'only_new':only_new,'errors':errors[:20]}
 
 def _fetch_html(url:str, timeout:float=8)->str:
     r=requests.get(url, headers={'User-Agent':'Mozilla/5.0 (DemandHunterBot/1.0)'}, timeout=timeout)
@@ -995,7 +1035,8 @@ def run_domain_web_collector(db:Session, domains:list[str], max_pages_per_domain
     try: max_seconds=int(max_seconds if max_seconds is not None else (services.setting(db,'COLLECTOR_DOMAIN_WEB_MAX_SECONDS') or '35'))
     except Exception: max_seconds=35
     started=time.monotonic(); seen=0; saved=0; errors=[]
-    path_hints=re.compile(r"/(tools?|templates?|calculators?|checklists?|pricing|features|compare|alternatives?|resources?)/", re.I)
+    path_hints=re.compile(r"/(tools?|templates?|calculators?|checklists?|pricing|features|compare|alternatives?|integrations?)/", re.I)
+    editorial_tool_hints=re.compile(r"/(blog|blogs|resources?|articles?|guides?)/.*\b(calculator|template|checklist|tracker|generator|automation|dashboard|api|integration|alternative)\b", re.I)
     for d in domains:
         _touch_collector_target(db,'domain',d)
         if time.monotonic()-started>max_seconds:
@@ -1007,7 +1048,7 @@ def run_domain_web_collector(db:Session, domains:list[str], max_pages_per_domain
                 sm=queue.pop(0)
                 try:
                     pages, childs=parse_sitemap_urls(sm, max_urls=max_pages_per_domain*4-len(urls))
-                    urls.extend([u for u in pages if path_hints.search(urlparse(u).path or '')])
+                    urls.extend([u for u in pages if path_hints.search(urlparse(u).path or '') or editorial_tool_hints.search(urlparse(u).path or '')])
                     queue.extend(childs[:5])
                 except Exception:
                     continue
