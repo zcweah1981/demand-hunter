@@ -54,7 +54,7 @@ def save_prd(db:Session, project_id:int, content:str):
     p=db.get(models.MvpProject, project_id)
     if not p: raise ValueError("project_not_found")
     content=(content or "").strip()
-    if len(content)<200: raise ValueError("prd_too_short")
+    if not content: raise ValueError("prd_empty")
     slug=slugify(p.canonical_keyword)
     folder=PRD_ROOT/slug; folder.mkdir(parents=True, exist_ok=True)
     path=folder/"PRD.md"
