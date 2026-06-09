@@ -19,6 +19,33 @@ def _set_setting(db: Session, key: str, value: str, secret: bool = False):
 def _bool_setting(db: Session, key: str) -> bool:
     return (services.setting(db, key) or "").lower() in {"1", "true", "yes", "on"}
 
+def _opportunity_group_counts(db: Session) -> dict:
+    """Counts must match /hunter/opportunities: opportunity groups, not raw cards."""
+    try:
+        min_action = float(services.setting(db, "MIN_ACTION_SCORE") or "74")
+    except Exception:
+        min_action = 74.0
+    cards = db.query(models.OpportunityCard).order_by(models.OpportunityCard.created_at.desc()).limit(300).all()
+    def grouped_count(predicate) -> int:
+        groups=set()
+        for card in cards:
+            if not predicate(card):
+                continue
+            try:
+                g=services.opportunity_group_for_card(db, card).get("group_id")
+            except Exception:
+                g=f"card-{card.id}"
+            groups.add(g or f"card-{card.id}")
+        return len(groups)
+    def final_verdict(card):
+        return card.feedback_label or card.verdict
+    return {
+        "cards": grouped_count(lambda c: True),
+        "pending_review": grouped_count(lambda c: (not c.feedback_label) and c.verdict in {"Action","Watch"}),
+        "action": grouped_count(lambda c: final_verdict(c)=="Action" and float(c.score or 0) >= min_action),
+        "watch": grouped_count(lambda c: final_verdict(c)=="Watch"),
+    }
+
 
 @router.get("/status")
 def autopilot_status(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
@@ -27,10 +54,11 @@ def autopilot_status(_: bool = Depends(require_auth), db: Session = Depends(get_
     providers = services.available_serp_providers(db)
     seeds = [x.strip() for x in (services.setting(db, "FOUR_FIND_AUTO_SEEDS") or "").split(",") if x.strip()]
     domains = [x.strip() for x in (services.setting(db, "FOUR_FIND_AUTO_DOMAINS") or "").replace("\n", ",").split(",") if x.strip()]
-    cards = db.query(models.OpportunityCard).count()
-    pending_review = db.query(models.OpportunityCard).filter(models.OpportunityCard.feedback_label == "").count()
-    actions = db.query(models.OpportunityCard).filter(models.OpportunityCard.verdict == "Action").count()
-    watch = db.query(models.OpportunityCard).filter(models.OpportunityCard.verdict == "Watch").count()
+    opportunity_counts = _opportunity_group_counts(db)
+    cards = opportunity_counts["cards"]
+    pending_review = opportunity_counts["pending_review"]
+    actions = opportunity_counts["action"]
+    watch = opportunity_counts["watch"]
     discoveries = db.query(models.DiscoveryExpansion).count() + db.query(models.CompetitorKeyword).count() + db.query(models.CompetitorSite).count()
     collector_summary = collectors.collector_pool_summary(db)
     experiments = services.list_repair_experiments(db, limit=5)
@@ -86,7 +114,7 @@ def autopilot_status(_: bool = Depends(require_auth), db: Session = Depends(get_
         "providers": providers,
         "seeds": seeds,
         "domains": domains,
-        "counts": {"discoveries": discoveries, "cards": cards, "pending_review": pending_review, "action": actions, "watch": watch},
+        "counts": {"discoveries": discoveries, "cards": cards, "pending_review": pending_review, "action": actions, "watch": watch, "unit": "opportunity_group"},
         "collectors": collector_summary,
         "diagnosis": last.get("summary", {}).get("diagnosis") if last and isinstance(last.get("summary"), dict) else None,
         "active_experiment": active_experiment,

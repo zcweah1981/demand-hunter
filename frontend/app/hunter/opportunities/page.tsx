@@ -10,14 +10,14 @@ export default async function Page({searchParams}:{searchParams?:Promise<Record<
  const raw=Array.isArray(params.verdict)?params.verdict[0]:params.verdict
  const verdict=VERDICTS.includes(raw||'') ? (raw as string) : 'Pending'
  const [rows, settings] = await Promise.all([
-  api<Card[]>('/api/cards'),
+ api<Card[]>('/api/cards'),
   api<any[]>('/api/settings').catch(()=>[]),
  ])
  const minAction = Number(settings.find((s:any)=>s.key==='MIN_ACTION_SCORE')?.value || 74)
  const filtered = rows.filter((r:any)=>{
   const finalVerdict = r.feedback_label || r.verdict
   if(verdict==='All') return true
-  if(verdict==='Pending') return !r.feedback_label
+  if(verdict==='Pending') return !r.feedback_label && ['Action','Watch'].includes(r.verdict)
   if(finalVerdict!==verdict) return false
   if(verdict==='Action') return Number(r.score||0) >= minAction
   return true
