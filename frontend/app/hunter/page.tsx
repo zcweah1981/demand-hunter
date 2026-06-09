@@ -2,6 +2,8 @@ import {api} from '../../lib/api'
 import {AutopilotPanel} from '../../components/AutopilotPanel'
 import {RunHistoryList} from '../../components/RunHistoryList'
 
+function fmtNextRun(s?:string){if(!s) return '暂无预计时间'; const d=new Date(s); if(Number.isNaN(d.getTime())) return s; return d.toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}
+
 export default async function Page(){
  const [autopilot,runs,collectorRuns] = await Promise.all([
   api<any>('/api/autopilot/status').catch(()=>null),
@@ -17,7 +19,7 @@ export default async function Page(){
   </section>
   {autopilot&&<AutopilotPanel status={autopilot}/>} 
   <section className="panel">
-   <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-bold">自动运行记录</h2><p className="mt-1 text-sm text-slate-400">每一轮自动任务都保留在这里，便于追溯系统为什么产生/没有产生机会。</p></div><span className="badge">{merged.length}</span></div>
+   <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-bold">自动运行记录</h2><p className="mt-1 text-sm text-slate-400">每一轮自动任务都保留在这里，便于追溯系统为什么产生/没有产生机会。</p></div><div className="flex flex-wrap items-center gap-2"><span className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-sm text-blue-100">下次预计自动运行：{autopilot?.auto?.enabled?fmtNextRun(autopilot?.auto?.next_run_at):'自动化未开启'}</span><span className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300">间隔 {autopilot?.auto?.interval_minutes??'-'} 分钟</span><span className="badge">{merged.length}</span></div></div>
    <RunHistoryList runs={merged}/>
   </section>
  </div>
