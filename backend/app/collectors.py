@@ -20,7 +20,7 @@ NOISE_TITLE_PATTERNS=(
 )
 BLOCK_TARGET_DOMAINS={"google.com","youtube.com","wikipedia.org","reddit.com","facebook.com","linkedin.com","x.com","twitter.com","github.com","support.google.com","dictionary.com","merriam-webster.com","dictionary.cambridge.org","bestbuy.com","bestwestern.com","alternativeto.net","pinterest.com","capitalone.com","card.com","creditcards.chase.com","usafacts.org","apps.microsoft.com","play.google.com"}
 TECH_SOURCE_RADAR_TERMS={"ai","llm","rag","mcp","agent","agents","model","models","openai","anthropic","claude","gemini","vector","embedding","eval","benchmark","inference","gpu","workflow automation"}
-SHORT_TAIL_REWRITE_BAD_TERMS={"branding","history","quote","quotes","signature","signatures","receipt","receipts","settings","account","login","signup","profile"}
+SHORT_TAIL_REWRITE_BAD_TERMS={"branding","history","quote","quotes","signature","signatures","receipt","receipts","settings","account","login","signup","profile","community","communities","competitor","competitors","auditor","auditors","forum","forums"}
 def is_blocked_domain(domain:str)->bool:
     d=(domain or '').lower().removeprefix('www.')
     return any(d==b or d.endswith('.'+b) for b in BLOCK_TARGET_DOMAINS)
