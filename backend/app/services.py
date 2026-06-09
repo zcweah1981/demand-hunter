@@ -370,15 +370,13 @@ def grouped_opportunity_cards(db: Session, verdict: str = "All", limit: int = 30
     return sorted(filtered, key=lambda c: (rank(c), c.created_at), reverse=True)
 
 def opportunity_group_counts(db: Session) -> dict:
-    return {
-        "cards": len(grouped_opportunity_cards(db,"All")),
-        "adopted": len(grouped_opportunity_cards(db,"Adopted")),
-        "action": len(grouped_opportunity_cards(db,"Action")),
-        "watch": len(grouped_opportunity_cards(db,"Watch")),
-        "reject": len(grouped_opportunity_cards(db,"Reject")),
-        "block": len(grouped_opportunity_cards(db,"Block")),
-        "unit":"opportunity_group",
-    }
+    adopted=len(grouped_opportunity_cards(db,"Adopted"))
+    action=len(grouped_opportunity_cards(db,"Action"))
+    watch=len(grouped_opportunity_cards(db,"Watch"))
+    reject=len(grouped_opportunity_cards(db,"Reject"))
+    block=len(grouped_opportunity_cards(db,"Block"))
+    # Overview total must equal the visible status buckets exactly.
+    return {"cards": adopted+action+watch+reject+block, "adopted": adopted, "action": action, "watch": watch, "reject": reject, "block": block, "unit":"opportunity_group"}
 
 def classify_intent(query: str) -> str:
     q = query.lower()
