@@ -2352,7 +2352,13 @@ def apply_feedback(db: Session, card: models.OpportunityCard, label: str, note: 
     db.commit(); db.refresh(card); return card
 
 def auto_status(db: Session) -> dict:
-    last = db.query(models.RunHistory).order_by(models.RunHistory.started_at.desc()).first()
+    # The automatic loop's primary run is `daily`. Collector/repair rows are
+    # child steps emitted during the same loop; using them as `last_run` makes
+    # the dashboard look like the real auto run is missing or shifts the next
+    # scheduled time. Fall back to any run only before the first daily exists.
+    last = db.query(models.RunHistory).filter_by(kind="daily").order_by(models.RunHistory.started_at.desc()).first()
+    if not last:
+        last = db.query(models.RunHistory).order_by(models.RunHistory.started_at.desc()).first()
     enabled = (setting(db, "AUTO_RUN_ENABLED") or "false").lower() in {"1","true","yes","on"}
     try: interval = int(setting(db, "AUTO_RUN_INTERVAL_MINUTES") or "360")
     except Exception: interval = 360
@@ -2364,7 +2370,7 @@ def auto_status(db: Session) -> dict:
 def auto_due(db: Session) -> bool:
     st = auto_status(db)
     if not st["enabled"]: return False
-    last = db.query(models.RunHistory).order_by(models.RunHistory.started_at.desc()).first()
+    last = db.query(models.RunHistory).filter_by(kind="daily").order_by(models.RunHistory.started_at.desc()).first()
     if not last or not last.finished_at: return True
     return (datetime.utcnow() - last.finished_at).total_seconds() >= st["interval_minutes"] * 60
 

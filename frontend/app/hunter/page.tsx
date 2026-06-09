@@ -7,12 +7,11 @@ function runTime(r:any){const d=new Date(r.started_at||r.created_at||0); return 
 function mergedTaskCount(runs:any[]){const sorted=[...(runs||[])].sort((a,b)=>runTime(b)-runTime(a)); let count=0; let last=0; for(const r of sorted){const t=runTime(r); if(!last||Math.abs(last-t)>5*60*1000) count++; last=t} return count}
 
 export default async function Page(){
- const [autopilot,runs,collectorRuns] = await Promise.all([
+ const [autopilot,runs] = await Promise.all([
   api<any>('/api/autopilot/status').catch(()=>null),
   api<any[]>('/api/runs').catch(()=>[]),
-  api<any[]>('/api/collectors/runs?limit=20').catch(()=>[]),
  ])
- const merged=[...runs,...collectorRuns].sort((a:any,b:any)=>new Date(b.started_at||b.created_at||0).getTime()-new Date(a.started_at||a.created_at||0).getTime()).slice(0,30)
+ const merged=[...runs].sort((a:any,b:any)=>new Date(b.started_at||b.created_at||0).getTime()-new Date(a.started_at||a.created_at||0).getTime()).slice(0,30)
  const taskCount=mergedTaskCount(merged)
  return <div className="space-y-6">
   <section className="rounded-3xl border border-blue-500/20 bg-gradient-to-br from-blue-950/60 via-slate-950 to-slate-950 p-7 shadow-2xl">
