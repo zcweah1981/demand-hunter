@@ -38,7 +38,7 @@ export default async function Page({searchParams}:{searchParams?:Promise<Record<
      <div className="rounded-xl bg-slate-900 p-3"><b className="text-slate-100">组概率</b><p className="mt-1">综合变体数、来源数、正向/负向卡和人工状态；概率越高，说明证据链越集中。</p></div>
     </div>
    </details>
-   <OpportunityList cards={cards} empty={`暂无${title}。`} showVerdictFilter={false} mode="review" enableBulk />
+   <OpportunityList cards={cards} empty={`暂无${title}。`} showVerdictFilter={false} mode="review" enableBulk currentFilter={verdict}/>
   </section>
  </div>
 }
