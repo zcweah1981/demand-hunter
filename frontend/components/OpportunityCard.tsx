@@ -13,16 +13,16 @@ export function OpportunityCardView({card,compact=false,showFeedback=true,onFeed
  const topEvidence=evidence.slice(0,2)
  const labels:any={Demand:'需求强度',SERP:'搜索缺口',Weakness:'竞品弱点',Commercial:'MVP 可行性',Money:'变现潜力'}
  return <article className="card safe-text space-y-4">
-  <div className="flex flex-wrap items-start justify-between gap-3">
+  <div className="space-y-3">
    <div className="min-w-0">
-    <h2 className="text-lg font-semibold text-white">{card.title}</h2>
-    <p className="mt-1 text-sm text-slate-400"><span className="text-slate-500">变现类型：</span>{business?.business_type||card.monetization_type||'未标注'}</p>
+    <h2 className="text-lg font-semibold leading-7 text-white">{card.title}</h2>
+    <p className="mt-1 text-sm leading-6 text-slate-400"><span className="text-slate-500">变现类型：</span>{business?.business_type||card.monetization_type||'未标注'}</p>
    </div>
-   <div className="flex shrink-0 flex-col items-end gap-2">
+   <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
     <span className={verdictClass(card.verdict)}>{verdictLabel(card.verdict)} · {card.score}</span>
     {business?.go_no_go&&<span className="badge badge-watch">商业判断：{business.go_no_go} · {Math.round((business.commercial_score||0)*100)}</span>}
     {business?.analysis_source&&<span className={String(business.analysis_source).startsWith('llm')?'badge badge-action':'badge badge-reject'}>{String(business.analysis_source).startsWith('llm')?'LLM 分析':'非 LLM / 模板分析'}：{business.analysis_source}</span>}
-    {!compact&&<div className="flex flex-wrap justify-end gap-2"><ReanalyzeCardButton id={card.id}/><ExportCardMarkdownButton id={card.id}/></div>} 
+    {!compact&&<div className="ml-auto flex flex-wrap gap-2"><ReanalyzeCardButton id={card.id}/><ExportCardMarkdownButton id={card.id}/></div>} 
    </div>
   </div>
 
