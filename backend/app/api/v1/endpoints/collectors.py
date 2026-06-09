@@ -57,6 +57,32 @@ def collector_target_status(target_id: int, payload: dict, _: bool = Depends(req
     db.merge(row); db.commit(); db.refresh(row)
     return obj(row)
 
+@router.get("/targets/{target_id}/outputs")
+def collector_target_outputs(target_id: int, limit: int = 80, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    target=db.get(models.CollectorTarget, target_id)
+    if not target: raise HTTPException(status_code=404, detail="target not found")
+    needle=f'"collector_target_ids":'
+    candidates=[]
+    for c in db.query(models.CandidateKeyword).order_by(models.CandidateKeyword.created_at.desc()).limit(800).all():
+        try: ev=json.loads(c.evidence_json or '{}')
+        except Exception: ev={}
+        ids=ev.get('collector_target_ids') or []
+        if target_id in ids:
+            candidates.append({**obj(c), 'evidence': ev})
+            if len(candidates)>=limit: break
+    keywords=[]
+    for kw in db.query(models.Keyword).order_by(models.Keyword.created_at.desc()).limit(800).all():
+        try: meta=json.loads(kw.root_terms or '{}') if (kw.root_terms or '').strip().startswith('{') else {}
+        except Exception: meta={}
+        ids=meta.get('collector_target_ids') or []
+        if target_id in ids:
+            cards=[]
+            for card in db.query(models.OpportunityCard).filter_by(keyword_id=kw.id).order_by(models.OpportunityCard.created_at.desc()).all():
+                cards.append(obj(card))
+            keywords.append({**obj(kw), 'root_meta': meta, 'cards': cards})
+            if len(keywords)>=limit: break
+    return {'target': obj(target), 'candidates': candidates, 'keywords': keywords, 'cards': [card for kw in keywords for card in kw.get('cards', [])]}
+
 @router.post("/autopilot/run")
 def collector_autopilot_run(payload: schemas.CandidateImportIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     return collectors.run_collector_autopilot(db, limit=max(1, payload.limit), import_limit=max(1, payload.limit // 2 or 1))
