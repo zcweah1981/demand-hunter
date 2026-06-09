@@ -10,7 +10,14 @@ const mainItems = [
   ['/', 'autopilot'],
   ['/review', 'review'],
   ['/cards', 'cards'],
-  ['/collectors', 'collectors'],
+]
+
+const collectorItems = [
+  ['/collectors/overview', '总览'],
+  ['/collectors/flow', '发现流程'],
+  ['/collectors/conditions', '搜索条件'],
+  ['/collectors/sources', '发现来源'],
+  ['/collectors/records', '抓取记录'],
 ]
 
 const settingsItems = [
@@ -33,10 +40,11 @@ const advancedItems = [
 export function Nav() {
   const {lang, setLang, t} = useLang()
   const pathname = usePathname()
-  const [open, setOpen] = useState<'settings'|'advanced'|null>(null)
+  const [open, setOpen] = useState<'collectors'|'settings'|'advanced'|null>(null)
 
   useEffect(() => {
-    if (pathname.startsWith('/settings')) setOpen('settings')
+    if (pathname.startsWith('/collectors')) setOpen('collectors')
+    else if (pathname.startsWith('/settings')) setOpen('settings')
     else if (advancedItems.some(([href]) => pathname.startsWith(href))) setOpen('advanced')
   }, [pathname])
 
@@ -48,7 +56,7 @@ export function Nav() {
     const active = pathname.startsWith(href)
     return `block rounded-xl px-3 py-2 text-sm no-underline transition ${active ? 'bg-blue-600/20 text-blue-100' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`
   }
-  const sectionButton = (id:'settings'|'advanced', label:string) => (
+  const sectionButton = (id:'collectors'|'settings'|'advanced', label:string) => (
     <button
       type="button"
       onClick={() => setOpen(open === id ? null : id)}
@@ -75,6 +83,12 @@ export function Nav() {
         {mainItems.map(([href, key]) => (
           <Link className={`shrink-0 ${linkClass(href)}`} href={href} key={href} onClick={()=>setOpen(null)}>{t(key)}</Link>
         ))}
+        <div className="min-w-[170px] shrink-0 md:min-w-0">
+          {sectionButton('collectors', t('collectors'))}
+          {open==='collectors'&&<div className="mt-2 space-y-1 rounded-2xl border border-slate-800 bg-slate-900/50 p-2">
+            {collectorItems.map(([href, label]) => <Link key={href} className={childClass(href)} href={href}>{label}</Link>)}
+          </div>}
+        </div>
         <div className="min-w-[170px] shrink-0 md:min-w-0">
           {sectionButton('settings', t('settings'))}
           {open==='settings'&&<div className="mt-2 space-y-1 rounded-2xl border border-slate-800 bg-slate-900/50 p-2">
