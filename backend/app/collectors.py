@@ -909,6 +909,11 @@ def apply_collector_feedback(db:Session, keyword, label:str)->dict:
             pass
     if target_ids:
         _touch_collector_target_ids(db, target_ids, success=good, reject=bad)
+    affected_targets=[]
+    for tid in target_ids[:12]:
+        t=db.get(models.CollectorTarget, tid)
+        if t:
+            affected_targets.append({'id':t.id,'type':t.target_type,'value':t.value,'status':t.status,'priority':t.priority,'success_count':t.success_count,'reject_count':t.reject_count})
 
     # Learn seeds/domains from reviewed collector outputs. Keep this conservative:
     # good collector keywords become auto seeds; Block removes them and adds them to blocked terms.
@@ -934,7 +939,7 @@ def apply_collector_feedback(db:Session, keyword, label:str)->dict:
     seed_row.value=','.join(seeds[:80]); seed_row.secret=False; db.merge(seed_row)
     domain_row.value='\n'.join(auto_domains[:80]); domain_row.secret=False; db.merge(domain_row)
     db.commit()
-    return {'applied':True,'source':source,'label':label,'matched_candidates':len(matched),'source_weight':weights[source]['weight'],'seed_count':len(seeds),'domain_count':len(auto_domains)}
+    return {'applied':True,'source':source,'label':label,'matched_candidates':len(matched),'source_weight':weights[source]['weight'],'seed_count':len(seeds),'domain_count':len(auto_domains),'affected_targets':affected_targets,'target_effect':'reward' if good else 'penalty'}
 
 def _split_setting_list(value:str)->list[str]:
     return [x.strip() for x in re.split(r"[\n,]+", value or '') if x.strip()]

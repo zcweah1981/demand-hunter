@@ -21,6 +21,7 @@ export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=
  const [sort,setSort]=useState('newest')
  const [verdict,setVerdict]=useState('全部')
  const [sourceKeyword,setSourceKeyword]=useState('全部')
+ const [learning,setLearning]=useState<any|null>(null)
  useEffect(()=>{setLocalCards(cards||[]); setInitialCount((cards||[]).length); setReviewedCount(0)},[cards])
  const sourceOptions=useMemo(()=>['全部',...Array.from(new Set((localCards||[]).map(c=>c.source_keyword||'').filter(Boolean))).sort()], [localCards])
  const rows=useMemo(()=>{
@@ -40,7 +41,9 @@ export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=
  async function applyFeedback(card:any,label:string){
   if(!card||mode!=='review') return
   const idx=rows.findIndex(x=>x.id===card.id)
-  await api(`/api/cards/${card.id}/feedback`,{method:'POST',body:JSON.stringify({label})})
+  const updated:any=await api(`/api/cards/${card.id}/feedback`,{method:'POST',body:JSON.stringify({label})})
+  const cf=(updated.evidence_json||[]).slice().reverse().find((e:any)=>e.type==='collector_feedback')?.data
+  if(cf?.applied){setLearning({label, source:cf.source, weight:cf.source_weight, effect:cf.target_effect, targets:cf.affected_targets||[], matched:cf.matched_candidates})}
   const remaining=rows.filter(x=>x.id!==card.id)
   setReviewedCount(n=>n+1)
   setLocalCards(prev=>prev.filter(x=>x.id!==card.id))
@@ -84,6 +87,7 @@ export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=
     <select className="input h-9 w-36 py-1 text-sm" value={sort} onChange={e=>setSort(e.target.value)}>{Object.entries(SORTS).map(([k,v])=><option key={k} value={k}>{v as string}</option>)}</select>
    </div>
   </div>
+  {learning&&<div className="mb-3 rounded-2xl border border-purple-500/30 bg-purple-500/10 p-3 text-sm text-purple-100"><div className="flex flex-wrap items-center justify-between gap-2"><b>采集器学习已应用</b><button className="text-xs text-purple-200 hover:text-white" onClick={()=>setLearning(null)}>关闭</button></div><div className="mt-1 text-purple-100/80">{learning.label} → {learning.effect==='reward'?'奖励':'惩罚'} source <b>{learning.source}</b>，source weight={learning.weight}，匹配 candidates={learning.matched}</div>{learning.targets?.length>0&&<div className="mt-2 flex flex-wrap gap-2">{learning.targets.slice(0,6).map((t:any)=><span key={t.id} className="rounded-lg bg-slate-950/70 px-2 py-1 text-xs text-slate-200">#{t.id} {t.value} · S{t.success_count||0}/R{t.reject_count||0} · P{Math.round(t.priority||0)}</span>)}</div>}</div>}
 
   <div className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-950/70">
    <div className={`hidden gap-3 border-b border-slate-800 px-4 py-3 text-xs font-semibold text-slate-500 md:grid ${mode==='review'?'grid-cols-[56px_110px_1.1fr_1fr_100px_70px_1fr_170px]':'grid-cols-[56px_110px_1.1fr_1fr_100px_70px_1fr_110px]'}`}>
