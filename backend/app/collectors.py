@@ -204,22 +204,36 @@ def collector_next_budget(db:Session, limit:int=24)->dict:
     seg=collector_target_segments(db, limit=300)
     base_weights={'winner':0.40,'promising':0.38,'new':0.14,'manual':0.08,'noisy':0.0,'cooldown':0.0,'exhausted':0.0}
     weights=dict(base_weights)
+    adjustment_log=[]
     # Conservative ROI-driven adjustment. Segment ROI nudges target budget but
     # never fully overrides the base exploration mix; this prevents one lucky
     # short run from collapsing discovery diversity.
     try:
         roi=collector_roi_stats(db, limit=12)
-        verdicts={r['segment']:r['verdict'] for r in roi.get('by_segment',[])}
+        roi_rows={r['segment']:r for r in roi.get('by_segment',[])}
+        verdicts={k:r['verdict'] for k,r in roi_rows.items()}
         for key in ['winner','promising','new']:
-            if verdicts.get(key)=='increase': weights[key]+=0.08
-            elif verdicts.get(key)=='decrease': weights[key]=max(0.03, weights[key]-0.10)
+            row=roi_rows.get(key,{})
+            before=weights[key]
+            if verdicts.get(key)=='increase':
+                weights[key]+=0.08
+                adjustment_log.append({'scope':'segment','key':key,'action':'increase','before':before,'after_raw':weights[key],'reason':f"verdict=increase avg_success={row.get('avg_success')} avg_reject={row.get('avg_reject')} avg_priority={row.get('avg_priority')}"})
+            elif verdicts.get(key)=='decrease':
+                weights[key]=max(0.03, weights[key]-0.10)
+                adjustment_log.append({'scope':'segment','key':key,'action':'decrease','before':before,'after_raw':weights[key],'reason':f"verdict=decrease avg_success={row.get('avg_success')} avg_reject={row.get('avg_reject')} avg_priority={row.get('avg_priority')}"})
         if verdicts.get('winner')=='increase' and verdicts.get('promising')!='increase':
+            before=weights['promising']
             weights['promising']=max(0.20, weights['promising']-0.05)
+            adjustment_log.append({'scope':'segment','key':'promising','action':'rebalance_to_winner','before':before,'after_raw':weights['promising'],'reason':'winner=increase while promising is not increase'})
         total=sum(weights[k] for k in ['winner','promising','new','manual']) or 1.0
         for key in ['winner','promising','new','manual']:
+            before=weights[key]
             weights[key]=round(weights[key]/total, 3)
+            if before != weights[key]:
+                adjustment_log.append({'scope':'segment','key':key,'action':'normalize','before':before,'after':weights[key],'reason':f'normalize total={round(total,3)}'})
     except Exception:
         weights=base_weights
+        adjustment_log.append({'scope':'segment','key':'*','action':'fallback','reason':'ROI adjustment failed; using base weights'})
     allocation=[]
     used=0
     for key,label in [('winner','Winner targets'),('promising','Promising targets'),('new','New targets'),('manual','Manual fallback'),('noisy','Noisy targets'),('cooldown','Cooldown targets'),('exhausted','Exhausted/Rejected')]:
@@ -235,7 +249,7 @@ def collector_next_budget(db:Session, limit:int=24)->dict:
                 take=min(row['budget'], overflow)
                 row['budget']-=take; overflow-=take
     source_plan=collector_budget_plan(db, limit=limit)
-    return {'ok':True,'limit':limit,'target_segments':seg['summary'],'allocation':allocation,'source_plan':source_plan,'roi_adjusted':weights!=base_weights}
+    return {'ok':True,'limit':limit,'target_segments':seg['summary'],'allocation':allocation,'source_plan':source_plan,'roi_adjusted':weights!=base_weights,'adjustment_log':adjustment_log}
 
 def collector_roi_stats(db:Session, limit:int=12)->dict:
     """Aggregate recent collector_autopilot replay history into source/segment ROI."""
@@ -583,12 +597,17 @@ def collector_budget_plan(db:Session, limit:int=24)->dict:
         roi_verdicts={r['source']:r['verdict'] for r in collector_roi_stats(db, limit=12).get('by_source',[])}
     except Exception:
         roi_verdicts={}
-    active=[]; paused=[]
+    active=[]; paused=[]; roi_adjustments=[]
     for f in families:
         enabled=(services.setting(db,f['setting']) or 'true').lower() in {'1','true','yes','on'}
         weight=_collector_family_weight(db, f['key'])
-        if roi_verdicts.get(f['key'])=='increase': weight=round(min(2.5, weight*1.18),3)
-        elif roi_verdicts.get(f['key'])=='decrease': weight=round(max(0.25, weight*0.75),3)
+        base_weight=weight
+        if roi_verdicts.get(f['key'])=='increase':
+            weight=round(min(2.5, weight*1.18),3)
+            roi_adjustments.append({'source':f['key'],'action':'increase','before':base_weight,'after':weight,'reason':'source ROI verdict=increase'})
+        elif roi_verdicts.get(f['key'])=='decrease':
+            weight=round(max(0.25, weight*0.75),3)
+            roi_adjustments.append({'source':f['key'],'action':'decrease','before':base_weight,'after':weight,'reason':'source ROI verdict=decrease'})
         row={**f,'enabled':enabled,'weight':weight}
         if roi_verdicts.get(f['key']): row['roi_verdict']=roi_verdicts.get(f['key'])
         if enabled and weight >= min_weight:
@@ -608,7 +627,7 @@ def collector_budget_plan(db:Session, limit:int=24)->dict:
             row['limit_per_seed']=max(4, min(12, round(5 + row['weight']*2)))
         elif row['key']=='sitemap':
             row['max_urls_per_domain']=max(20, min(160, round(limit * 4 * row['weight'])))
-    return {'limit':limit,'min_weight':min_weight,'active':active,'paused':paused,'weights':_collector_source_weights(db)}
+    return {'limit':limit,'min_weight':min_weight,'active':active,'paused':paused,'weights':_collector_source_weights(db),'roi_adjustments':roi_adjustments}
 
 def mark_sitemap_seen(db:Session, url:str, keyword:str)->bool:
     """Return True when URL is first seen, otherwise update last_seen metadata."""
