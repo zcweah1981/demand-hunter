@@ -150,6 +150,24 @@ def _touch_collector_target(db:Session, target_type:str, value:str, success:bool
                 t.status='cooldown'
         db.merge(t)
 
+def apply_collector_target_health(db:Session)->dict:
+    """Apply lightweight target lifecycle: promote productive targets, cooldown noisy ones."""
+    rows=db.query(models.CollectorTarget).filter(models.CollectorTarget.status.in_(['active','cooldown'])).all()
+    cooled=0; promoted=0; active=0
+    for t in rows:
+        success=t.success_count or 0
+        reject=t.reject_count or 0
+        if t.status=='active' and reject >= 8 and success == 0:
+            t.status='cooldown'; t.notes=((t.notes or '') + ' | auto cooldown: reject>=8 success=0')[:800]; cooled+=1
+        elif t.status=='active' and reject >= 12 and reject >= success*4:
+            t.status='cooldown'; t.notes=((t.notes or '') + f' | auto cooldown: reject={reject} success={success}')[:800]; cooled+=1
+        elif t.status=='cooldown' and success >= 2:
+            t.status='active'; promoted+=1
+        if t.status=='active': active+=1
+        db.merge(t)
+    db.commit()
+    return {'ok':True,'scanned':len(rows),'cooled':cooled,'promoted':promoted,'active':active}
+
 def _domain_topics(db:Session, domain:str)->list[str]:
     with db.no_autoflush:
         rows=db.query(models.CollectorTarget).filter_by(target_type='domain',value=domain,status='active').order_by(models.CollectorTarget.priority.desc()).limit(5).all()
@@ -931,7 +949,8 @@ def run_collector_autopilot(db:Session, limit:int=24, import_limit:int=12)->dict
         errors.append({'collector':'autopilot','error':f'time_budget_exceeded>{max_seconds}s'})
     clean=clean_candidate_pool(db, limit=max(200, limit*10))
     imported=import_candidates_to_keywords(db, limit=max(1, import_limit))
-    return {'enabled':True,'target_refresh':target_refresh,'seeds':seeds,'domains':domains,'auto_targets':{'keywords':target_keywords[:20],'domains':target_domains[:20]},'budget_plan':plan,'results':results,'errors':errors[:20],'clean':clean,'import':imported,'summary':collector_pool_summary(db)}
+    target_health=apply_collector_target_health(db)
+    return {'enabled':True,'target_refresh':target_refresh,'target_health':target_health,'seeds':seeds,'domains':domains,'auto_targets':{'keywords':target_keywords[:20],'domains':target_domains[:20]},'budget_plan':plan,'results':results,'errors':errors[:20],'clean':clean,'import':imported,'summary':collector_pool_summary(db)}
 
 from datetime import timedelta
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 import json
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app import collectors, models, schemas
 from app.api.deps import obj
@@ -37,6 +37,25 @@ def collector_targets(limit: int = 120, status: str = "active", _: bool = Depend
 @router.post("/targets/refresh")
 def collector_targets_refresh(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
     return collectors.refresh_collector_targets_from_cards(db)
+
+@router.post("/targets/health")
+def collector_targets_health(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    return collectors.apply_collector_target_health(db)
+
+@router.post("/targets/{target_id}/status")
+def collector_target_status(target_id: int, payload: dict, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    row=db.get(models.CollectorTarget, target_id)
+    if not row: raise HTTPException(status_code=404, detail="target not found")
+    status=str(payload.get('status') or '').strip()
+    if status not in {'active','cooldown','rejected','exhausted'}:
+        raise HTTPException(status_code=400, detail="invalid status")
+    row.status=status
+    if status=='active':
+        row.reject_count=0
+    if payload.get('note'):
+        row.notes=((row.notes or '') + ' | ' + str(payload.get('note'))[:160])[:800]
+    db.merge(row); db.commit(); db.refresh(row)
+    return obj(row)
 
 @router.post("/autopilot/run")
 def collector_autopilot_run(payload: schemas.CandidateImportIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
