@@ -42,6 +42,7 @@ def _opportunity_group_counts(db: Session) -> dict:
     return {
         "cards": grouped_count(lambda c: True),
         "pending_review": grouped_count(lambda c: (not c.feedback_label) and c.verdict in {"Action","Watch"}),
+        "adopted": grouped_count(lambda c: final_verdict(c)=="Adopted"),
         "action": grouped_count(lambda c: final_verdict(c)=="Action" and float(c.score or 0) >= min_action),
         "watch": grouped_count(lambda c: final_verdict(c)=="Watch"),
     }
@@ -75,7 +76,7 @@ def autopilot_status(_: bool = Depends(require_auth), db: Session = Depends(get_
     ]
     ready = all(x["ok"] for x in ready_checks)
     if running:
-        next_action = "系统正在跑，等结果生成后只需要复核 Watch/Action 卡。"
+        next_action = "系统正在跑；结果会进入机会列表，你可以直接调整 Watch / Action / Adopted 等状态。"
     elif active_experiment:
         next_action = f"推荐实验 #{active_experiment.get('id')} 正在等待评估；为避免变量污染，先等这一轮完成或在 /runs 放弃实验。"
     elif latest_experiment and isinstance(latest_experiment.get("effect"), dict):
@@ -100,7 +101,7 @@ def autopilot_status(_: bool = Depends(require_auth), db: Session = Depends(get_
     elif not ready:
         next_action = "点击“开启自动猎手”，我会补齐默认自动化配置并启动一轮。"
     elif pending_review:
-        next_action = f"有 {pending_review} 张卡待复核：只需要点 Action / Watch / Reject / Block。"
+        next_action = f"有 {pending_review} 个未定状态机会组；进入机会页调整 Watch / Action / Adopted / Reject / Block。"
     elif cards:
         next_action = "系统正常，等待下一轮自动运行；也可以手动启动一轮。"
     else:

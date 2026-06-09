@@ -12,7 +12,7 @@ type AutopilotStatus = {
   mode:string
   next_action:string
   checks:{key:string;label:string;ok:boolean;detail:string}[]
-  counts:{discoveries:number;cards:number;pending_review:number;action:number;watch:number}
+  counts:{discoveries:number;cards:number;pending_review:number;adopted?:number;action:number;watch:number}
   auto:any
   providers:string[]
   seeds:string[]
@@ -64,12 +64,13 @@ export function AutopilotPanel({status}:{status:AutopilotStatus}){
           {diagnosis?.severity&&<span className="badge">diagnosis: {diagnosis.severity}</span>}
         </div>
         <p className="mt-2 max-w-3xl text-sm font-semibold text-slate-200">{status.next_action}</p>
+        {status.auto?.next_run_at&&<p className="mt-1 text-xs text-slate-500">自动间隔 {status.auto.interval_minutes} 分钟 · 下次预计 {new Date(status.auto.next_run_at).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</p>}
         {running&&summary.keyword&&<p className="mt-2 text-sm text-blue-200">{lang==='en'?'Now checking':'正在检查'}：{summary.keyword}</p>}
       </div>
       <div className="flex flex-wrap gap-2">
         {!status.ready&&<button className="btn" disabled={pending} onClick={()=>call('/api/autopilot/start')}>{pending?(lang==='en'?'Starting...':'启动中...'):(lang==='en'?'Start':'开启')}</button>}
         {status.ready&&<button className="btn" disabled={pending||running} onClick={()=>call('/api/auto/tick')}>{pending?(lang==='en'?'Starting...':'启动中...'):(lang==='en'?'Run now':'现在跑一轮')}</button>}
-        {status.counts.pending_review>0&&<a className="btn-secondary" href="/review">{lang==='en'?'Review':'去复核'}</a>}
+        <a className="btn-secondary" href="/hunter/opportunities">机会列表</a>
       </div>
     </div>
 
@@ -79,7 +80,7 @@ export function AutopilotPanel({status}:{status:AutopilotStatus}){
     </div>}
 
     <div className="mt-5 grid gap-3 md:grid-cols-3">
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"><div className="kpi-label">待复核</div><b className="text-3xl text-amber-300">{status.counts.pending_review}</b></div>
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"><div className="kpi-label">已采纳 Adopted</div><b className="text-3xl text-emerald-300">{status.counts.adopted||0}</b></div>
       <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"><div className="kpi-label">行动 Action</div><b className="text-3xl text-emerald-300">{status.counts.action}</b></div>
       <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"><div className="kpi-label">观察 Watch</div><b className="text-3xl text-blue-300">{status.counts.watch}</b></div>
     </div>

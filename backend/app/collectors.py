@@ -1665,18 +1665,18 @@ def _match_imported_candidates_for_keyword(db:Session, keyword_query:str, source
 def apply_collector_feedback(db:Session, keyword, label:str)->dict:
     """Closed-loop learning for collector-origin opportunity feedback.
 
-    Action/Watch promotes source weight and seeds/domains; Reject/Block demotes
+    Adopted/Action/Watch promotes source weight and seeds/domains; Reject/Block demotes
     them and suppresses matching imported candidates so the pool does not retry
     the same low-quality term forever.
     """
     if not keyword or not getattr(keyword,'source','').startswith('collector:'):
         return {'applied':False,'reason':'not_collector_keyword'}
-    good=label in {'Action','Watch'}
+    good=label in {'Adopted','Action','Watch'}
     bad=label in {'Reject','Block'}
     if not (good or bad):
         return {'applied':False,'reason':'neutral_label'}
     source=normalize_collector_source(keyword.source)
-    delta={'Action':0.18,'Watch':0.06,'Reject':-0.16,'Block':-0.35}.get(label,0.0)
+    delta={'Adopted':0.30,'Action':0.18,'Watch':0.06,'Reject':-0.16,'Block':-0.35}.get(label,0.0)
     weights=_collector_source_weights(db)
     entry=weights.get(source,{}) if isinstance(weights.get(source,{}),dict) else {}
     entry['weight']=round(max(0.25, min(2.5, float(entry.get('weight',1.0))+delta)), 3)

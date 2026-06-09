@@ -1,2 +1,2 @@
 import {redirect} from 'next/navigation'
-export default function Page(){ redirect('/hunter/opportunities?verdict=Pending') }
+export default function Page(){ redirect('/hunter/opportunities') }

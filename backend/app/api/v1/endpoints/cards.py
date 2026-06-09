@@ -90,7 +90,7 @@ def bulk_feedback(payload: dict, _: bool = Depends(require_auth), db: Session = 
     ids=[int(x) for x in (payload.get("card_ids") or [])]
     label=str(payload.get("label") or "")
     note=str(payload.get("note") or "")
-    if label not in {"Action","Watch","Reject","Block"}:
+    if label not in {"Adopted","Action","Watch","Reject","Block"}:
         raise HTTPException(400, "invalid feedback label")
     out=[]
     for cid in ids[:100]:

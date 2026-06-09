@@ -1,8 +1,8 @@
 import {ExportCardMarkdownButton, Feedback} from './Actions'
 import {I18nText} from './I18nText'
 
-export function verdictClass(v:string){return v==='Action'?'badge badge-action':v==='Watch'?'badge badge-watch':'badge badge-reject'}
-export function verdictLabel(v:string){return v==='Action'?'行动 Action':v==='Watch'?'观察 Watch':v==='Reject'?'拒绝 Reject':v==='Block'?'屏蔽 Block':v}
+export function verdictClass(v:string){return v==='Adopted'?'badge badge-action':v==='Action'?'badge badge-action':v==='Watch'?'badge badge-watch':'badge badge-reject'}
+export function verdictLabel(v:string){return v==='Adopted'?'已采纳 Adopted':v==='Action'?'行动 Action':v==='Watch'?'观察 Watch':v==='Reject'?'拒绝 Reject':v==='Block'?'屏蔽 Block':v}
 function evidenceTypeLabel(t:string){const m:any={business:'商业判断',serp:'搜索结果',social:'社媒证据',competitor:'竞品',keyword:'关键词',source:'来源',url:'链接',error:'错误'}; return m[t]||t}
 function shortText(s:string,n=180){s=(s||'').replace(/\s+/g,' ').trim(); return s.length>n?s.slice(0,n)+'…':s}
 
@@ -21,6 +21,7 @@ export function OpportunityCardView({card,compact=false,showFeedback=true,onFeed
    <div className="flex shrink-0 flex-col items-end gap-2">
     <span className={verdictClass(card.verdict)}>{verdictLabel(card.verdict)} · {card.score}</span>
     {business?.go_no_go&&<span className="badge badge-watch">商业判断：{business.go_no_go} · {Math.round((business.commercial_score||0)*100)}</span>}
+    {business?.analysis_source&&<span className="badge">分析来源：{business.analysis_source.includes('llm')?'LLM':business.analysis_source}</span>}
     {!compact&&<ExportCardMarkdownButton id={card.id}/>} 
    </div>
   </div>
@@ -28,7 +29,7 @@ export function OpportunityCardView({card,compact=false,showFeedback=true,onFeed
   {showFeedback&&!compact&&mode==='review'&&<div className="rounded-2xl border border-blue-500/30 bg-blue-500/10 p-3">
    <div className="mb-2 text-xs font-semibold tracking-wide text-blue-200">复核决策</div>
    <div className="flex flex-wrap items-center justify-between gap-3">
-    <span className="text-xs text-slate-400">优先按证据与风险判断：Action / Watch / Reject / Block</span>
+    <span className="text-xs text-slate-400">改变机会状态：Watch / Action / Adopted / Reject / Block</span>
     {onFeedback?<InlineFeedback onFeedback={onFeedback}/>:<Feedback id={card.id}/>} 
    </div>
   </div>}
@@ -117,4 +118,4 @@ export function OpportunityCardView({card,compact=false,showFeedback=true,onFeed
  </article>
 }
 
-function InlineFeedback({onFeedback}:{onFeedback:(label:string)=>void}){const labels:any={Action:'行动',Watch:'观察',Reject:'拒绝',Block:'屏蔽'}; return <div className="flex flex-wrap gap-2">{['Action','Watch','Reject','Block'].map(x=><button key={x} title={x} className="rounded bg-slate-800 px-2 py-1 text-xs hover:bg-slate-700" onClick={()=>onFeedback(x)}>{labels[x]} <span className="text-slate-500">{x}</span></button>)}</div>}
+function InlineFeedback({onFeedback}:{onFeedback:(label:string)=>void}){const labels:any={Watch:'观察',Action:'行动',Adopted:'采纳',Reject:'拒绝',Block:'屏蔽'}; return <div className="flex flex-wrap gap-2">{['Watch','Action','Adopted','Reject','Block'].map(x=><button key={x} title={x} className="rounded bg-slate-800 px-2 py-1 text-xs hover:bg-slate-700" onClick={()=>onFeedback(x)}>{labels[x]} <span className="text-slate-500">{x}</span></button>)}</div>}

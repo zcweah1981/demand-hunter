@@ -10,7 +10,7 @@ function shortText(s:string, n=90){s=(s||'').replace(/\s+/g,' ').trim(); return 
 function fmtDate(s:string){if(!s) return '-'; const d=new Date(s); if(Number.isNaN(d.getTime())) return s; return d.toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}
 
 const SORTS:any={newest:'最新优先',oldest:'最早优先',score_desc:'分数高到低',score_asc:'分数低到高',verdict:'按判断分类'}
-const VERDICTS=['全部','Action','Watch','Reject','Block']
+const VERDICTS=['全部','Adopted','Action','Watch','Reject','Block']
 
 type Props={cards:any[]; empty?:string; showVerdictFilter?:boolean; mode?:'review'|'opportunity'; enableBulk?:boolean}
 export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=true, mode='review', enableBulk=false}:Props){
@@ -29,7 +29,7 @@ export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=
   let xs=[...(localCards||[])]
   if(showVerdictFilter&&verdict!=='全部') xs=xs.filter(c=>c.verdict===verdict)
   if(sourceKeyword!=='全部') xs=xs.filter(c=>(c.source_keyword||'')===sourceKeyword)
-  const rank:any={Action:0,Watch:1,Reject:2,Block:3}
+  const rank:any={Adopted:0,Action:1,Watch:2,Reject:3,Block:4}
   xs.sort((a,b)=>{
    if(sort==='oldest') return new Date(a.created_at||0).getTime()-new Date(b.created_at||0).getTime()
    if(sort==='score_desc') return (b.score||0)-(a.score||0)
@@ -45,12 +45,10 @@ export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=
   const updated:any=await api(`/api/cards/${card.id}/feedback`,{method:'POST',body:JSON.stringify({label})})
   const cf=(updated.evidence_json||[]).slice().reverse().find((e:any)=>e.type==='collector_feedback')?.data
   if(cf?.applied){setLearning({label, source:cf.source, weight:cf.source_weight, effect:cf.target_effect, targets:cf.affected_targets||[], matched:cf.matched_candidates})}
-  const remaining=rows.filter(x=>x.id!==card.id)
   setReviewedCount(n=>n+1)
-  setLocalCards(prev=>prev.filter(x=>x.id!==card.id))
+  setLocalCards(prev=>prev.map(x=>x.id===card.id?{...x,...updated,feedback_label:label,verdict:label}:x))
   if(selected?.id===card.id){
-   const next=remaining[Math.min(idx, remaining.length-1)] || null
-   setSelected(next)
+   setSelected((prev:any)=>prev?{...prev,...updated,feedback_label:label,verdict:label}:prev)
   }
  }
  async function applyBulk(label:string){
@@ -75,7 +73,7 @@ export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=
    if(k==='escape'&&selected){e.preventDefault(); setSelected(null); return}
    if(k==='j'){e.preventDefault(); move(1); return}
    if(k==='k'){e.preventDefault(); move(-1); return}
-   const map:any={a:'Action',w:'Watch',r:'Reject',b:'Block'}
+   const map:any={a:'Action',w:'Watch',d:'Adopted',r:'Reject',b:'Block'}
    if(map[k]&&selected&&mode==='review'){
     e.preventDefault()
     if(confirm(`快捷键 ${k.toUpperCase()}：将 #${selected.id} 标记为 ${map[k]}？`)) sendFeedback(map[k])
@@ -89,9 +87,9 @@ export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=
  const progress=initialCount?Math.round(processed*100/initialCount):100
  return <>
   <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-950/70 p-3">
-   <div className="min-w-[260px] flex-1 text-sm text-slate-400"><div>本次队列：已处理 <b className="text-emerald-300">{processed}</b> / <b className="text-slate-100">{initialCount}</b> · 剩余 <b className="text-amber-300">{remaining}</b>{mode==='review'&&<span className="ml-3 text-xs text-slate-500">快捷键：J/K · A/W/R/B · Esc</span>}</div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-800"><div className="h-full rounded-full bg-emerald-500" style={{width:`${progress}%`}} /></div></div>
+   <div className="min-w-[260px] flex-1 text-sm text-slate-400"><div>机会数 <b className="text-slate-100">{initialCount}</b> · 本次改状态 <b className="text-emerald-300">{processed}</b>{mode==='review'&&<span className="ml-3 text-xs text-slate-500">快捷键：J/K · W/A/D/R/B · Esc</span>}</div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-800"><div className="h-full rounded-full bg-emerald-500" style={{width:`${progress}%`}} /></div></div>
    <div className="flex flex-wrap gap-2">
-    {enableBulk&&<><button className="btn-secondary" onClick={()=>setSelectedIds(new Set(rows.map((r:any)=>r.id)))}>全选当前</button><button className="btn-secondary" onClick={()=>setSelectedIds(new Set())}>清空选择</button>{['Action','Watch','Reject','Block'].map(x=><button key={x} className="btn-secondary" disabled={!selectedIds.size} onClick={()=>applyBulk(x)}>批量{x} {selectedIds.size?`(${selectedIds.size})`:''}</button>)}</>}
+    {enableBulk&&<><button className="btn-secondary" onClick={()=>setSelectedIds(new Set(rows.map((r:any)=>r.id)))}>全选当前</button><button className="btn-secondary" onClick={()=>setSelectedIds(new Set())}>清空选择</button>{['Watch','Action','Adopted','Reject','Block'].map(x=><button key={x} className="btn-secondary" disabled={!selectedIds.size} onClick={()=>applyBulk(x)}>批量{x} {selectedIds.size?`(${selectedIds.size})`:''}</button>)}</>}
     {showVerdictFilter&&<select className="input h-9 w-36 py-1 text-sm" value={verdict} onChange={e=>setVerdict(e.target.value)}>{VERDICTS.map(v=><option key={v} value={v}>{v==='全部'?'全部判断':verdictLabel(v)}</option>)}</select>}
     <select className="input h-9 w-52 py-1 text-sm" value={sourceKeyword} onChange={e=>setSourceKeyword(e.target.value)}>{sourceOptions.map(v=><option key={v} value={v}>{v==='全部'?'全部来源词':v}</option>)}</select>
     <select className="input h-9 w-36 py-1 text-sm" value={sort} onChange={e=>setSort(e.target.value)}>{Object.entries(SORTS).map(([k,v])=><option key={k} value={k}>{v as string}</option>)}</select>
@@ -129,6 +127,6 @@ export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=
  </>
 }
 
-function InlineRowFeedback({onFeedback}:{onFeedback:(label:string)=>void}){const labels:any={Action:'行动',Watch:'观察',Reject:'拒绝',Block:'屏蔽'}; return <div className="flex flex-wrap gap-2">{['Action','Watch','Reject','Block'].map(x=><button key={x} title={x} className="rounded bg-slate-800 px-2 py-1 text-xs hover:bg-slate-700" onClick={()=>onFeedback(x)}>{labels[x]} <span className="text-slate-500">{x}</span></button>)}</div>}
+function InlineRowFeedback({onFeedback}:{onFeedback:(label:string)=>void}){const labels:any={Watch:'观察',Action:'行动',Adopted:'采纳',Reject:'拒绝',Block:'屏蔽'}; return <div className="flex flex-wrap gap-2">{['Watch','Action','Adopted','Reject','Block'].map(x=><button key={x} title={x} className="rounded bg-slate-800 px-2 py-1 text-xs hover:bg-slate-700" onClick={()=>onFeedback(x)}>{labels[x]} <span className="text-slate-500">{x}</span></button>)}</div>}
 
 function ReviewComplete({processed}:{processed:number}){return <div className="p-8"><div className="rounded-3xl border border-emerald-500/30 bg-emerald-500/10 p-6 text-center"><div className="text-sm font-semibold uppercase tracking-[0.25em] text-emerald-300">Review Complete</div><h3 className="mt-3 text-2xl font-black text-white">本次复核完成</h3><p className="mt-2 text-slate-300">已处理 {processed} 张卡片。系统会用你的反馈更新后续采集和评分。</p><div className="mt-5 flex flex-wrap justify-center gap-2"><a className="btn" href="/">返回首页</a><a className="btn-secondary" href="/cards?verdict=Action">看 Action 候选</a><button className="btn-secondary" onClick={async()=>{await api('/api/auto/tick',{method:'POST',body:JSON.stringify({force:true})}); location.href='/runs'}}>运行下一轮</button></div></div></div>}

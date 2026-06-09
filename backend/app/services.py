@@ -309,10 +309,10 @@ def opportunity_group_for_card(db: Session, card: models.OpportunityCard) -> dic
         if cand.keyword in seen: continue
         seen.add(cand.keyword)
         variants.append({"type":"candidate","id":cand.id,"keyword":cand.keyword,"source":cand.source,"status":cand.status,"score":cand.score,"method":cand.method,"source_url":cand.source_url})
-    positive=sum(1 for c in card_rows if c.verdict in {"Action","Watch"} or c.feedback_label in {"Action","Watch"})
+    positive=sum(1 for c in card_rows if c.verdict in {"Adopted","Action","Watch"} or c.feedback_label in {"Adopted","Action","Watch"})
     negative=sum(1 for c in card_rows if c.verdict in {"Reject","Block"} or c.feedback_label in {"Reject","Block"})
     archived=sum(1 for v in variants if str(v.get("status") or "").startswith("archived"))
-    explicit_action=any(c.feedback_label=="Action" or c.verdict=="Action" for c in card_rows)
+    explicit_action=any(c.feedback_label in {"Adopted","Action"} or c.verdict in {"Adopted","Action"} for c in card_rows)
     base=0.25
     base += min(0.24, 0.04*len(variants))
     base += min(0.18, 0.04*len(sources))
@@ -1328,7 +1328,7 @@ def _llm_opportunity_analysis(db: Session, keyword: models.Keyword, serp: list[m
     return obj
 
 def make_card(db: Session, keyword: models.Keyword) -> models.OpportunityCard:
-    existing_reviewed = db.query(models.OpportunityCard).filter_by(keyword_id=keyword.id).filter(models.OpportunityCard.feedback_label.in_(["Action","Watch","Reject","Block"])).order_by(models.OpportunityCard.created_at.desc(), models.OpportunityCard.id.desc()).first()
+    existing_reviewed = db.query(models.OpportunityCard).filter_by(keyword_id=keyword.id).filter(models.OpportunityCard.feedback_label.in_(["Adopted","Action","Watch","Reject","Block"])).order_by(models.OpportunityCard.created_at.desc(), models.OpportunityCard.id.desc()).first()
     if existing_reviewed:
         # Human review is authoritative. Automatic rechecks may refresh future
         # unreviewed candidates, but must never overwrite a reviewed card's
@@ -1427,7 +1427,7 @@ def make_card(db: Session, keyword: models.Keyword) -> models.OpportunityCard:
     if existing:
         card = existing
         card.title = title
-        card.verdict = existing.feedback_label if existing.feedback_label in {"Action", "Watch", "Reject", "Block"} else verdict
+        card.verdict = existing.feedback_label if existing.feedback_label in {"Adopted", "Action", "Watch", "Reject", "Block"} else verdict
         card.score = total
         card.demand_score = round(demand,2)
         card.serp_gap_score = round(gap,2)
@@ -2175,9 +2175,9 @@ def apply_feedback(db: Session, card: models.OpportunityCard, label: str, note: 
     # sync with feedback so reviewed Reject/Watch cards disappear from Action
     # lists and exports immediately instead of remaining under their old model
     # verdict.
-    if label in {"Action", "Watch", "Reject", "Block"}:
+    if label in {"Adopted", "Action", "Watch", "Reject", "Block"}:
         card.verdict = label
-    if label not in {"Action", "Watch", "Reject", "Block"}:
+    if label not in {"Adopted", "Action", "Watch", "Reject", "Block"}:
         db.commit(); db.refresh(card); return card
     kw = db.get(models.Keyword, card.keyword_id)
     roots = []
@@ -2202,7 +2202,7 @@ def apply_feedback(db: Session, card: models.OpportunityCard, label: str, note: 
         # Four-Find closed loop: feedback on generated cards should change the
         # next discovery cycle, not just the card label.
         if kw.source.startswith("four_find:"):
-            good = label in {"Action", "Watch"}
+            good = label in {"Adopted", "Action", "Watch"}
             bad = label in {"Reject", "Block"}
             for seed in roots:
                 exp = db.query(models.DiscoveryExpansion).filter_by(seed_keyword=seed, expanded_keyword=kw.query).first()
@@ -2240,7 +2240,7 @@ def apply_feedback(db: Session, card: models.OpportunityCard, label: str, note: 
             domain_row.value = "\n".join(domains)
             domain_row.secret = False
             db.merge(domain_row)
-    delta = {"Action": 0.2, "Watch": 0.05, "Reject": -0.15, "Block": -0.5}.get(label, 0)
+    delta = {"Adopted": 0.35, "Action": 0.2, "Watch": 0.05, "Reject": -0.15, "Block": -0.5}.get(label, 0)
     for term in roots:
         root = db.query(models.Root).filter_by(term=term).first()
         if not root: continue
@@ -2271,7 +2271,8 @@ def auto_status(db: Session) -> dict:
     enabled = (setting(db, "AUTO_RUN_ENABLED") or "false").lower() in {"1","true","yes","on"}
     try: interval = int(setting(db, "AUTO_RUN_INTERVAL_MINUTES") or "360")
     except Exception: interval = 360
-    return {"enabled": enabled, "interval_minutes": interval, "last_run": None if not last else {"id": last.id, "status": last.status, "summary": json.loads(last.summary or "{}") if last.summary and last.summary.startswith("{") else last.summary, "started_at": last.started_at.isoformat(), "finished_at": last.finished_at.isoformat() if last.finished_at else None}}
+    next_run_at = (last.finished_at + timedelta(minutes=interval)).isoformat() if last and last.finished_at and enabled else None
+    return {"enabled": enabled, "interval_minutes": interval, "next_run_at": next_run_at, "last_run": None if not last else {"id": last.id, "status": last.status, "kind": last.kind, "summary": json.loads(last.summary or "{}") if last.summary and last.summary.startswith("{") else last.summary, "started_at": last.started_at.isoformat(), "finished_at": last.finished_at.isoformat() if last.finished_at else None}}
 
 def auto_due(db: Session) -> bool:
     st = auto_status(db)
