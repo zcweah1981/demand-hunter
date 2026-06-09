@@ -27,6 +27,10 @@ def candidate_list(limit: int = 100, status: str = "new", _: bool = Depends(requ
 def collector_summary(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
     return collectors.collector_pool_summary(db)
 
+@router.get("/health")
+def collector_health(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    return collectors.collector_system_health(db)
+
 @router.get("/targets")
 def collector_targets(limit: int = 120, status: str = "active", _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     q = db.query(models.CollectorTarget)

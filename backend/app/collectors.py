@@ -283,6 +283,58 @@ def collector_roi_stats(db:Session, limit:int=12)->dict:
         else: e['verdict']='watch'
     return {'ok':True,'runs':runs,'by_source':sorted(by_source.values(), key=lambda x:(x['verdict']!='increase', -x['save_rate'], -x['saved'])),'by_segment':sorted(by_segment.values(), key=lambda x:(x['verdict']!='increase', -x['avg_success'], -x['avg_priority']))}
 
+def collector_system_health(db:Session)->dict:
+    """High-level collector health score for the dashboard."""
+    seg=collector_target_segments(db, limit=300)
+    roi=collector_roi_stats(db, limit=12)
+    pool=collector_pool_summary(db)
+    budget=collector_next_budget(db, limit=24)
+    latest=db.query(models.RunHistory).filter_by(kind='collector_autopilot').order_by(models.RunHistory.started_at.desc()).first()
+    issues=[]; strengths=[]; score=100
+    summary=seg.get('summary') or {}
+    active=summary.get('winner',0)+summary.get('promising',0)+summary.get('new',0)
+    noisy=summary.get('noisy',0)+summary.get('cooldown',0)+summary.get('exhausted',0)
+    if active < 10:
+        score-=18; issues.append({'code':'low_active_targets','severity':'warning','text':f'active usable targets only {active}'})
+    else:
+        strengths.append({'code':'target_pool_ready','text':f'{active} usable targets'})
+    if summary.get('winner',0) == 0:
+        score-=14; issues.append({'code':'no_winner_targets','severity':'warning','text':'no winner targets yet'})
+    else:
+        strengths.append({'code':'winner_targets','text':f"{summary.get('winner')} winner target(s)"})
+    if noisy > max(8, active*0.25):
+        score-=12; issues.append({'code':'too_many_bad_targets','severity':'warning','text':f'{noisy} noisy/cooldown/exhausted targets'})
+    source_increase=sum(1 for r in roi.get('by_source',[]) if r.get('verdict')=='increase')
+    source_decrease=sum(1 for r in roi.get('by_source',[]) if r.get('verdict')=='decrease')
+    if source_increase:
+        strengths.append({'code':'source_roi_positive','text':f'{source_increase} source(s) with increasing ROI'})
+    if source_decrease:
+        score-=10; issues.append({'code':'source_roi_negative','severity':'warning','text':f'{source_decrease} source(s) with decreasing ROI'})
+    new_candidates=(pool.get('by_status') or {}).get('new',0)
+    rejected=(pool.get('by_status') or {}).get('rejected',0)
+    total=pool.get('total') or 0
+    if total and rejected/max(1,total) > 0.75:
+        score-=10; issues.append({'code':'candidate_reject_heavy','severity':'info','text':f'rejected candidates are {round(rejected/max(1,total)*100)}% of pool'})
+    if new_candidates > 0:
+        strengths.append({'code':'candidate_pool_has_work','text':f'{new_candidates} new candidates waiting'})
+    if latest:
+        try: s=json.loads(latest.summary or '{}')
+        except Exception: s={}
+        imported=(s.get('import') or {}).get('imported',0)
+        if imported == 0:
+            score-=10; issues.append({'code':'latest_run_no_imports','severity':'warning','text':'latest collector run imported 0 keywords'})
+        else:
+            strengths.append({'code':'latest_run_imported','text':f'latest run imported {imported} keyword(s)'})
+    else:
+        score-=12; issues.append({'code':'no_collector_runs','severity':'warning','text':'no collector autopilot run history yet'})
+    if budget.get('roi_adjusted'):
+        strengths.append({'code':'roi_budget_active','text':'ROI-adjusted budget is active'})
+    score=max(0,min(100,score))
+    if score>=80: status='healthy'
+    elif score>=60: status='watch'
+    else: status='needs_attention'
+    return {'ok':True,'score':score,'status':status,'summary':{'usable_targets':active,'bad_targets':noisy,'new_candidates':new_candidates,'source_increase':source_increase,'source_decrease':source_decrease,'latest_run_id':latest.id if latest else None},'issues':issues,'strengths':strengths,'target_segments':summary,'source_roi':roi.get('by_source',[])[:8]}
+
 def collector_roi_weight_recommendations(db:Session, limit:int=12, min_runs:int=2)->dict:
     """Recommend persistent COLLECTOR_SOURCE_WEIGHTS changes from ROI.
 
