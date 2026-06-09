@@ -203,6 +203,7 @@ def keyword_noise_reason(query: str, source: str = "") -> str:
 
 def find_duplicate_card(db: Session, keyword: models.Keyword, threshold: float = 0.42) -> models.OpportunityCard | None:
     target=keyword.query
+    target_terms=set(normalized_opportunity_key(target).split())
     rows=(db.query(models.OpportunityCard)
         .join(models.Keyword, models.Keyword.id == models.OpportunityCard.keyword_id)
         .order_by(models.OpportunityCard.created_at.desc())
@@ -211,6 +212,13 @@ def find_duplicate_card(db: Session, keyword: models.Keyword, threshold: float =
         existing_kw=db.get(models.Keyword, card.keyword_id)
         if not existing_kw or existing_kw.id == keyword.id:
             continue
+        existing_terms=set(normalized_opportunity_key(existing_kw.query).split())
+        # A reviewed Reject/Block must not suppress a more specific later
+        # opportunity. Example: old generic "compliance calculator" Reject should
+        # not swallow "compliance cost calculator" when the user may adopt it.
+        if card.feedback_label in {"Reject","Block"} or card.verdict in {"Reject","Block"}:
+            if len(target_terms - existing_terms) >= 1 or len(target_terms) > len(existing_terms):
+                continue
         sim=max(opportunity_similarity(target, existing_kw.query), opportunity_similarity(target, card.title))
         if sim >= threshold:
             return card
