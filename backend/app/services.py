@@ -1,5 +1,5 @@
 from __future__ import annotations
-import json, re, itertools, os
+import json, re, itertools, os, hashlib
 from pathlib import Path
 from datetime import datetime, timedelta
 from urllib.parse import urlparse
@@ -264,7 +264,9 @@ def opportunity_group_for_card(db: Session, card: models.OpportunityCard) -> dic
     """
     kw=db.get(models.Keyword, card.keyword_id)
     canonical=normalized_opportunity_key(kw.query if kw else card.title)
-    terms=set(canonical.split())
+    group_terms=[t for t in canonical.split() if t not in {"ai","best","top","software","app","tool","online","free"}]
+    group_key=" ".join(group_terms) or canonical
+    terms=set(group_key.split())
     evidence=[]
     try:
         raw=json.loads(card.evidence_json or "[]")
@@ -322,8 +324,9 @@ def opportunity_group_for_card(db: Session, card: models.OpportunityCard) -> dic
     elif probability>=0.58: label="可继续验证机会组"
     else: label="弱信号机会组"
     return {
-        "group_id": f"og-{card.id}-{abs(hash(canonical))%100000}",
-        "canonical_keyword": canonical or (kw.query if kw else card.title),
+        "group_id": f"og-{hashlib.sha1(group_key.encode('utf-8')).hexdigest()[:10]}",
+        "group_key": group_key,
+        "canonical_keyword": group_key or canonical or (kw.query if kw else card.title),
         "representative_card_id": card.id,
         "probability": probability,
         "label": label,
