@@ -12,7 +12,7 @@ type AutopilotStatus = {
   mode:string
   next_action:string
   checks:{key:string;label:string;ok:boolean;detail:string}[]
-  counts:{discoveries:number;cards:number;pending_review:number;adopted?:number;action:number;watch:number}
+  counts:{discoveries:number;cards:number;pending_review:number;adopted?:number;action:number;watch:number;reject?:number;block?:number;unit?:string}
   auto:any
   providers:string[]
   seeds:string[]
@@ -79,10 +79,12 @@ export function AutopilotPanel({status}:{status:AutopilotStatus}){
       <div className="flex flex-wrap justify-between gap-2 text-xs text-slate-500"><span>#{last.id} · {last.status}</span><span>{progress}%</span></div>
     </div>}
 
-    <div className="mt-5 grid gap-3 md:grid-cols-3">
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"><div className="kpi-label">已采纳 Adopted</div><b className="text-3xl text-emerald-300">{status.counts.adopted||0}</b></div>
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"><div className="kpi-label">行动 Action</div><b className="text-3xl text-emerald-300">{status.counts.action}</b></div>
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"><div className="kpi-label">观察 Watch</div><b className="text-3xl text-blue-300">{status.counts.watch}</b></div>
+    <div className="mt-5 grid gap-3 md:grid-cols-5">
+      <KpiCard label="总数" help="当前所有机会组数量。按 opportunity group 去重后统计，不是原始卡片数；同一机会的关键词变体只算 1 个。" value={status.counts.cards} tone="text-slate-100" />
+      <KpiCard label="采纳 Adopted" help="你已经决定采纳、准备进入 MVP/执行阶段的机会组。Adopted 优先级最高；同组里旧的 Action/Watch 变体不会再单独计数。" value={status.counts.adopted||0} tone="text-purple-300" />
+      <KpiCard label="Action" help="达到行动门槛、可以进入小规模验证的机会组。标准：最终状态为 Action，并且分数达到 MIN_ACTION_SCORE；但已采纳的组会归到 Adopted，不再算 Action。" value={status.counts.action} tone="text-emerald-300" />
+      <KpiCard label="Watch" help="方向可能成立，但还缺关键证据的机会组。通常需要补搜索量/CPC/KD/趋势、SERP 缺口、社媒痛点或首个付费验证。" value={status.counts.watch} tone="text-blue-300" />
+      <KpiCard label="Reject" help="当前不建议推进的机会组。原因可能是搜索意图错、强竞品过多、缺口弱、关键词噪音、无法定义明确付费验证等。" value={status.counts.reject||0} tone="text-amber-300" />
     </div>
 
     <div className="mt-4 grid gap-3 lg:grid-cols-3">
@@ -121,3 +123,5 @@ export function AutopilotPanel({status}:{status:AutopilotStatus}){
     </details>
   </section>
 }
+
+function KpiCard({label,help,value,tone}:{label:string;help:string;value:any;tone:string}){return <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4"><div className="kpi-label flex items-center gap-1">{label}<span className="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-slate-600 text-[10px] text-slate-400" title={help}>?</span></div><b className={`text-3xl ${tone}`}>{value}</b></div>}
