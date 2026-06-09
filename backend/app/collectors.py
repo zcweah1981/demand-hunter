@@ -18,7 +18,7 @@ NOISE_TITLE_PATTERNS=(
     r"\blabels?\b", r"\bmilestone\b", r"\brelease notes?\b", r"\bchangelog\b",
     r"\bdocumentation\b", r"\bdocs?\b", r"\breadme\b",
 )
-BLOCK_TARGET_DOMAINS={"google.com","youtube.com","wikipedia.org","reddit.com","facebook.com","linkedin.com","x.com","twitter.com","github.com","support.google.com","dictionary.com","merriam-webster.com","dictionary.cambridge.org","bestbuy.com","bestwestern.com","alternativeto.net"}
+BLOCK_TARGET_DOMAINS={"google.com","youtube.com","wikipedia.org","reddit.com","facebook.com","linkedin.com","x.com","twitter.com","github.com","support.google.com","dictionary.com","merriam-webster.com","dictionary.cambridge.org","bestbuy.com","bestwestern.com","alternativeto.net","pinterest.com","capitalone.com","card.com","creditcards.chase.com","usafacts.org","apps.microsoft.com","play.google.com"}
 
 def _target_topic(text:str)->str:
     kw=normalize_keyword(text)
@@ -128,6 +128,41 @@ def refresh_collector_targets_from_cards(db:Session, limit:int=80)->dict:
 
 def select_collector_targets(db:Session, target_type:str, limit:int=20)->list[models.CollectorTarget]:
     return db.query(models.CollectorTarget).filter_by(target_type=target_type,status='active').order_by(models.CollectorTarget.priority.desc(), models.CollectorTarget.created_at.desc()).limit(limit).all()
+
+def _touch_collector_target(db:Session, target_type:str, value:str, success:bool=False, reject:bool=False)->None:
+    value=(value or '').strip().lower().removeprefix('www.')
+    if not value: return
+    with db.no_autoflush:
+        rows=db.query(models.CollectorTarget).filter_by(target_type=target_type,value=value,status='active').limit(20).all()
+    now=datetime.utcnow()
+    for t in rows:
+        t.last_seen_at=now
+        if success:
+            t.success_count=(t.success_count or 0)+1
+            t.last_success_at=now
+            t.priority=min(100.0, (t.priority or 0)+2.0)
+        if reject:
+            t.reject_count=(t.reject_count or 0)+1
+            if (t.reject_count or 0)>=5 and not (t.success_count or 0):
+                t.status='cooldown'
+        db.merge(t)
+
+def _domain_topics(db:Session, domain:str)->list[str]:
+    with db.no_autoflush:
+        rows=db.query(models.CollectorTarget).filter_by(target_type='domain',value=domain,status='active').order_by(models.CollectorTarget.priority.desc()).limit(5).all()
+    topics=[]
+    for r in rows:
+        for text in [r.topic or '']:
+            kw=normalize_keyword(text)
+            if kw and kw not in topics: topics.append(kw)
+    return topics[:4]
+
+def _title_matches_topic(title:str, topic:str)->bool:
+    tt=set(normalize_keyword(title).split())
+    qt=set(normalize_keyword(topic).split())
+    if not tt or not qt: return False
+    important={'vendor','compliance','risk','checklist','procurement','security','audit','soc','gdpr','hipaa','tax','invoice'}
+    return len(tt & qt) >= 2 or bool((tt & qt) and (tt & important) and (qt & important))
 
 def domain_of(url:str)->str:
     try: return urlparse(url).netloc.lower().removeprefix('www.')
@@ -528,6 +563,7 @@ def run_domain_web_collector(db:Session, domains:list[str], max_pages_per_domain
     started=time.monotonic(); seen=0; saved=0; errors=[]
     path_hints=re.compile(r"/(tools?|templates?|calculators?|checklists?|pricing|features|compare|alternatives?|resources?)/", re.I)
     for d in domains:
+        _touch_collector_target(db,'domain',d)
         if time.monotonic()-started>max_seconds:
             errors.append({'domain':d,'error':f'time_budget_exceeded>{max_seconds}s'}); break
         try:
@@ -550,7 +586,9 @@ def run_domain_web_collector(db:Session, domains:list[str], max_pages_per_domain
                     seen+=1
                     evidence={'url':url,'title':item['text'],'extractor':item['kind'],'domain':domain_of(url)}
                     row=upsert_candidate(db, item['keyword'], 'domain_web', url, domain_of(url), '页面标题/Meta 找词', evidence, 0.62)
-                    if row: saved+=1
+                    if row:
+                        saved+=1
+                        _touch_collector_target(db,'domain',d,success=True)
         except Exception as e:
             errors.append({'domain':d,'error':str(e)[:180]})
     db.commit()
@@ -563,10 +601,15 @@ def run_alternatives_collector(db:Session, domains:list[str], max_seconds:int|No
     started=time.monotonic(); seen=0; saved=0; errors=[]
     providers=services.available_serp_providers(db)
     for d in domains[:12]:
+        _touch_collector_target(db,'domain',d)
         if time.monotonic()-started>max_seconds:
             errors.append({'domain':d,'error':f'time_budget_exceeded>{max_seconds}s'}); break
         brand=d.split('.')[0]
-        queries=[f'alternative to {brand}', f'{brand} alternatives', f'{brand} vs', f'best {brand} alternatives']
+        topics=_domain_topics(db,d)
+        topic_queries=[]
+        for topic in topics[:3]:
+            topic_queries.extend([f'{topic} alternatives', f'best {topic} tools', f'{topic} software comparison', f'{brand} alternative {topic}'])
+        queries=(topic_queries or [f'{brand} alternatives software', f'{brand} vs competitors', f'best {brand} alternatives software'])[:8]
         for q in queries:
             if time.monotonic()-started>max_seconds: break
             items=[]; provider_used=''
@@ -583,10 +626,19 @@ def run_alternatives_collector(db:Session, domains:list[str], max_seconds:int|No
                 seen+=1
                 title=item.get('title') or ''
                 kw=keyword_from_title(title) or normalize_keyword(f'{brand} alternatives')
+                # Avoid dictionary/app-store false positives from bare brand searches.
+                if cd in BLOCK_TARGET_DOMAINS or re.search(r"\b(definition|meaning|download|hotel|video downloader)\b", (title or '').lower()):
+                    _touch_collector_target(db,'domain',d,reject=True)
+                    continue
+                if topics and not any(_title_matches_topic(title, topic) for topic in topics):
+                    _touch_collector_target(db,'domain',d,reject=True)
+                    continue
                 evidence={'query':q,'title':title,'url':url,'provider':provider_used,'seed_domain':d,'similar_domain':cd}
                 row=upsert_candidate(db, kw, 'alternatives', url, cd, '站找站', evidence, 0.60)
-                if row: saved+=1
-                _upsert_collector_target(db,'domain',cd,'alternative_to',d,_target_topic(kw),70.0,f'alternative search from {d}: {title[:120]}')
+                if row:
+                    saved+=1
+                    _touch_collector_target(db,'domain',d,success=True)
+                    _upsert_collector_target(db,'domain',cd,'alternative_to',d,_target_topic(kw),70.0,f'alternative search from {d}: {title[:120]}')
     db.commit()
     return {'ok':True,'source':'alternatives','domains':len(domains),'seen':seen,'saved':saved,'errors':errors[:20]}
 
@@ -623,13 +675,16 @@ def run_suggest_collector(db:Session, seeds:list[str], max_seconds:int|None=None
     started=time.monotonic()
     saved=0; seen=0; errors=[]
     for seed in seeds:
+        _touch_collector_target(db,'keyword',seed)
         if time.monotonic() - started > max_seconds:
             errors.append({'seed':seed,'error':f'time_budget_exceeded>{max_seconds}s'})
             break
         for item in suggest_queries(seed, timeout=4):
             seen+=1
             row=upsert_candidate(db, item['keyword'], item['source'], '', '', '词找词', {'seed':seed,'provider':item['source']}, 0.55)
-            if row: saved+=1
+            if row:
+                saved+=1
+                _touch_collector_target(db,'keyword',seed,success=True)
     db.commit()
     return {'ok':True,'source':'suggest','seeds':len(seeds),'candidates_seen':seen,'saved':saved,'errors':errors[:20]}
 
@@ -858,6 +913,7 @@ def run_advanced_search_collector(db:Session, roots:list[str], domains:list[str]
     saved=0; seen=0; errors=[]
     empty_streak: dict[str,int] = {p: 0 for p in providers}
     for q,root,variant in queries[:80]:
+        _touch_collector_target(db,'keyword',root)
         if time.monotonic() - started > max_seconds:
             errors.append({'query':q,'error':f'time_budget_exceeded>{max_seconds}s'})
             break
@@ -893,7 +949,9 @@ def run_advanced_search_collector(db:Session, roots:list[str], domains:list[str]
             seen+=1
             url=item.get('url') or item.get('link') or ''
             row=upsert_candidate(db, kw, 'advanced_search', url, domain_of(url), '高级搜索找需求', {'query':q,'root':root,'variant':variant,'provider':provider_used,'title':item.get('title',''),'url':url}, 0.58)
-            if row: saved+=1
+            if row:
+                saved+=1
+                _touch_collector_target(db,'keyword',root,success=True)
     db.commit()
     return {'ok':True,'source':'advanced_search','queries':len(queries),'providers':providers,'candidates_seen':seen,'saved':saved,'errors':errors[:20]}
 
