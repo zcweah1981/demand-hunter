@@ -209,7 +209,7 @@ def collector_next_budget(db:Session, limit:int=24)->dict:
         count=len(seg['segments'].get(key,[])) if key!='manual' else len(_split_setting_list(services.setting(db,'COLLECTOR_AUTO_SEEDS')))+len(_split_setting_list(services.setting(db,'COLLECTOR_AUTO_DOMAINS')))
         budget=0 if weights[key]<=0 or count==0 else max(1, round(limit*weights[key]))
         used+=budget
-        allocation.append({'segment':key,'label':label,'weight':weights[key],'available':count,'budget':budget,'targets':(seg['segments'].get(key,[])[:8] if key!='manual' else [])})
+        allocation.append({'segment':key,'label':label,'weight':weights[key],'available':count,'budget':budget,'targets':(seg['segments'].get(key,[])[:50] if key!='manual' else [])})
     # Normalize if rounding exceeded limit; remove from lower priority positive buckets.
     overflow=max(0, used-limit)
     if overflow:
@@ -219,6 +219,39 @@ def collector_next_budget(db:Session, limit:int=24)->dict:
                 row['budget']-=take; overflow-=take
     source_plan=collector_budget_plan(db, limit=limit)
     return {'ok':True,'limit':limit,'target_segments':seg['summary'],'allocation':allocation,'source_plan':source_plan}
+
+def select_budgeted_collector_targets(db:Session, limit:int=24)->dict:
+    """Select unique targets according to the same segment budget preview."""
+    budget=collector_next_budget(db, limit=limit)
+    selected=[]; seen=set(); by_segment={}
+    for row in budget.get('allocation',[]):
+        seg=row['segment']; take=max(0, int(row.get('budget') or 0))
+        if take <= 0 or seg == 'manual':
+            continue
+        items=[]
+        for t in row.get('targets') or []:
+            key=(t['target_type'], t['value'])
+            if key in seen: continue
+            seen.add(key); selected.append(t); items.append(t)
+            if len(items)>=take: break
+        by_segment[seg]=items
+    # If a segment is underfilled (e.g. one Winner with budget 10), redistribute
+    # remaining capacity to promising/new active targets without duplicates.
+    remaining=max(0, limit-len(selected))
+    if remaining:
+        for seg in ['promising','new','winner']:
+            for t in (budget.get('allocation') or []):
+                if t.get('segment')!=seg: continue
+                for item in t.get('targets') or []:
+                    key=(item['target_type'], item['value'])
+                    if key in seen: continue
+                    seen.add(key); selected.append(item); by_segment.setdefault('redistributed_'+seg,[]).append(item); remaining-=1
+                    if remaining<=0: break
+                if remaining<=0: break
+            if remaining<=0: break
+    keywords=[t['value'] for t in selected if t['target_type']=='keyword']
+    domains=[t['value'] for t in selected if t['target_type']=='domain']
+    return {'budget':budget,'selected':selected,'by_segment':by_segment,'keywords':keywords,'domains':domains}
 
 def _domain_topics(db:Session, domain:str)->list[str]:
     with db.no_autoflush:
@@ -1006,8 +1039,9 @@ def run_collector_autopilot(db:Session, limit:int=24, import_limit:int=12)->dict
     if (services.setting(db,'COLLECTOR_AUTO_ENABLED') or 'false').lower() not in {'1','true','yes','on'}:
         return {'enabled':False,'skipped':'COLLECTOR_AUTO_ENABLED=false','summary':collector_pool_summary(db)}
     target_refresh = refresh_collector_targets_from_cards(db)
-    target_keywords=[t.value for t in select_collector_targets(db,'keyword',limit=max(12,limit))]
-    target_domains=[t.value for t in select_collector_targets(db,'domain',limit=max(8,limit//2))]
+    budgeted_targets=select_budgeted_collector_targets(db, limit=max(4,limit))
+    target_keywords=budgeted_targets['keywords']
+    target_domains=budgeted_targets['domains']
     manual_seeds=_split_setting_list(services.setting(db,'COLLECTOR_AUTO_SEEDS'))
     manual_domains=_split_setting_list(services.setting(db,'COLLECTOR_AUTO_DOMAINS'))
     seeds=[]
@@ -1066,7 +1100,7 @@ def run_collector_autopilot(db:Session, limit:int=24, import_limit:int=12)->dict
     clean=clean_candidate_pool(db, limit=max(200, limit*10))
     imported=import_candidates_to_keywords(db, limit=max(1, import_limit))
     target_health=apply_collector_target_health(db)
-    return {'enabled':True,'target_refresh':target_refresh,'target_health':target_health,'seeds':seeds,'domains':domains,'auto_targets':{'keywords':target_keywords[:20],'domains':target_domains[:20]},'budget_plan':plan,'results':results,'errors':errors[:20],'clean':clean,'import':imported,'summary':collector_pool_summary(db)}
+    return {'enabled':True,'target_refresh':target_refresh,'target_health':target_health,'budgeted_targets':{'allocation':budgeted_targets['budget'].get('allocation'),'by_segment':budgeted_targets['by_segment']},'seeds':seeds,'domains':domains,'auto_targets':{'keywords':target_keywords[:20],'domains':target_domains[:20]},'budget_plan':plan,'results':results,'errors':errors[:20],'clean':clean,'import':imported,'summary':collector_pool_summary(db)}
 
 from datetime import timedelta
 
