@@ -82,6 +82,10 @@ def collector_targets_health(_: bool = Depends(require_auth), db: Session = Depe
 def collector_targets_segments(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
     return collectors.collector_target_segments(db)
 
+@router.get("/matrix")
+def collector_condition_matrix(limit: int = 300, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    return collectors.collector_condition_source_matrix(db, limit=max(1, min(1000, limit)))
+
 @router.get("/budget/next")
 def collector_budget_next(limit: int = 24, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     return collectors.collector_next_budget(db, limit=max(1, limit))
@@ -227,3 +231,8 @@ def candidate_clean(payload: schemas.CandidateImportIn, _: bool = Depends(requir
 @router.post("/candidates/import")
 def candidate_import(payload: schemas.CandidateImportIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     return collectors.import_candidates_to_keywords(db, payload.limit)
+
+@router.post("/keywords/auto-verify")
+def collector_keywords_auto_verify(payload: dict | None = None, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    payload=payload or {}
+    return collectors.auto_verify_collector_keywords(db, limit=max(1, int(payload.get('limit') or 8)), min_score=float(payload.get('min_score') or 0.72))

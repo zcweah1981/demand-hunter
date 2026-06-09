@@ -21,6 +21,22 @@ NOISE_TITLE_PATTERNS=(
 BLOCK_TARGET_DOMAINS={"google.com","youtube.com","wikipedia.org","reddit.com","facebook.com","linkedin.com","x.com","twitter.com","github.com","support.google.com","dictionary.com","merriam-webster.com","dictionary.cambridge.org","bestbuy.com","bestwestern.com","alternativeto.net","pinterest.com","capitalone.com","card.com","creditcards.chase.com","usafacts.org","apps.microsoft.com","play.google.com"}
 TECH_SOURCE_RADAR_TERMS={"ai","llm","rag","mcp","agent","agents","model","models","openai","anthropic","claude","gemini","vector","embedding","eval","benchmark","inference","gpu","workflow automation"}
 SHORT_TAIL_REWRITE_BAD_TERMS={"branding","history","quote","quotes","signature","signatures","receipt","receipts","settings","account","login","signup","profile","community","communities","competitor","competitors","auditor","auditors","forum","forums"}
+
+COLLECTOR_SOURCE_ALIASES={
+    'google_suggest':'suggest', 'duckduckgo':'suggest',
+    'short_tail_rewrite':'suggest',
+    'hn_algolia':'source_radar', 'arxiv':'source_radar', 'github':'source_radar',
+}
+COLLECTOR_SOURCE_LABELS={
+    'suggest':'搜索联想扩展', 'sitemap':'Sitemap 站点监控', 'domain_web':'网页内容识别',
+    'alternatives':'替代品/对比挖掘', 'advanced_search':'搜索结果挖掘', 'hot_topic':'热点任务补充',
+    'source_radar':'一手信号雷达',
+}
+def normalize_collector_source(source:str|None)->str:
+    s=(source or 'unknown').removeprefix('collector:')
+    return COLLECTOR_SOURCE_ALIASES.get(s, s)
+def collector_source_label(source:str|None)->str:
+    return COLLECTOR_SOURCE_LABELS.get(normalize_collector_source(source), source or '未知来源')
 def is_blocked_domain(domain:str)->bool:
     d=(domain or '').lower().removeprefix('www.')
     return any(d==b or d.endswith('.'+b) for b in BLOCK_TARGET_DOMAINS)
@@ -232,7 +248,7 @@ def _collector_target_source_effectiveness(db:Session, target_ids:list[int], sca
             good=1
         if not bad and c.status == 'rejected':
             bad=1
-        source=c.source or 'unknown'
+        source=normalize_collector_source(c.source)
         for tid in tids:
             row=acc[tid].setdefault(source, {'source':source,'leads':0,'success':0,'reject':0,'last_label':None,'last_keyword':None,'last_at':None})
             row['leads']+=1
@@ -280,6 +296,32 @@ def collector_target_segments(db:Session, limit:int=200)->dict:
             out['new'].append(item)
     summary={k:len(v) for k,v in out.items()}
     return {'ok':True,'summary':summary,'segments':out}
+
+def collector_condition_source_matrix(db:Session, limit:int=300)->dict:
+    """User-facing matrix: search condition x discovery source effectiveness."""
+    seg=collector_target_segments(db, limit=limit)
+    segment_labels={'winner':'高价值','promising':'可继续观察','new':'新搜索条件','noisy':'噪音高','cooldown':'已暂停','exhausted':'暂无价值'}
+    rows=[]
+    for segment, items in (seg.get('segments') or {}).items():
+        for t in items:
+            sources=t.get('source_effectiveness') or []
+            if not sources:
+                rows.append({'target_id':t['id'],'condition':t['value'],'type':t['target_type'],'segment':segment,'segment_label':segment_labels.get(segment,segment),'source':'unknown','source_label':'暂无来源反馈','leads':0,'success':t.get('success_count',0),'reject':t.get('reject_count',0),'verdict':'暂无来源反馈','priority':t.get('priority',0)})
+                continue
+            for s in sources:
+                success=int(s.get('success') or 0); reject=int(s.get('reject') or 0); leads=int(s.get('leads') or 0)
+                if success>0 and reject<=max(2, success*2): verdict='有效'
+                elif reject>success: verdict='噪音偏高'
+                else: verdict='观察'
+                rows.append({'target_id':t['id'],'condition':t['value'],'type':t['target_type'],'segment':segment,'segment_label':segment_labels.get(segment,segment),'source':normalize_collector_source(s.get('source')),'source_label':collector_source_label(s.get('source')),'leads':leads,'success':success,'reject':reject,'verdict':verdict,'last_label':s.get('last_label'),'last_keyword':s.get('last_keyword'),'priority':t.get('priority',0)})
+    by_source={}
+    by_condition={}
+    for r in rows:
+        e=by_source.setdefault(r['source'], {'source':r['source'],'source_label':r['source_label'],'conditions':0,'leads':0,'success':0,'reject':0,'effective':0,'noisy':0})
+        e['conditions']+=1; e['leads']+=r['leads']; e['success']+=r['success']; e['reject']+=r['reject']; e['effective']+=1 if r['verdict']=='有效' else 0; e['noisy']+=1 if r['verdict']=='噪音偏高' else 0
+        c=by_condition.setdefault(r['target_id'], {'target_id':r['target_id'],'condition':r['condition'],'sources':0,'leads':0,'success':0,'reject':0})
+        c['sources']+=1; c['leads']+=r['leads']; c['success']+=r['success']; c['reject']+=r['reject']
+    return {'ok':True,'rows':rows,'by_source':sorted(by_source.values(), key=lambda x:(-x['success'], x['reject'], -x['leads'])),'by_condition':sorted(by_condition.values(), key=lambda x:(-x['success'], x['reject']))}
 
 def collector_next_budget(db:Session, limit:int=24)->dict:
     """Preview next collector budget allocation before a run."""
@@ -342,8 +384,9 @@ def collector_roi_stats(db:Session, limit:int=12)->dict:
         except Exception: s={}
         runs.append({'id':row.id,'started_at':row.started_at.isoformat() if row.started_at else None,'imported':(s.get('import') or {}).get('imported',0),'selected':(s.get('import') or {}).get('selected',0)})
         for r in s.get('source_results') or []:
-            key=r.get('source') or 'unknown'
-            e=by_source.setdefault(key, {'source':key,'runs':0,'seen':0,'saved':0,'errors':0})
+            key=normalize_collector_source(r.get('source'))
+            e=by_source.setdefault(key, {'source':key,'label':collector_source_label(key),'runs':0,'seen':0,'saved':0,'errors':0,'aliases':set()})
+            if r.get('source'): e['aliases'].add(r.get('source'))
             e['runs']+=1; e['seen']+=int(r.get('seen') or 0); e['saved']+=int(r.get('saved') or 0); e['errors']+=int(r.get('errors') or 0)
         for seg, items in (s.get('selected_by_segment') or {}).items():
             e=by_segment.setdefault(seg, {'segment':seg,'runs':0,'targets':0,'success_sum':0,'reject_sum':0,'priority_sum':0.0})
@@ -351,6 +394,7 @@ def collector_roi_stats(db:Session, limit:int=12)->dict:
             for t in items or []:
                 e['success_sum']+=int(t.get('success') or 0); e['reject_sum']+=int(t.get('reject') or 0); e['priority_sum']+=float(t.get('priority') or 0)
     for e in by_source.values():
+        e['aliases']=sorted(e.get('aliases') or [])
         e['save_rate']=round(e['saved']/max(1,e['seen']),3)
         e['error_rate']=round(e['errors']/max(1,e['runs']),3)
         if e['save_rate']>=0.25 and e['errors']<=max(2,e['runs']): e['verdict']='increase'
@@ -1113,13 +1157,14 @@ def _save_collector_source_weights(db:Session, weights:dict)->None:
 
 def collector_source_multiplier(db:Session, source:str)->float:
     weights=_collector_source_weights(db)
-    raw=weights.get(source,{}).get('weight', 1.0) if isinstance(weights.get(source,{}),dict) else 1.0
+    key=normalize_collector_source(source)
+    raw=weights.get(key,{}).get('weight', weights.get(source,{}).get('weight', 1.0) if isinstance(weights.get(source,{}),dict) else 1.0) if isinstance(weights.get(key,{}),dict) or isinstance(weights.get(source,{}),dict) else 1.0
     try: return max(0.25, min(2.5, float(raw)))
     except Exception: return 1.0
 
 def _collector_family_weight(db:Session, family:str)->float:
     aliases={
-        'suggest':['google_suggest','duckduckgo'],
+        'suggest':['suggest','google_suggest','duckduckgo','short_tail_rewrite'],
         'sitemap':['sitemap'],
         'advanced_search':['advanced_search'],
         'source_radar':['hn_algolia','arxiv'],
@@ -1540,6 +1585,49 @@ def import_candidates_to_keywords(db:Session, limit:int=30)->dict:
     db.commit()
     return {'ok':True,'selected':len(rows),'imported':imported,'skipped_existing':skipped_existing,'clean':clean}
 
+def auto_verify_collector_keywords(db:Session, limit:int=8, min_score:float=0.72)->dict:
+    """Turn high-quality collector keywords into opportunity cards for review.
+
+    This closes the collector loop: discovery output should not stop at
+    Keyword(new); it must enter SERP/card review so human feedback can improve
+    source weights and search conditions.
+    """
+    rows=db.query(models.Keyword).filter(models.Keyword.source.like('collector:%'), models.Keyword.status.in_(['new','imported'])).order_by(models.Keyword.score.desc(), models.Keyword.created_at.desc()).limit(max(1, min(50, limit*4))).all()
+    verified=[]; skipped=[]
+    for kw in rows:
+        if len(verified) >= limit: break
+        raw_score=float(kw.score or 0)
+        normalized_score=raw_score/100.0 if raw_score > 1 else raw_score
+        qnorm=normalize_keyword(kw.query)
+        noise=services.keyword_noise_reason(kw.query, kw.source) or candidate_noise_reason(qnorm, {})
+        if re.search(r"(^|\s)\d{1,3}(\s|$)", qnorm) or re.search(r"\b(for|in|on|with|your|what|how)\s*$", qnorm):
+            noise='title_or_fragment_residue'
+        if re.search(r"^(what|how|why|where|when|who|which|is|are|can|do|does)\b", qnorm):
+            noise='question_or_fragment_residue'
+        if re.search(r"\b(to|for|and|or|a|the|of|with)\s*$", qnorm) or re.search(r"\b(to|for)\s+(edit|use|build|create|manage|track|monitor|check)\s*$", qnorm):
+            noise='trailing_verb_residue'
+        words=qnorm.split()
+        if len(words)>=3 and words[-1] in {'edit','use','build','create','manage','track','monitor','check','update','review','download','free','online'}:
+            noise='trailing_action_or_modifier_residue'
+        if not any(t in set(qnorm.split()) for t in TOOL_INTENT_TERMS) or not any(t in set(qnorm.split()) for t in COMMERCIAL_TERMS):
+            noise=noise or 'missing_task_or_commercial_intent'
+        if noise:
+            skipped.append({'id':kw.id,'query':kw.query,'reason':'noise_gate','noise':noise,'score':kw.score}); continue
+        if normalized_score < min_score:
+            skipped.append({'id':kw.id,'query':kw.query,'reason':'score_below_min','score':kw.score,'normalized_score':round(normalized_score,3)}); continue
+        existing=db.query(models.OpportunityCard).filter_by(keyword_id=kw.id).first()
+        if existing:
+            skipped.append({'id':kw.id,'query':kw.query,'reason':'card_exists','card_id':existing.id}); continue
+        try:
+            card=services.make_card(db, kw)
+            verified.append({'keyword_id':kw.id,'query':kw.query,'source':normalize_collector_source(kw.source),'source_label':collector_source_label(kw.source),'score':kw.score,'normalized_score':round(normalized_score,3),'card_id':card.id,'verdict':card.verdict,'card_score':card.score})
+        except Exception as e:
+            skipped.append({'id':kw.id,'query':kw.query,'reason':'verify_error','error':str(e)[:180]})
+    summary={'ok':True,'verified':verified,'skipped':skipped[:20],'limit':limit,'min_score':min_score}
+    db.add(models.RunHistory(kind='collector_auto_verify', status='ok', summary=json.dumps(summary, ensure_ascii=False), finished_at=datetime.utcnow()))
+    db.commit()
+    return summary
+
 def collector_pool_summary(db:Session)->dict:
     rows=db.query(models.CandidateKeyword.status, models.CandidateKeyword.source).all()
     by_status={}; by_source={}
@@ -1580,7 +1668,7 @@ def apply_collector_feedback(db:Session, keyword, label:str)->dict:
     bad=label in {'Reject','Block'}
     if not (good or bad):
         return {'applied':False,'reason':'neutral_label'}
-    source=keyword.source.removeprefix('collector:')
+    source=normalize_collector_source(keyword.source)
     delta={'Action':0.18,'Watch':0.06,'Reject':-0.16,'Block':-0.35}.get(label,0.0)
     weights=_collector_source_weights(db)
     entry=weights.get(source,{}) if isinstance(weights.get(source,{}),dict) else {}
@@ -1732,8 +1820,14 @@ def run_collector_autopilot(db:Session, limit:int=24, import_limit:int=12)->dict
         errors.append({'collector':'autopilot','error':f'time_budget_exceeded>{max_seconds}s'})
     clean=clean_candidate_pool(db, limit=max(200, limit*10))
     imported=import_candidates_to_keywords(db, limit=max(1, import_limit))
+    auto_verify=None
+    if (services.setting(db,'COLLECTOR_AUTO_VERIFY_AFTER_IMPORT') or 'true').lower() in {'1','true','yes','on'}:
+        try:
+            auto_verify=auto_verify_collector_keywords(db, limit=int(services.setting(db,'COLLECTOR_AUTO_VERIFY_LIMIT') or '4'), min_score=float(services.setting(db,'COLLECTOR_AUTO_VERIFY_MIN_SCORE') or '0.72'))
+        except Exception as e:
+            db.rollback(); auto_verify={'ok':False,'error':str(e)[:180]}
     target_health=apply_collector_target_health(db)
-    payload={'enabled':True,'target_refresh':target_refresh,'target_health':target_health,'budgeted_targets':{'allocation':budgeted_targets['budget'].get('allocation'),'by_segment':budgeted_targets['by_segment']},'seeds':seeds,'domains':domains,'auto_targets':{'keywords':target_keywords[:20],'domains':target_domains[:20]},'budget_plan':plan,'results':results,'errors':errors[:20],'clean':clean,'import':imported,'summary':collector_pool_summary(db)}
+    payload={'enabled':True,'target_refresh':target_refresh,'target_health':target_health,'budgeted_targets':{'allocation':budgeted_targets['budget'].get('allocation'),'by_segment':budgeted_targets['by_segment']},'seeds':seeds,'domains':domains,'auto_targets':{'keywords':target_keywords[:20],'domains':target_domains[:20]},'budget_plan':plan,'results':results,'errors':errors[:20],'clean':clean,'import':imported,'auto_verify':auto_verify,'summary':collector_pool_summary(db)}
     # Persist a compact replay record so the operator can compare budget vs.
     # actual results across runs.
     replay_row=None
@@ -1745,6 +1839,7 @@ def run_collector_autopilot(db:Session, limit:int=24, import_limit:int=12)->dict
             'source_results': [{'source':r.get('source'),'saved':r.get('saved'),'seen':r.get('candidates_seen') or r.get('seen') or r.get('urls_seen') or r.get('pages_seen'),'errors':len(r.get('errors') or [])} for r in results if isinstance(r,dict)],
             'clean': clean,
             'import': imported,
+            'auto_verify': auto_verify,
             'target_health': target_health,
             'errors': errors[:10],
         }
