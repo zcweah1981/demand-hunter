@@ -154,6 +154,30 @@ class CandidateKeyword(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class CollectorTarget(Base):
+    """Automatic collector target pool.
+
+    Targets are generated from Action/Watch cards, SERP competitor domains,
+    feedback, and later trend sources. They replace manual-only collector seeds.
+    """
+    __tablename__ = "collector_targets"
+    __table_args__ = (UniqueConstraint("target_type", "value", "source_type", "source_id", name="uq_collector_target_source"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    target_type: Mapped[str] = mapped_column(String(40), index=True)  # keyword, domain
+    value: Mapped[str] = mapped_column(String(260), index=True)
+    source_type: Mapped[str] = mapped_column(String(60), default="opportunity_card")
+    source_id: Mapped[str] = mapped_column(String(80), default="")
+    topic: Mapped[str] = mapped_column(String(160), default="")
+    priority: Mapped[float] = mapped_column(Float, default=0.0)
+    status: Mapped[str] = mapped_column(String(40), default="active")  # active, cooldown, rejected, exhausted
+    success_count: Mapped[int] = mapped_column(Integer, default=0)
+    reject_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class SitemapSeenUrl(Base):
     """Track sitemap URL diff so sitemap watcher reports only newly seen pages."""
     __tablename__ = "sitemap_seen_urls"

@@ -27,6 +27,17 @@ def candidate_list(limit: int = 100, status: str = "new", _: bool = Depends(requ
 def collector_summary(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
     return collectors.collector_pool_summary(db)
 
+@router.get("/targets")
+def collector_targets(limit: int = 120, status: str = "active", _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    q = db.query(models.CollectorTarget)
+    if status:
+        q = q.filter(models.CollectorTarget.status == status)
+    return [obj(r) for r in q.order_by(models.CollectorTarget.priority.desc(), models.CollectorTarget.created_at.desc()).limit(limit).all()]
+
+@router.post("/targets/refresh")
+def collector_targets_refresh(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    return collectors.refresh_collector_targets_from_cards(db)
+
 @router.post("/autopilot/run")
 def collector_autopilot_run(payload: schemas.CandidateImportIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     return collectors.run_collector_autopilot(db, limit=max(1, payload.limit), import_limit=max(1, payload.limit // 2 or 1))

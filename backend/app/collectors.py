@@ -6,7 +6,7 @@ import requests
 from sqlalchemy.orm import Session
 from . import models, services
 
-STOPWORDS={"best","top","free","online","app","apps","software","tool","tools","page","blog","pricing","login","signup","about","contact","privacy","terms","docs","help","features","category","tag","author","news","article","post","posts","product","products","en","www"}
+STOPWORDS={"best","top","free","online","app","apps","software","tool","tools","page","blog","blogs","pricing","login","signup","about","contact","privacy","terms","docs","help","features","category","tag","author","news","article","post","posts","product","products","with","using","guide","guides","en","www","youtube","reddit","github"}
 TOOL_INTENT_TERMS={"calculator","generator","template","checker","converter","tracker","dashboard","analyzer","builder","creator","planner","estimator","form","spreadsheet","invoice","policy","report","monitor","automation","integration","api"}
 TOOL_INTENT_PLURALS={"calculators":"calculator","generators":"generator","templates":"template","checkers":"checker","converters":"converter","trackers":"tracker","dashboards":"dashboard","analyzers":"analyzer","builders":"builder","planners":"planner","estimators":"estimator","forms":"form","spreadsheets":"spreadsheet","reports":"report","monitors":"monitor","automations":"automation","integrations":"integration","apis":"api"}
 COMMERCIAL_TERMS={"pricing","price","cost","fee","invoice","tax","compliance","shopify","woocommerce","quickbooks","hubspot","salesforce","stripe","paypal","b2b","business","agency","client","contractor","clinic","rental"}
@@ -18,6 +18,110 @@ NOISE_TITLE_PATTERNS=(
     r"\blabels?\b", r"\bmilestone\b", r"\brelease notes?\b", r"\bchangelog\b",
     r"\bdocumentation\b", r"\bdocs?\b", r"\breadme\b",
 )
+BLOCK_TARGET_DOMAINS={"google.com","youtube.com","wikipedia.org","reddit.com","facebook.com","linkedin.com","x.com","twitter.com","github.com","support.google.com"}
+
+def _target_topic(text:str)->str:
+    kw=normalize_keyword(text)
+    return ' '.join(kw.split()[:4]) if kw else (text or '')[:80]
+
+def _upsert_collector_target(db:Session, target_type:str, value:str, source_type:str, source_id:str, topic:str, priority:float, notes:str=""):
+    value=(value or '').strip().lower()
+    if not value: return None
+    if target_type=='keyword':
+        value=normalize_keyword(value)
+        if not value or candidate_noise_reason(value): return None
+    if target_type=='domain':
+        value=value.removeprefix('www.')
+        if value in BLOCK_TARGET_DOMAINS or any(value.endswith('.gov') for _ in [0]): return None
+    row=db.query(models.CollectorTarget).filter_by(target_type=target_type,value=value,source_type=source_type,source_id=str(source_id)).first()
+    if not row:
+        row=models.CollectorTarget(target_type=target_type,value=value,source_type=source_type,source_id=str(source_id),topic=topic[:160],priority=priority,status='active',notes=notes[:800])
+        db.add(row)
+    else:
+        row.priority=max(row.priority or 0, priority)
+        row.status='active' if row.status in {'exhausted','cooldown'} and priority>=75 else row.status
+        row.notes=notes[:800] or row.notes
+    return row
+
+def _keyword_variants_from_text(text:str)->list[str]:
+    text=(text or '').lower()
+    base=normalize_keyword(text)
+    variants=[]
+    if base: variants.append(base)
+    # Compliance-specific expansion: current cards prove this is a viable cluster.
+    if 'compliance' in text:
+        for fw in ['soc 2','gdpr','hipaa','iso 27001','pci']:
+            for tail in ['compliance cost calculator','compliance gap analysis','readiness calculator','compliance checklist template']:
+                variants.append(f'{fw} {tail}')
+        variants.extend(['compliance roi calculator','compliance cost calculator','compliance gap analysis tool'])
+    if 'shopify' in text and 'tax' in text:
+        variants.extend(['shopify sales tax api','shopify tax calculator','shopify sales tax compliance','shopify tax app alternatives'])
+    if 'invoice' in text:
+        variants.extend(['invoice generator','invoice calculator','invoice late fee calculator','invoice payment reminder template'])
+    if 'rental' in text or 'late fee notice' in text:
+        variants.extend(['rental late fee notice template','late rent notice template','past due rent notice template'])
+    out=[]
+    for v in variants:
+        nv=normalize_keyword(v)
+        if re.match(r"^\d+\b", nv): continue
+        if re.search(r"\b(tractian|symmetry|security compass|invoiceflow|zogby|sprinto|easyaudit)\b$", nv): continue
+        if len(nv.split()) > 6 and not any(t in nv for t in ['calculator','template','checker','tracker','generator','dashboard']): continue
+        if nv and nv not in out and not candidate_noise_reason(nv): out.append(nv)
+    return out[:24]
+
+def refresh_collector_targets_from_cards(db:Session, limit:int=80)->dict:
+    """Generate collector targets from Action/Watch cards and their SERP evidence.
+
+    This is the automation bridge: opportunity cards and competitor domains become
+    the next collector inputs without manual settings edits.
+    """
+    cards=db.query(models.OpportunityCard).filter(models.OpportunityCard.verdict.in_(['Action','Watch'])).order_by(models.OpportunityCard.score.desc()).limit(limit).all()
+    created=0; keyword_targets=0; domain_targets=0
+    seen_targets:set[tuple[str,str,str,str]]=set()
+    for card in cards:
+        kw=db.get(models.Keyword, card.keyword_id)
+        if not kw: continue
+        verdict_boost=35 if card.verdict=='Action' else 18
+        base_priority=min(100.0, float(card.score or 0)+verdict_boost)
+        topic=_target_topic(kw.query)
+        texts=[kw.query, card.title or '', card.mvp_plan or '']
+        try:
+            evidence=json.loads(card.evidence_json or '[]')
+        except Exception:
+            evidence=[]
+        for e in evidence:
+            if isinstance(e,dict):
+                texts.append(str(e.get('title') or ''))
+                url=e.get('url') or ''
+                d=domain_of(url)
+                if d and d not in BLOCK_TARGET_DOMAINS:
+                    key=('domain',d,'opportunity_card',str(card.id))
+                    if key in seen_targets: continue
+                    seen_targets.add(key)
+                    row=_upsert_collector_target(db,'domain',d,'opportunity_card',str(card.id),topic,base_priority-5,f'from card #{card.id} SERP/evidence: {kw.query}')
+                    if row: domain_targets+=1; created+=1
+        # also use stored SERP rows because evidence_json can be sparse.
+        for serp in db.query(models.SerpResult).filter_by(keyword_id=kw.id).order_by(models.SerpResult.rank).limit(10):
+            d=(serp.domain or domain_of(serp.url or '')).lower().removeprefix('www.')
+            if d and d not in BLOCK_TARGET_DOMAINS:
+                key=('domain',d,'opportunity_card',str(card.id))
+                if key in seen_targets: continue
+                seen_targets.add(key)
+                row=_upsert_collector_target(db,'domain',d,'opportunity_card',str(card.id),topic,base_priority-8,f'from card #{card.id} SERP rank {serp.rank}: {kw.query}')
+                if row: domain_targets+=1; created+=1
+            texts.append(serp.title or '')
+        for text in texts:
+            for v in _keyword_variants_from_text(text):
+                key=('keyword',v,'opportunity_card',str(card.id))
+                if key in seen_targets: continue
+                seen_targets.add(key)
+                row=_upsert_collector_target(db,'keyword',v,'opportunity_card',str(card.id),topic,base_priority,f'from card #{card.id}: {kw.query}')
+                if row: keyword_targets+=1; created+=1
+    db.commit()
+    return {'ok':True,'cards_scanned':len(cards),'targets_touched':created,'keyword_targets':keyword_targets,'domain_targets':domain_targets}
+
+def select_collector_targets(db:Session, target_type:str, limit:int=20)->list[models.CollectorTarget]:
+    return db.query(models.CollectorTarget).filter_by(target_type=target_type,status='active').order_by(models.CollectorTarget.priority.desc(), models.CollectorTarget.created_at.desc()).limit(limit).all()
 
 def domain_of(url:str)->str:
     try: return urlparse(url).netloc.lower().removeprefix('www.')
@@ -58,6 +162,9 @@ def canonical_keyword(keyword:str)->str:
 
 def candidate_noise_reason(keyword:str, evidence:dict|None=None)->str:
     evidence=evidence or {}
+    raw=(keyword or '').lower().strip()
+    if raw.startswith(('blog ', 'blogs ', 'with ', 'using ')):
+        return 'url_path_residue'
     kw=normalize_keyword(keyword)
     if not kw: return 'empty_or_too_short'
     terms=kw.split()
@@ -76,9 +183,14 @@ def candidate_noise_reason(keyword:str, evidence:dict|None=None)->str:
         return 'search_operator_noise'
     if len(terms)>9: return 'too_long'
     if len(terms)<2: return 'too_short'
+    if terms[0] in {"blog","blogs","with","using"}: return 'url_path_residue'
     if len(set(terms)) < max(2, len(terms)-1): return 'repeated_terms'
     if any(t in {"crack","apk","coupon","promo"} for t in terms): return 'low_commercial_quality'
     if all(t in NOISE_TERMS for t in terms): return 'generic_noise'
+    if re.search(r"\b\d{8,}\b", kw): return 'social_activity_id_noise'
+    if len(terms) <= 2 and not any(t in TOOL_INTENT_TERMS for t in terms): return 'generic_short_tail'
+    if re.search(r"\bhow to\b", kw) and not any(t in TOOL_INTENT_TERMS for t in terms): return 'tutorial_intent_not_tool'
+    if any(t in {"youtube","reddit","github"} for t in terms): return 'platform_title_residue'
     return ''
 
 def candidate_quality_reject_reason(keyword:str, source:str, evidence:dict|None=None)->str:
@@ -111,6 +223,11 @@ def candidate_quality_reject_reason(keyword:str, source:str, evidence:dict|None=
         root_terms=set(normalize_keyword(root).split()) if root else set()
         if root_terms and not (terms & root_terms):
             return 'root_mismatch'
+    if source == 'sitemap':
+        # Sitemap paths include many blog/editorial slugs. Keep them only when
+        # they look like a concrete task/tool/checklist/compliance deadline.
+        if not has_tool and not ({'compliance','tax','invoice'} & terms and {'checklist','deadline','requirements','cost','roi','automation'} & terms):
+            return 'sitemap_editorial_path'
     # Generic task words alone create endless duplicate pseudo-opportunities.
     generic_tools={'calculator','template','generator','tool','software','app'}
     if terms and terms.issubset(generic_tools | NOISE_TERMS):
@@ -129,7 +246,7 @@ def clean_candidate_pool(db:Session, limit:int=1000)->dict:
     for r in rows:
         try: ev=json.loads(r.evidence_json or '{}')
         except Exception: ev={}
-        reason=candidate_noise_reason(r.keyword, ev)
+        reason=candidate_noise_reason(r.keyword, ev) or candidate_quality_reject_reason(r.keyword, r.source, ev)
         canon=canonical_keyword(r.keyword)
         ev['canonical_keyword']=canon
         if reason:
@@ -261,24 +378,30 @@ def upsert_candidate(db:Session, keyword:str, source:str, source_url:str='', sou
     evidence.setdefault('url', source_url or '')
     evidence.setdefault('source_domain', source_domain or domain_of(source_url or ''))
     reason=candidate_noise_reason(kw, evidence) or candidate_quality_reject_reason(kw, source, evidence)
+    source_url = source_url or ''
+    for obj in list(db.new):
+        if isinstance(obj, models.CandidateKeyword) and obj.keyword == kw and obj.source == source and (obj.source_url or '') == source_url:
+            return None
     if reason:
         # Store rejected evidence for observability, but never let obvious source
         # noise enter the importable candidate pool.
-        q=db.query(models.CandidateKeyword).filter_by(keyword=kw, source=source, source_url=source_url or '').first()
+        with db.no_autoflush:
+            q=db.query(models.CandidateKeyword).filter_by(keyword=kw, source=source, source_url=source_url).first()
         ev={**evidence, 'reject_reason': reason, 'canonical_keyword': canonical_keyword(kw)}
         if q:
             q.status='rejected'; q.evidence_json=json.dumps({**(json.loads(q.evidence_json or '{}') if q.evidence_json else {}), **ev}, ensure_ascii=False); db.merge(q); return None
-        row=models.CandidateKeyword(keyword=kw, source=source, source_url=source_url or '', source_domain=source_domain or '', method=method, evidence_json=json.dumps(ev, ensure_ascii=False), score=0.0, status='rejected')
+        row=models.CandidateKeyword(keyword=kw, source=source, source_url=source_url, source_domain=source_domain or '', method=method, evidence_json=json.dumps(ev, ensure_ascii=False), score=0.0, status='rejected')
         db.add(row); return None
     computed_score=round(max(0.0, min(1.0, score_candidate(kw, source, evidence, score) * collector_source_multiplier(db, source))), 3)
-    q=db.query(models.CandidateKeyword).filter_by(keyword=kw, source=source, source_url=source_url or '').first()
+    with db.no_autoflush:
+        q=db.query(models.CandidateKeyword).filter_by(keyword=kw, source=source, source_url=source_url).first()
     if q:
         if q.status != 'new':
             return None
         q.score=max(q.score, computed_score)
         q.evidence_json=json.dumps({**(json.loads(q.evidence_json or '{}') if q.evidence_json else {}), **(evidence or {})}, ensure_ascii=False)
         db.merge(q); return q
-    row=models.CandidateKeyword(keyword=kw, source=source, source_url=source_url or '', source_domain=source_domain or '', method=method, evidence_json=json.dumps(evidence or {}, ensure_ascii=False), score=computed_score, status='new')
+    row=models.CandidateKeyword(keyword=kw, source=source, source_url=source_url, source_domain=source_domain or '', method=method, evidence_json=json.dumps(evidence or {}, ensure_ascii=False), score=computed_score, status='new')
     db.add(row); return row
 
 def _fetch(url:str, timeout=15)->bytes:
@@ -521,8 +644,17 @@ def run_collector_autopilot(db:Session, limit:int=24, import_limit:int=12)->dict
     """
     if (services.setting(db,'COLLECTOR_AUTO_ENABLED') or 'false').lower() not in {'1','true','yes','on'}:
         return {'enabled':False,'skipped':'COLLECTOR_AUTO_ENABLED=false','summary':collector_pool_summary(db)}
-    seeds=_split_setting_list(services.setting(db,'COLLECTOR_AUTO_SEEDS'))
-    domains=_split_setting_list(services.setting(db,'COLLECTOR_AUTO_DOMAINS'))
+    target_refresh = refresh_collector_targets_from_cards(db)
+    target_keywords=[t.value for t in select_collector_targets(db,'keyword',limit=max(12,limit))]
+    target_domains=[t.value for t in select_collector_targets(db,'domain',limit=max(8,limit//2))]
+    manual_seeds=_split_setting_list(services.setting(db,'COLLECTOR_AUTO_SEEDS'))
+    manual_domains=_split_setting_list(services.setting(db,'COLLECTOR_AUTO_DOMAINS'))
+    seeds=[]
+    for s in target_keywords + manual_seeds:
+        if s and s not in seeds: seeds.append(s)
+    domains=[]
+    for d in target_domains + manual_domains:
+        if d and d not in domains: domains.append(d)
     try:
         max_seconds=int(services.setting(db,'COLLECTOR_AUTOPILOT_MAX_SECONDS') or '120')
     except Exception:
@@ -535,26 +667,32 @@ def run_collector_autopilot(db:Session, limit:int=24, import_limit:int=12)->dict
     errors=[]
     active={row['key']:row for row in plan.get('active',[])}
     if seeds and 'suggest' in active and budget_left():
+        print(f"[collector] starting suggest, {len(seeds[:active['suggest']['item_limit']])} seeds, budget_left={max_seconds - (time.monotonic()-started):.0f}s", flush=True)
         remaining=max(5, int(max_seconds - (time.monotonic() - started)))
         try: results.append(run_suggest_collector(db, seeds[:active['suggest']['item_limit']], max_seconds=min(remaining, int(services.setting(db,'COLLECTOR_SUGGEST_MAX_SECONDS') or '20'))))
         except Exception as e: errors.append({'collector':'suggest','error':str(e)[:180]})
+        print(f"[collector] suggest done, elapsed={time.monotonic()-started:.1f}s", flush=True)
     if domains and 'sitemap' in active and budget_left():
         try: results.append(run_sitemap_watcher(db, domains[:active['sitemap']['item_limit']], max_urls_per_domain=active['sitemap'].get('max_urls_per_domain', max(20,min(120,limit*4))), only_new=True))
         except Exception as e: errors.append({'collector':'sitemap','error':str(e)[:180]})
     if seeds and 'advanced_search' in active and budget_left():
         roots=seeds[:active['advanced_search']['item_limit']]
         remaining=max(5, int(max_seconds - (time.monotonic() - started)))
+        print(f"[collector] starting advanced_search, {len(roots)} roots, budget_left={remaining}s", flush=True)
         try: results.append(run_advanced_search_collector(db, roots, domains[:6], days=45, limit_per_query=active['advanced_search'].get('limit_per_query',5), max_seconds=min(remaining, int(services.setting(db,'COLLECTOR_ADVANCED_MAX_SECONDS') or '90'))))
         except Exception as e: errors.append({'collector':'advanced_search','error':str(e)[:180]})
+        print(f"[collector] advanced_search done, elapsed={time.monotonic()-started:.1f}s", flush=True)
     if seeds and 'source_radar' in active and budget_left():
         remaining=max(5, int(max_seconds - (time.monotonic() - started)))
+        print(f"[collector] starting source_radar, budget_left={remaining}s", flush=True)
         try: results.append(run_source_radar(db, seeds[:active['source_radar']['item_limit']], limit_per_seed=active['source_radar'].get('limit_per_seed',6), max_seconds=min(remaining, int(services.setting(db,'COLLECTOR_SOURCE_RADAR_MAX_SECONDS') or '45'))))
         except Exception as e: errors.append({'collector':'source_radar','error':str(e)[:180]})
+        print(f"[collector] source_radar done, elapsed={time.monotonic()-started:.1f}s", flush=True)
     if not budget_left():
         errors.append({'collector':'autopilot','error':f'time_budget_exceeded>{max_seconds}s'})
     clean=clean_candidate_pool(db, limit=max(200, limit*10))
     imported=import_candidates_to_keywords(db, limit=max(1, import_limit))
-    return {'enabled':True,'seeds':seeds,'domains':domains,'budget_plan':plan,'results':results,'errors':errors[:20],'clean':clean,'import':imported,'summary':collector_pool_summary(db)}
+    return {'enabled':True,'target_refresh':target_refresh,'seeds':seeds,'domains':domains,'auto_targets':{'keywords':target_keywords[:20],'domains':target_domains[:20]},'budget_plan':plan,'results':results,'errors':errors[:20],'clean':clean,'import':imported,'summary':collector_pool_summary(db)}
 
 from datetime import timedelta
 
@@ -590,6 +728,7 @@ def run_advanced_search_collector(db:Session, roots:list[str], domains:list[str]
         max_seconds = 90
     started=time.monotonic()
     saved=0; seen=0; errors=[]
+    empty_streak: dict[str,int] = {p: 0 for p in providers}
     for q,root,variant in queries[:80]:
         if time.monotonic() - started > max_seconds:
             errors.append({'query':q,'error':f'time_budget_exceeded>{max_seconds}s'})
@@ -599,14 +738,24 @@ def run_advanced_search_collector(db:Session, roots:list[str], domains:list[str]
         for p in providers[:max(1, int(services.setting(db,'SERP_PROVIDER_ATTEMPT_LIMIT') or '3'))]:
             if time.monotonic() - started > max_seconds:
                 break
+            if empty_streak.get(p, 0) >= 3:
+                continue  # skip provider that returned 0 results 3 times in a row
             provider_used=p
             try:
                 res=services.provider_search(db,p,q,limit=limit_per_query)
             except Exception as e:
                 errors.append({'query':q,'provider':p,'error':str(e)[:180]})
+                empty_streak[p] = empty_streak.get(p, 0) + 1
                 continue
+            print(f"[advanced] query={q[:60]} provider={provider_used} items={len(res or [])} elapsed={time.monotonic()-started:.1f}s", flush=True)
             if res and res[0].get('engine')!='error':
                 items=res; break
+            else:
+                empty_streak[p] = empty_streak.get(p, 0) + 1
+        else:
+            # reset streak on success
+            if provider_used and items:
+                empty_streak[provider_used] = 0
         if not items:
             errors.append({'query':q,'error':'no results'})
             continue
