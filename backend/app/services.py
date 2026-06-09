@@ -2358,8 +2358,10 @@ def auto_status(db: Session) -> dict:
     enabled = (setting(db, "AUTO_RUN_ENABLED") or "false").lower() in {"1","true","yes","on"}
     try: interval = int(setting(db, "AUTO_RUN_INTERVAL_MINUTES") or "360")
     except Exception: interval = 360
-    next_run_at = (last.finished_at + timedelta(minutes=interval)).isoformat() if last and last.finished_at and enabled else None
-    return {"enabled": enabled, "interval_minutes": interval, "next_run_at": next_run_at, "last_run": None if not last else {"id": last.id, "status": last.status, "kind": last.kind, "summary": json.loads(last.summary or "{}") if last.summary and last.summary.startswith("{") else last.summary, "started_at": last.started_at.isoformat(), "finished_at": last.finished_at.isoformat() if last.finished_at else None}}
+    def iso_utc(dt):
+        return dt.isoformat() + "Z" if dt else None
+    next_run_at = iso_utc(last.finished_at + timedelta(minutes=interval)) if last and last.finished_at and enabled else None
+    return {"enabled": enabled, "interval_minutes": interval, "next_run_at": next_run_at, "last_run": None if not last else {"id": last.id, "status": last.status, "kind": last.kind, "summary": json.loads(last.summary or "{}") if last.summary and last.summary.startswith("{") else last.summary, "started_at": iso_utc(last.started_at), "finished_at": iso_utc(last.finished_at)}}
 
 def auto_due(db: Session) -> bool:
     st = auto_status(db)
