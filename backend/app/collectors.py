@@ -453,8 +453,33 @@ def repair_safety_score(result:dict)->dict:
     status='safe' if score>=80 else ('needs_review' if score>=55 else 'risky')
     return {'score':max(0,min(100,score)),'status':status,'issues':issues}
 
-def apply_generic_short_tail_repair(db:Session, limit:int=300)->dict:
-    """Rewrite rejected generic short-tail candidates into concrete task variants."""
+def preview_generic_short_tail_repair(db:Session, limit:int=300)->dict:
+    """Preview generic short-tail rewrites without writing candidates."""
+    rows=db.query(models.CandidateKeyword).filter_by(status='rejected').order_by(models.CandidateKeyword.created_at.desc()).limit(max(1,min(1000,limit))).all()
+    scanned=0; would_rewrite=0; variants_total=0; examples=[]
+    for r in rows:
+        try: ev=json.loads(r.evidence_json or '{}')
+        except Exception: ev={}
+        if ev.get('reject_reason') != 'generic_short_tail':
+            continue
+        scanned+=1
+        variants=expand_generic_short_tail(r.keyword)
+        if not variants: continue
+        would_rewrite+=1; variants_total+=len(variants)
+        if len(examples)<12: examples.append({'id':r.id,'original':r.keyword,'variants':variants})
+    result={'scanned_generic_short_tail':scanned,'would_rewrite':would_rewrite,'variants_saved':variants_total,'examples':examples,'preview':True}
+    result['repair_safety']=repair_safety_score({'scanned_generic_short_tail':scanned,'rewritten':would_rewrite,'variants_saved':variants_total})
+    return {'ok':True, **result}
+
+def apply_generic_short_tail_repair(db:Session, limit:int=300, max_rewrites:int=40, force:bool=False)->dict:
+    """Rewrite rejected generic short-tail candidates into concrete task variants.
+
+    Guardrail: by default, refuses risky previews unless force=True and caps the
+    number of rewritten originals.
+    """
+    preview=preview_generic_short_tail_repair(db, limit=limit)
+    if preview.get('repair_safety',{}).get('status') == 'risky' and not force:
+        return {'ok':False,'blocked':True,'reason':'repair_preview_risky','preview':preview,'message':'generic_short_tail repair is risky; lower max_rewrites or run with force=true'}
     rows=db.query(models.CandidateKeyword).filter_by(status='rejected').order_by(models.CandidateKeyword.created_at.desc()).limit(max(1,min(1000,limit))).all()
     scanned=0; rewritten=0; variants_saved=0; examples=[]
     for r in rows:
@@ -462,6 +487,8 @@ def apply_generic_short_tail_repair(db:Session, limit:int=300)->dict:
         except Exception: ev={}
         if ev.get('reject_reason') != 'generic_short_tail':
             continue
+        if rewritten >= max(1, max_rewrites):
+            break
         scanned+=1
         variants=expand_generic_short_tail(r.keyword)
         if not variants: continue
@@ -473,7 +500,7 @@ def apply_generic_short_tail_repair(db:Session, limit:int=300)->dict:
             if row: variants_saved+=1
         if len(examples)<10: examples.append({'original':r.keyword,'variants':variants})
     db.commit()
-    audit={'scanned_generic_short_tail':scanned,'rewritten':rewritten,'variants_saved':variants_saved,'examples':examples}
+    audit={'scanned_generic_short_tail':scanned,'rewritten':rewritten,'variants_saved':variants_saved,'examples':examples,'max_rewrites':max_rewrites,'force':force,'preview_before':preview}
     audit['repair_safety']=repair_safety_score(audit)
     db.add(models.RunHistory(kind='collector_repair', status='ok', summary=json.dumps({'repair':'generic_short_tail','result':audit}, ensure_ascii=False), finished_at=datetime.utcnow()))
     db.commit()

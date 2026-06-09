@@ -39,7 +39,9 @@ def repair_missing_tool_intent(_: bool = Depends(require_auth), db: Session = De
 @router.post("/repairs/generic-short-tail")
 def repair_generic_short_tail(payload: dict | None = None, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     payload=payload or {}
-    return collectors.apply_generic_short_tail_repair(db, limit=max(1, int(payload.get('limit') or 300)))
+    if payload.get('preview'):
+        return collectors.preview_generic_short_tail_repair(db, limit=max(1, int(payload.get('limit') or 300)))
+    return collectors.apply_generic_short_tail_repair(db, limit=max(1, int(payload.get('limit') or 300)), max_rewrites=max(1, int(payload.get('max_rewrites') or 40)), force=bool(payload.get('force')))
 
 @router.post("/repairs/sitemap-editorial-path")
 def repair_sitemap_editorial_path(payload: dict | None = None, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
