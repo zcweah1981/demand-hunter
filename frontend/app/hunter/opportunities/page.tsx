@@ -9,26 +9,11 @@ export default async function Page({searchParams}:{searchParams?:Promise<Record<
  const params=(await (searchParams||Promise.resolve({}))) as Record<string,string|string[]|undefined>
  const raw=Array.isArray(params.verdict)?params.verdict[0]:params.verdict
  const verdict=VERDICTS.includes(raw||'') ? (raw as string) : 'All'
- const [rows, settings] = await Promise.all([
- api<Card[]>('/api/cards'),
+ const [cards, settings] = await Promise.all([
+ api<Card[]>(`/api/cards/groups?verdict=${verdict}`),
   api<any[]>('/api/settings').catch(()=>[]),
  ])
  const minAction = Number(settings.find((s:any)=>s.key==='MIN_ACTION_SCORE')?.value || 74)
- const filtered = rows.filter((r:any)=>{
-  const finalVerdict = r.feedback_label || r.verdict
-  if(verdict==='All') return true
-  if(finalVerdict!==verdict) return false
-  if(verdict==='Action') return Number(r.score||0) >= minAction
-  return true
- }).map((r:any)=>r.feedback_label ? {...r, verdict:r.feedback_label} : r)
- const byGroup=new Map<string,any>()
- for(const r of filtered){
-  const g=r.opportunity_group?.group_id || `card-${r.id}`
-  const prev=byGroup.get(g)
-  const rank=(x:any)=>((x.feedback_label||x.verdict)==='Adopted'?5:(x.feedback_label||x.verdict)==='Action'?4:(x.feedback_label||x.verdict)==='Watch'?3:1)*1000 + Number(x.score||0) + Number(x.opportunity_group?.probability||0)*100
-  if(!prev || rank(r)>rank(prev)) byGroup.set(g,r)
- }
- const cards=Array.from(byGroup.values()).sort((a:any,b:any)=>Number(b.opportunity_group?.probability||0)-Number(a.opportunity_group?.probability||0) || Number(b.score||0)-Number(a.score||0))
  const title=verdict==='All'?'全部机会':verdictLabel(verdict)
  return <div className="space-y-6">
   <div className="flex flex-wrap items-start justify-between gap-3">

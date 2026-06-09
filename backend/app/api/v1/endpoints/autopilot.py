@@ -20,32 +20,9 @@ def _bool_setting(db: Session, key: str) -> bool:
     return (services.setting(db, key) or "").lower() in {"1", "true", "yes", "on"}
 
 def _opportunity_group_counts(db: Session) -> dict:
-    """Counts must match /hunter/opportunities: opportunity groups, not raw cards."""
-    try:
-        min_action = float(services.setting(db, "MIN_ACTION_SCORE") or "74")
-    except Exception:
-        min_action = 74.0
-    cards = db.query(models.OpportunityCard).order_by(models.OpportunityCard.created_at.desc()).limit(300).all()
-    def grouped_count(predicate) -> int:
-        groups=set()
-        for card in cards:
-            if not predicate(card):
-                continue
-            try:
-                g=services.opportunity_group_for_card(db, card).get("group_id")
-            except Exception:
-                g=f"card-{card.id}"
-            groups.add(g or f"card-{card.id}")
-        return len(groups)
-    def final_verdict(card):
-        return card.feedback_label or card.verdict
-    return {
-        "cards": grouped_count(lambda c: True),
-        "pending_review": grouped_count(lambda c: (not c.feedback_label) and c.verdict in {"Action","Watch"}),
-        "adopted": grouped_count(lambda c: final_verdict(c)=="Adopted"),
-        "action": grouped_count(lambda c: final_verdict(c)=="Action" and float(c.score or 0) >= min_action),
-        "watch": grouped_count(lambda c: final_verdict(c)=="Watch"),
-    }
+    counts=services.opportunity_group_counts(db)
+    counts["pending_review"] = len([c for c in services.grouped_opportunity_cards(db,"All") if (not c.feedback_label) and c.verdict in {"Action","Watch"}])
+    return counts
 
 
 @router.get("/status")

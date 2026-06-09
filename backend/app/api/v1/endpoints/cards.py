@@ -10,6 +10,17 @@ from app.database import get_db
 
 router = APIRouter(prefix="/api/cards", tags=["cards"])
 
+def _card_obj(db: Session, x: models.OpportunityCard) -> dict:
+    d = obj(x)
+    kw = db.get(models.Keyword, x.keyword_id)
+    if kw:
+        d["source_keyword"] = kw.query
+        d["keyword_source"] = kw.source
+        d["keyword_intent"] = kw.intent
+        d["keyword_status"] = kw.status
+    d["opportunity_group"] = services.opportunity_group_for_card(db, x)
+    return d
+
 @router.post("/generate/{keyword_id}")
 def generate_card(keyword_id: int, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     kw = db.get(models.Keyword, keyword_id)
@@ -77,6 +88,12 @@ def cards(include_duplicates: bool = Query(False), _: bool = Depends(require_aut
         d["opportunity_group"] = services.opportunity_group_for_card(db, x)
         rows.append(d)
     return rows
+
+@router.get("/groups")
+def card_groups(verdict: str = Query("All"), _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    if verdict not in {"All","Adopted","Action","Watch","Reject","Block"}:
+        raise HTTPException(400, "invalid verdict")
+    return [_card_obj(db, c) for c in services.grouped_opportunity_cards(db, verdict)]
 
 @router.post("/{card_id}/feedback")
 def feedback(card_id: int, payload: schemas.FeedbackIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
