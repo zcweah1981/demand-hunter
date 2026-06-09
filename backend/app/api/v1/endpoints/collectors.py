@@ -107,6 +107,16 @@ def collector_repairs(limit: int = 10, _: bool = Depends(require_auth), db: Sess
         out.append(d)
     return out
 
+@router.post("/repairs/autopilot")
+def repair_autopilot(payload: dict | None = None, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    payload=payload or {}
+    return collectors.run_safe_repair_autopilot(db, allow_cleanup=bool(payload.get('allow_cleanup')), force=bool(payload.get('force')))
+
+@router.get("/repairs/autopilot/runs")
+def repair_autopilot_runs(limit: int = 8, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    rows=db.query(models.RunHistory).filter_by(kind='collector_repair_autopilot').order_by(models.RunHistory.started_at.desc()).limit(max(1,min(30,limit))).all()
+    return [obj(r) for r in rows]
+
 @router.get("/roi")
 def collector_roi(limit: int = 12, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     return collectors.collector_roi_stats(db, limit=max(1, min(50, limit)))

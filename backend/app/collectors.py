@@ -433,6 +433,9 @@ def apply_missing_tool_intent_repair(db:Session, force:bool=False)->dict:
         total=total_by_source.get(source, count)
         if count >= 8 or count/max(1,total) >= 0.45:
             entry=weights.get(source,{}) if isinstance(weights.get(source,{}),dict) else {}
+            stats=entry.get('repair_stats') or {}
+            if stats.get('missing_tool_intent_count') == count and stats.get('missing_tool_intent_demoted_at'):
+                continue
             old=float(entry.get('weight',1.0))
             new=round(max(0.25, old*0.82),3)
             if new != old:
@@ -465,6 +468,9 @@ def preview_missing_tool_intent_repair(db:Session)->dict:
         total=total_by_source.get(source,count)
         if count >= 8 or count/max(1,total) >= 0.45:
             entry=weights.get(source,{}) if isinstance(weights.get(source,{}),dict) else {}
+            stats=entry.get('repair_stats') or {}
+            if stats.get('missing_tool_intent_count') == count and stats.get('missing_tool_intent_demoted_at'):
+                continue
             old=float(entry.get('weight',1.0))
             new=round(max(0.25, old*0.82),3)
             if new != old:
@@ -508,6 +514,8 @@ def preview_generic_short_tail_repair(db:Session, limit:int=300)->dict:
         except Exception: ev={}
         if ev.get('reject_reason') != 'generic_short_tail':
             continue
+        if ev.get('rewrite_candidates'):
+            continue
         scanned+=1
         variants=expand_generic_short_tail(r.keyword)
         if not variants: continue
@@ -533,6 +541,8 @@ def apply_generic_short_tail_repair(db:Session, limit:int=300, max_rewrites:int=
         except Exception: ev={}
         if ev.get('reject_reason') != 'generic_short_tail':
             continue
+        if ev.get('rewrite_candidates'):
+            continue
         if rewritten >= max(1, max_rewrites):
             break
         scanned+=1
@@ -557,7 +567,7 @@ def apply_sitemap_editorial_path_repair(db:Session, limit:int=500, force:bool=Fa
     preview=preview_sitemap_editorial_path_repair(db, limit=limit)
     if preview.get('repair_safety',{}).get('status')=='risky' and not force:
         return {'ok':False,'blocked':True,'reason':'sitemap_editorial_preview_risky','preview':preview,'message':'sitemap editorial repair is risky; run with force=true to override'}
-    rows=db.query(models.CandidateKeyword).filter(models.CandidateKeyword.source=='sitemap').order_by(models.CandidateKeyword.created_at.desc()).limit(max(1,min(2000,limit))).all()
+    rows=db.query(models.CandidateKeyword).filter(models.CandidateKeyword.source=='sitemap', models.CandidateKeyword.status!='rejected').order_by(models.CandidateKeyword.created_at.desc()).limit(max(1,min(2000,limit))).all()
     scanned=0; rejected=0; examples=[]
     for r in rows:
         scanned+=1
@@ -579,7 +589,7 @@ def apply_sitemap_editorial_path_repair(db:Session, limit:int=500, force:bool=Fa
     return {'ok':True, **audit}
 
 def preview_sitemap_editorial_path_repair(db:Session, limit:int=500)->dict:
-    rows=db.query(models.CandidateKeyword).filter(models.CandidateKeyword.source=='sitemap').order_by(models.CandidateKeyword.created_at.desc()).limit(max(1,min(2000,limit))).all()
+    rows=db.query(models.CandidateKeyword).filter(models.CandidateKeyword.source=='sitemap', models.CandidateKeyword.status!='rejected').order_by(models.CandidateKeyword.created_at.desc()).limit(max(1,min(2000,limit))).all()
     scanned=len(rows); would_reject=0; examples=[]
     for r in rows:
         if sitemap_url_is_task_page(r.source_url or ''):
@@ -589,6 +599,72 @@ def preview_sitemap_editorial_path_repair(db:Session, limit:int=500)->dict:
     result={'scanned':scanned,'would_reject':would_reject,'examples':examples,'sitemap_path_gate':'task_pages_only','preview':True}
     result['repair_safety']=repair_safety_score({'rejected':would_reject,'scanned':scanned})
     return {'ok':True, **result}
+
+def run_safe_repair_autopilot(db:Session, allow_cleanup:bool=False, force:bool=False)->dict:
+    """Run only safe collector repairs automatically.
+
+    Risky repairs are never applied unless force=True. Cleanup is excluded by
+    default because it deletes rejected candidate records; it can be explicitly
+    enabled with allow_cleanup=True.
+    """
+    started=datetime.utcnow()
+    health=collector_system_health(db)
+    actions=[]
+
+    def add_action(name:str, preview:dict, applied:dict|None=None, blocked_reason:str|None=None):
+        safety=preview.get('repair_safety') or {}
+        actions.append({'repair':name,'preview':preview,'safety':safety,'applied':applied,'blocked_reason':blocked_reason})
+
+    # missing_tool_intent: reversible source-weight tuning + setting toggle.
+    pm=preview_missing_tool_intent_repair(db)
+    if (pm.get('changes') or []):
+        status=(pm.get('repair_safety') or {}).get('status')
+        if status=='safe' or force:
+            add_action('missing_tool_intent', pm, apply_missing_tool_intent_repair(db, force=force))
+        else:
+            add_action('missing_tool_intent', pm, None, 'preview_not_safe')
+    else:
+        add_action('missing_tool_intent', pm, None, 'no_changes')
+
+    # sitemap editorial: reversible status/evidence update, preserves records.
+    ps=preview_sitemap_editorial_path_repair(db, limit=500)
+    if int(ps.get('would_reject') or 0) > 0:
+        status=(ps.get('repair_safety') or {}).get('status')
+        if status=='safe' or force:
+            add_action('sitemap_editorial_path', ps, apply_sitemap_editorial_path_repair(db, limit=500, force=force))
+        else:
+            add_action('sitemap_editorial_path', ps, None, 'preview_not_safe')
+    else:
+        add_action('sitemap_editorial_path', ps, None, 'no_changes')
+
+    # generic short-tail: may inject candidates, so apply only if safe and capped.
+    pg=preview_generic_short_tail_repair(db, limit=300)
+    if int(pg.get('would_rewrite') or 0) > 0:
+        status=(pg.get('repair_safety') or {}).get('status')
+        if status=='safe' or force:
+            add_action('generic_short_tail', pg, apply_generic_short_tail_repair(db, limit=300, max_rewrites=20, force=force))
+        else:
+            add_action('generic_short_tail', pg, None, 'preview_not_safe')
+    else:
+        add_action('generic_short_tail', pg, None, 'no_changes')
+
+    # cleanup deletes records. Preview-only unless explicitly enabled.
+    pc=preview_cleanup_rejected_candidates(db, keep_latest=300)
+    if allow_cleanup and int(pc.get('will_delete') or 0) > 0:
+        status=(pc.get('repair_safety') or {}).get('status')
+        if status=='safe' or force:
+            add_action('cleanup_rejected_candidates', pc, cleanup_rejected_candidates(db, keep_latest=300, force=force))
+        else:
+            add_action('cleanup_rejected_candidates', pc, None, 'preview_not_safe')
+    else:
+        add_action('cleanup_rejected_candidates', pc, None, 'cleanup_disabled' if not allow_cleanup else 'no_changes')
+
+    applied_count=sum(1 for a in actions if a.get('applied') and a['applied'].get('ok'))
+    blocked_count=sum(1 for a in actions if a.get('blocked_reason') and a['blocked_reason'] not in {'no_changes','cleanup_disabled'})
+    summary={'health_before':health,'allow_cleanup':allow_cleanup,'force':force,'applied_count':applied_count,'blocked_count':blocked_count,'actions':actions}
+    db.add(models.RunHistory(kind='collector_repair_autopilot', status='ok', summary=json.dumps(summary, ensure_ascii=False), started_at=started, finished_at=datetime.utcnow()))
+    db.commit()
+    return {'ok':True, **summary}
 
 def collector_roi_weight_recommendations(db:Session, limit:int=12, min_runs:int=2)->dict:
     """Recommend persistent COLLECTOR_SOURCE_WEIGHTS changes from ROI.
