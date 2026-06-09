@@ -1,6 +1,7 @@
 'use client'
 
 import {useEffect, useMemo, useState} from 'react'
+import {useRouter} from 'next/navigation'
 import {OpportunityCardView, verdictClass, verdictLabel} from './OpportunityCard'
 import {Feedback} from './Actions'
 import {api} from '../lib/api'
@@ -14,6 +15,7 @@ const VERDICTS=['全部','Adopted','Action','Watch','Reject','Block']
 
 type Props={cards:any[]; empty?:string; showVerdictFilter?:boolean; mode?:'review'|'opportunity'; enableBulk?:boolean; currentFilter?:string}
 export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=true, mode='review', enableBulk=false, currentFilter='All'}:Props){
+ const router=useRouter()
  const [localCards,setLocalCards]=useState<any[]>(cards||[])
  const [reviewedCount,setReviewedCount]=useState(0)
  const [initialCount,setInitialCount]=useState((cards||[]).length)
@@ -46,19 +48,17 @@ export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=
   const cf=(updated.evidence_json||[]).slice().reverse().find((e:any)=>e.type==='collector_feedback')?.data
   if(cf?.applied){setLearning({label, source:cf.source, weight:cf.source_weight, effect:cf.target_effect, targets:cf.affected_targets||[], matched:cf.matched_candidates})}
   setReviewedCount(n=>n+1)
-  setLocalCards(prev=>currentFilter!=='All'&&label!==currentFilter?prev.filter(x=>x.id!==card.id):prev.map(x=>x.id===card.id?{...x,...updated,feedback_label:label,verdict:label}:x))
-  if(currentFilter!=='All'&&label!==currentFilter) setSelected(null)
-  if(selected?.id===card.id){
-   setSelected((prev:any)=>prev?{...prev,...updated,feedback_label:label,verdict:label}:prev)
-  }
+  setSelected(null)
+  router.refresh()
  }
  async function applyBulk(label:string){
   if(!enableBulk||!selectedIds.size) return
   if(!confirm(`批量标记 ${selectedIds.size} 个机会为 ${label}？`)) return
   const res:any=await api('/api/cards/bulk-feedback',{method:'POST',body:JSON.stringify({card_ids:Array.from(selectedIds),label,note:'bulk review from opportunities page'})})
-  setLocalCards(prev=>currentFilter!=='All'&&label!==currentFilter?prev.filter(c=>!selectedIds.has(c.id)):prev.map(c=>selectedIds.has(c.id)?{...c,feedback_label:label,verdict:label}:c))
-  setReviewedCount(n=>n+(res.updated||selectedIds.size))
   setSelectedIds(new Set())
+  setSelected(null)
+  router.refresh()
+  setReviewedCount(n=>n+(res.updated||selectedIds.size))
  }
  useEffect(()=>{
   const id=new URLSearchParams(location.search).get('card')

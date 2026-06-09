@@ -365,7 +365,7 @@ def grouped_opportunity_cards(db: Session, verdict: str = "All", limit: int = 30
     for c in reps:
         fv=final(c)
         ok = verdict=="All" or fv==verdict
-        if ok and verdict=="Action": ok=float(c.score or 0)>=min_action
+        if ok and verdict=="Action" and not c.feedback_label: ok=float(c.score or 0)>=min_action
         if ok: filtered.append(c)
     return sorted(filtered, key=lambda c: (rank(c), c.created_at), reverse=True)
 
