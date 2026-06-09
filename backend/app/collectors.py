@@ -283,6 +283,49 @@ def collector_roi_stats(db:Session, limit:int=12)->dict:
         else: e['verdict']='watch'
     return {'ok':True,'runs':runs,'by_source':sorted(by_source.values(), key=lambda x:(x['verdict']!='increase', -x['save_rate'], -x['saved'])),'by_segment':sorted(by_segment.values(), key=lambda x:(x['verdict']!='increase', -x['avg_success'], -x['avg_priority']))}
 
+def collector_roi_weight_recommendations(db:Session, limit:int=12, min_runs:int=2)->dict:
+    """Recommend persistent COLLECTOR_SOURCE_WEIGHTS changes from ROI.
+
+    This is deliberately more conservative than per-run ROI budget nudges: it
+    only becomes eligible after a source has appeared in at least min_runs
+    replay records.
+    """
+    roi=collector_roi_stats(db, limit=limit)
+    weights=_collector_source_weights(db)
+    recs=[]
+    for row in roi.get('by_source',[]):
+        source=row['source']
+        current=weights.get(source,{}).get('weight',1.0) if isinstance(weights.get(source,{}),dict) else 1.0
+        try: current=float(current)
+        except Exception: current=1.0
+        eligible=row.get('runs',0) >= min_runs and row.get('verdict') in {'increase','decrease'}
+        if row.get('verdict')=='increase': suggested=round(min(2.5, current+0.08),3)
+        elif row.get('verdict')=='decrease': suggested=round(max(0.25, current-0.12),3)
+        else: suggested=current
+        recs.append({'source':source,'current_weight':round(current,3),'suggested_weight':suggested,'eligible':eligible,'verdict':row.get('verdict'),'runs':row.get('runs'), 'seen':row.get('seen'), 'saved':row.get('saved'), 'save_rate':row.get('save_rate'), 'errors':row.get('errors'), 'reason':f"verdict={row.get('verdict')} runs={row.get('runs')} saved/seen={row.get('saved')}/{row.get('seen')} save_rate={row.get('save_rate')}"})
+    return {'ok':True,'min_runs':min_runs,'recommendations':recs}
+
+def apply_collector_roi_weight_recommendations(db:Session, limit:int=12, min_runs:int=2)->dict:
+    rec=collector_roi_weight_recommendations(db, limit=limit, min_runs=min_runs)
+    weights=_collector_source_weights(db)
+    applied=[]
+    for r in rec.get('recommendations',[]):
+        if not r.get('eligible') or r.get('suggested_weight') == r.get('current_weight'):
+            continue
+        entry=weights.get(r['source'],{}) if isinstance(weights.get(r['source'],{}),dict) else {}
+        entry['weight']=r['suggested_weight']
+        stats=entry.setdefault('roi_apply_stats',{})
+        stats['last_verdict']=r.get('verdict')
+        stats['last_reason']=r.get('reason')
+        stats['last_applied_at']=datetime.utcnow().isoformat(timespec='seconds')
+        weights[r['source']]=entry
+        applied.append(r)
+    if applied:
+        _save_collector_source_weights(db, weights)
+        db.add(models.RunHistory(kind='collector_roi_weights', status='ok', summary=json.dumps({'applied':applied,'min_runs':min_runs}, ensure_ascii=False), finished_at=datetime.utcnow()))
+        db.commit()
+    return {'ok':True,'applied_count':len(applied),'applied':applied,'recommendations':rec.get('recommendations',[])}
+
 def select_budgeted_collector_targets(db:Session, limit:int=24)->dict:
     """Select unique targets according to the same segment budget preview."""
     budget=collector_next_budget(db, limit=limit)

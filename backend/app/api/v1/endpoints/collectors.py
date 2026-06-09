@@ -59,6 +59,15 @@ def collector_runs(limit: int = 10, _: bool = Depends(require_auth), db: Session
 def collector_roi(limit: int = 12, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     return collectors.collector_roi_stats(db, limit=max(1, min(50, limit)))
 
+@router.get("/roi/recommendations")
+def collector_roi_recommendations(limit: int = 12, min_runs: int = 2, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    return collectors.collector_roi_weight_recommendations(db, limit=max(1, min(50, limit)), min_runs=max(1, min_runs))
+
+@router.post("/roi/apply")
+def collector_roi_apply(payload: dict | None = None, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    payload=payload or {}
+    return collectors.apply_collector_roi_weight_recommendations(db, limit=max(1, min(50, int(payload.get('limit') or 12))), min_runs=max(1, int(payload.get('min_runs') or 2)))
+
 @router.post("/targets/{target_id}/status")
 def collector_target_status(target_id: int, payload: dict, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     row=db.get(models.CollectorTarget, target_id)
