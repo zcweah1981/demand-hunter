@@ -47,6 +47,16 @@ def sitemap_run(payload: schemas.CollectorSitemapIn, _: bool = Depends(require_a
     domains=[d.strip() for d in payload.domains if d.strip()]
     return collectors.run_sitemap_watcher(db, domains, payload.max_urls_per_domain, payload.only_new)
 
+@router.post("/domain-web/run")
+def domain_web_run(payload: schemas.CollectorSitemapIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    domains=[d.strip() for d in payload.domains if d.strip()]
+    return collectors.run_domain_web_collector(db, domains, max_pages_per_domain=min(12, max(1, payload.max_urls_per_domain // 10)))
+
+@router.post("/alternatives/run")
+def alternatives_run(payload: schemas.CollectorSitemapIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    domains=[d.strip() for d in payload.domains if d.strip()]
+    return collectors.run_alternatives_collector(db, domains)
+
 @router.post("/suggest/run")
 def suggest_run(payload: schemas.CollectorSuggestIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     seeds=[s.strip() for s in payload.seeds if s.strip()]

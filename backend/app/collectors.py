@@ -1,14 +1,14 @@
 from __future__ import annotations
-import gzip, io, json, re, time
+import gzip, html, io, json, re, time
 from datetime import datetime
 from urllib.parse import urljoin, urlparse, unquote
 import requests
 from sqlalchemy.orm import Session
 from . import models, services
 
-STOPWORDS={"best","top","free","online","app","apps","software","tool","tools","page","blog","blogs","pricing","login","signup","about","contact","privacy","terms","docs","help","features","category","tag","author","news","article","post","posts","product","products","with","using","guide","guides","en","www","youtube","reddit","github"}
-TOOL_INTENT_TERMS={"calculator","generator","template","checker","converter","tracker","dashboard","analyzer","builder","creator","planner","estimator","form","spreadsheet","invoice","policy","report","monitor","automation","integration","api"}
-TOOL_INTENT_PLURALS={"calculators":"calculator","generators":"generator","templates":"template","checkers":"checker","converters":"converter","trackers":"tracker","dashboards":"dashboard","analyzers":"analyzer","builders":"builder","planners":"planner","estimators":"estimator","forms":"form","spreadsheets":"spreadsheet","reports":"report","monitors":"monitor","automations":"automation","integrations":"integration","apis":"api"}
+STOPWORDS={"best","top","free","online","app","apps","software","tool","tools","page","blog","blogs","pricing","login","signup","about","contact","privacy","terms","docs","help","features","category","tag","author","news","article","post","posts","product","products","with","using","without","guide","guides","definition","meaning","en","www","youtube","reddit","github"}
+TOOL_INTENT_TERMS={"calculator","generator","template","checker","converter","tracker","dashboard","analyzer","builder","creator","planner","estimator","form","spreadsheet","invoice","policy","report","monitor","automation","integration","api","alternative"}
+TOOL_INTENT_PLURALS={"calculators":"calculator","generators":"generator","templates":"template","checkers":"checker","converters":"converter","trackers":"tracker","tracking":"tracker","dashboards":"dashboard","analyzers":"analyzer","builders":"builder","planners":"planner","estimators":"estimator","forms":"form","spreadsheets":"spreadsheet","reports":"report","monitors":"monitor","automations":"automation","integrations":"integration","apis":"api","alternatives":"alternative"}
 COMMERCIAL_TERMS={"pricing","price","cost","fee","invoice","tax","compliance","shopify","woocommerce","quickbooks","hubspot","salesforce","stripe","paypal","b2b","business","agency","client","contractor","clinic","rental"}
 EARLY_SOURCE_BONUS={"sitemap":0.16,"advanced_search":0.12,"hn_algolia":0.10,"arxiv":0.08,"google_suggest":0.06,"duckduckgo":0.05}
 NOISE_DOMAINS={"github.com","raw.githubusercontent.com","gist.github.com"}
@@ -18,7 +18,7 @@ NOISE_TITLE_PATTERNS=(
     r"\blabels?\b", r"\bmilestone\b", r"\brelease notes?\b", r"\bchangelog\b",
     r"\bdocumentation\b", r"\bdocs?\b", r"\breadme\b",
 )
-BLOCK_TARGET_DOMAINS={"google.com","youtube.com","wikipedia.org","reddit.com","facebook.com","linkedin.com","x.com","twitter.com","github.com","support.google.com"}
+BLOCK_TARGET_DOMAINS={"google.com","youtube.com","wikipedia.org","reddit.com","facebook.com","linkedin.com","x.com","twitter.com","github.com","support.google.com","dictionary.com","merriam-webster.com","dictionary.cambridge.org","bestbuy.com","bestwestern.com","alternativeto.net"}
 
 def _target_topic(text:str)->str:
     kw=normalize_keyword(text)
@@ -33,7 +33,13 @@ def _upsert_collector_target(db:Session, target_type:str, value:str, source_type
     if target_type=='domain':
         value=value.removeprefix('www.')
         if value in BLOCK_TARGET_DOMAINS or any(value.endswith('.gov') for _ in [0]): return None
-    row=db.query(models.CollectorTarget).filter_by(target_type=target_type,value=value,source_type=source_type,source_id=str(source_id)).first()
+    source_id=str(source_id)
+    for obj in list(db.new):
+        if isinstance(obj, models.CollectorTarget) and obj.target_type==target_type and obj.value==value and obj.source_type==source_type and str(obj.source_id)==source_id:
+            obj.priority=max(obj.priority or 0, priority)
+            return obj
+    with db.no_autoflush:
+        row=db.query(models.CollectorTarget).filter_by(target_type=target_type,value=value,source_type=source_type,source_id=source_id).first()
     if not row:
         row=models.CollectorTarget(target_type=target_type,value=value,source_type=source_type,source_id=str(source_id),topic=topic[:160],priority=priority,status='active',notes=notes[:800])
         db.add(row)
@@ -137,6 +143,13 @@ def keyword_from_url(url:str)->str:
     tail=parts[-6:]
     return ' '.join(tail).strip()
 
+def keyword_from_title(title:str)->str:
+    title=html.unescape(title or '')
+    # Remove common brand suffixes: "Keyword - Brand", "Keyword | Brand".
+    title=re.split(r"\s+[\-|–|—|•|:]\s+", title, maxsplit=1)[0]
+    title=re.sub(r"\b(2024|2025|2026|free|best|top)\b", " ", title, flags=re.I)
+    return normalize_keyword(title)
+
 def normalize_keyword(text:str)->str:
     s=re.sub(r"[^a-zA-Z0-9\s\-_/]+", " ", text or "").lower()
     s=re.sub(r"[_/\-]+", " ", s)
@@ -214,7 +227,9 @@ def candidate_quality_reject_reason(keyword:str, source:str, evidence:dict|None=
         return 'tool_category_slug'
     if tool_count >= 2 and commercial_count <= 1 and source in {'advanced_search','hn_algolia','arxiv'}:
         return 'tool_word_stack'
-    if source in {'advanced_search','hn_algolia','arxiv'}:
+    if source in {'advanced_search','hn_algolia','arxiv','domain_web','alternatives'}:
+        if source in {'domain_web','alternatives'} and ({'compliance','tax','invoice','vendor'} & terms and {'checklist','deadline','requirements','cost','roi','automation','calculator','tracker'} & terms):
+            return ''
         if not has_tool:
             return 'missing_tool_intent'
         if not has_commercial:
@@ -397,7 +412,11 @@ def upsert_candidate(db:Session, keyword:str, source:str, source_url:str='', sou
         q=db.query(models.CandidateKeyword).filter_by(keyword=kw, source=source, source_url=source_url).first()
     if q:
         if q.status != 'new':
-            return None
+            old_status=q.status
+            q.status='new'
+            q.score=max(q.score or 0, computed_score)
+            q.evidence_json=json.dumps({**(json.loads(q.evidence_json or '{}') if q.evidence_json else {}), **(evidence or {}), 'resurrected_from': old_status}, ensure_ascii=False)
+            db.merge(q); return q
         q.score=max(q.score, computed_score)
         q.evidence_json=json.dumps({**(json.loads(q.evidence_json or '{}') if q.evidence_json else {}), **(evidence or {})}, ensure_ascii=False)
         db.merge(q); return q
@@ -469,6 +488,107 @@ def run_sitemap_watcher(db:Session, domains:list[str], max_urls_per_domain=80, o
             errors.append({'domain':d,'error':str(e)[:180]})
     db.commit()
     return {'ok':True,'source':'sitemap','domains':len(domains),'urls_seen':total,'new_urls':new_urls,'old_urls':old_urls,'saved':imported,'only_new':only_new,'errors':errors[:20]}
+
+def _fetch_html(url:str, timeout:float=8)->str:
+    r=requests.get(url, headers={'User-Agent':'Mozilla/5.0 (DemandHunterBot/1.0)'}, timeout=timeout)
+    r.raise_for_status()
+    ctype=(r.headers.get('content-type') or '').lower()
+    if 'text/html' not in ctype and 'application/xhtml' not in ctype and not url.endswith('/'):
+        return ''
+    return r.text[:250000]
+
+def extract_page_keywords(url:str)->list[dict]:
+    """Fetch one public HTML page and extract title/meta/h1-derived keywords."""
+    try:
+        text=_fetch_html(url)
+    except Exception:
+        return []
+    if not text: return []
+    snippets=[]
+    title_m=re.search(r"<title[^>]*>(.*?)</title>", text, flags=re.I|re.S)
+    if title_m: snippets.append(('title', re.sub(r"\s+", " ", title_m.group(1))))
+    for m in re.finditer(r"<meta[^>]+(?:name|property)=['\"](?:description|og:title|twitter:title)['\"][^>]+content=['\"]([^'\"]+)['\"]", text, flags=re.I):
+        snippets.append(('meta', m.group(1)))
+    for m in re.finditer(r"<h1[^>]*>(.*?)</h1>", text, flags=re.I|re.S):
+        snippets.append(('h1', re.sub(r"<[^>]+>", " ", m.group(1))))
+    out=[]; seen=set()
+    for kind,s in snippets[:8]:
+        kw=keyword_from_title(s)
+        if kw and kw not in seen:
+            seen.add(kw); out.append({'keyword':kw,'kind':kind,'text':html.unescape(re.sub(r"\s+", " ", s)).strip()[:300]})
+    return out
+
+def run_domain_web_collector(db:Session, domains:list[str], max_pages_per_domain:int=8, max_seconds:int|None=None)->dict:
+    """Free web-page collector: sitemap URLs -> title/meta/h1 keywords.
+
+    This simulates manual competitor-page research without paid SEO APIs.
+    """
+    try: max_seconds=int(max_seconds if max_seconds is not None else (services.setting(db,'COLLECTOR_DOMAIN_WEB_MAX_SECONDS') or '35'))
+    except Exception: max_seconds=35
+    started=time.monotonic(); seen=0; saved=0; errors=[]
+    path_hints=re.compile(r"/(tools?|templates?|calculators?|checklists?|pricing|features|compare|alternatives?|resources?)/", re.I)
+    for d in domains:
+        if time.monotonic()-started>max_seconds:
+            errors.append({'domain':d,'error':f'time_budget_exceeded>{max_seconds}s'}); break
+        try:
+            urls=[]
+            queue=discover_sitemaps(d)
+            while queue and len(urls)<max_pages_per_domain*4 and time.monotonic()-started<=max_seconds:
+                sm=queue.pop(0)
+                try:
+                    pages, childs=parse_sitemap_urls(sm, max_urls=max_pages_per_domain*4-len(urls))
+                    urls.extend([u for u in pages if path_hints.search(urlparse(u).path or '')])
+                    queue.extend(childs[:5])
+                except Exception:
+                    continue
+            if not urls:
+                root=d if d.startswith('http') else 'https://'+d
+                urls=[root.rstrip('/')+'/']
+            for url in urls[:max_pages_per_domain]:
+                if time.monotonic()-started>max_seconds: break
+                for item in extract_page_keywords(url):
+                    seen+=1
+                    evidence={'url':url,'title':item['text'],'extractor':item['kind'],'domain':domain_of(url)}
+                    row=upsert_candidate(db, item['keyword'], 'domain_web', url, domain_of(url), '页面标题/Meta 找词', evidence, 0.62)
+                    if row: saved+=1
+        except Exception as e:
+            errors.append({'domain':d,'error':str(e)[:180]})
+    db.commit()
+    return {'ok':True,'source':'domain_web','domains':len(domains),'pages_seen':seen,'saved':saved,'errors':errors[:20]}
+
+def run_alternatives_collector(db:Session, domains:list[str], max_seconds:int|None=None)->dict:
+    """Find similar/alternative domains through public search queries."""
+    try: max_seconds=int(max_seconds if max_seconds is not None else (services.setting(db,'COLLECTOR_ALTERNATIVES_MAX_SECONDS') or '35'))
+    except Exception: max_seconds=35
+    started=time.monotonic(); seen=0; saved=0; errors=[]
+    providers=services.available_serp_providers(db)
+    for d in domains[:12]:
+        if time.monotonic()-started>max_seconds:
+            errors.append({'domain':d,'error':f'time_budget_exceeded>{max_seconds}s'}); break
+        brand=d.split('.')[0]
+        queries=[f'alternative to {brand}', f'{brand} alternatives', f'{brand} vs', f'best {brand} alternatives']
+        for q in queries:
+            if time.monotonic()-started>max_seconds: break
+            items=[]; provider_used=''
+            for p in providers[:2]:
+                try:
+                    provider_used=p; res=services.provider_search(db,p,q,limit=5)
+                    if res and res[0].get('engine')!='error': items=res; break
+                except Exception as e:
+                    errors.append({'query':q,'provider':p,'error':str(e)[:160]})
+            for item in items[:5]:
+                url=item.get('url') or item.get('link') or ''
+                cd=domain_of(url)
+                if not cd or cd in BLOCK_TARGET_DOMAINS or cd==d: continue
+                seen+=1
+                title=item.get('title') or ''
+                kw=keyword_from_title(title) or normalize_keyword(f'{brand} alternatives')
+                evidence={'query':q,'title':title,'url':url,'provider':provider_used,'seed_domain':d,'similar_domain':cd}
+                row=upsert_candidate(db, kw, 'alternatives', url, cd, '站找站', evidence, 0.60)
+                if row: saved+=1
+                _upsert_collector_target(db,'domain',cd,'alternative_to',d,_target_topic(kw),70.0,f'alternative search from {d}: {title[:120]}')
+    db.commit()
+    return {'ok':True,'source':'alternatives','domains':len(domains),'seen':seen,'saved':saved,'errors':errors[:20]}
 
 def suggest_queries(seed:str, timeout:float=5)->list[dict]:
     out=[]
@@ -675,6 +795,14 @@ def run_collector_autopilot(db:Session, limit:int=24, import_limit:int=12)->dict
     if domains and 'sitemap' in active and budget_left():
         try: results.append(run_sitemap_watcher(db, domains[:active['sitemap']['item_limit']], max_urls_per_domain=active['sitemap'].get('max_urls_per_domain', max(20,min(120,limit*4))), only_new=True))
         except Exception as e: errors.append({'collector':'sitemap','error':str(e)[:180]})
+    if domains and budget_left() and (services.setting(db,'COLLECTOR_DOMAIN_WEB_ENABLED') or 'true').lower() in {'1','true','yes','on'}:
+        remaining=max(5, int(max_seconds - (time.monotonic() - started)))
+        try: results.append(run_domain_web_collector(db, domains[:max(2, min(8, limit//2))], max_pages_per_domain=4, max_seconds=min(remaining, int(services.setting(db,'COLLECTOR_DOMAIN_WEB_MAX_SECONDS') or '25'))))
+        except Exception as e: errors.append({'collector':'domain_web','error':str(e)[:180]})
+    if domains and budget_left() and (services.setting(db,'COLLECTOR_ALTERNATIVES_ENABLED') or 'true').lower() in {'1','true','yes','on'}:
+        remaining=max(5, int(max_seconds - (time.monotonic() - started)))
+        try: results.append(run_alternatives_collector(db, domains[:max(2, min(6, limit//3))], max_seconds=min(remaining, int(services.setting(db,'COLLECTOR_ALTERNATIVES_MAX_SECONDS') or '25'))))
+        except Exception as e: errors.append({'collector':'alternatives','error':str(e)[:180]})
     if seeds and 'advanced_search' in active and budget_left():
         roots=seeds[:active['advanced_search']['item_limit']]
         remaining=max(5, int(max_seconds - (time.monotonic() - started)))
