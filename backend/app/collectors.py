@@ -178,6 +178,44 @@ def _domain_topics(db:Session, domain:str)->list[str]:
             if kw and kw not in topics: topics.append(kw)
     return topics[:4]
 
+def _collector_target_refs(db:Session, evidence:dict)->list[int]:
+    """Resolve candidate evidence back to collector_targets for attribution."""
+    refs=[]
+    keyword_values=[]
+    for k in ['seed','root','topic','query']:
+        v=normalize_keyword(str(evidence.get(k) or ''))
+        if v: keyword_values.append(v)
+    domain_values=[]
+    for k in ['source_domain','domain','seed_domain','similar_domain']:
+        v=str(evidence.get(k) or '').strip().lower().removeprefix('www.')
+        if v: domain_values.append(v)
+    with db.no_autoflush:
+        for v in keyword_values[:4]:
+            rows=db.query(models.CollectorTarget).filter_by(target_type='keyword',value=v).limit(8).all()
+            refs.extend([r.id for r in rows])
+        for v in domain_values[:4]:
+            rows=db.query(models.CollectorTarget).filter_by(target_type='domain',value=v).limit(8).all()
+            refs.extend([r.id for r in rows])
+    out=[]
+    for x in refs:
+        if x not in out: out.append(x)
+    return out[:12]
+
+def _touch_collector_target_ids(db:Session, target_ids:list[int], success:bool=False, reject:bool=False)->None:
+    now=datetime.utcnow()
+    for tid in target_ids[:20]:
+        t=db.get(models.CollectorTarget, tid)
+        if not t: continue
+        t.last_seen_at=now
+        if success:
+            t.success_count=(t.success_count or 0)+1
+            t.last_success_at=now
+            t.priority=min(100.0, (t.priority or 0)+3.0)
+            if t.status=='cooldown': t.status='active'
+        if reject:
+            t.reject_count=(t.reject_count or 0)+1
+        db.merge(t)
+
 def _title_matches_topic(title:str, topic:str)->bool:
     tt=set(normalize_keyword(title).split())
     qt=set(normalize_keyword(topic).split())
@@ -449,6 +487,7 @@ def upsert_candidate(db:Session, keyword:str, source:str, source_url:str='', sou
     evidence=evidence or {}
     evidence.setdefault('url', source_url or '')
     evidence.setdefault('source_domain', source_domain or domain_of(source_url or ''))
+    evidence.setdefault('collector_target_ids', _collector_target_refs(db, evidence))
     reason=candidate_noise_reason(kw, evidence) or candidate_quality_reject_reason(kw, source, evidence)
     source_url = source_url or ''
     for obj in list(db.new):
@@ -767,9 +806,12 @@ def import_candidates_to_keywords(db:Session, limit:int=30)->dict:
         try: ev=json.loads(c.evidence_json or '{}')
         except Exception: ev={}
         query=ev.get('canonical_keyword') or canonical_keyword(c.keyword) or c.keyword
+        if not ev.get('collector_target_ids'):
+            ev['collector_target_ids']=_collector_target_refs(db, {**ev, 'source_domain': c.source_domain, 'query': ev.get('query') or c.keyword})
         existing=db.query(models.Keyword).filter_by(query=query).first()
         if not existing:
-            db.add(models.Keyword(query=query, source=f'collector:{c.source}', root_terms='[]', score=c.score, status='new'))
+            root_meta={'candidate_id':c.id,'candidate_source':c.source,'collector_target_ids':ev.get('collector_target_ids') or [],'source_url':c.source_url,'source_domain':c.source_domain}
+            db.add(models.Keyword(query=query, source=f'collector:{c.source}', root_terms=json.dumps(root_meta, ensure_ascii=False), score=c.score, status='new'))
             imported+=1
         else:
             skipped_existing+=1
@@ -834,6 +876,7 @@ def apply_collector_feedback(db:Session, keyword, label:str)->dict:
 
     matched=_match_imported_candidates_for_keyword(db, keyword.query, keyword.source)
     domains=[]
+    target_ids=[]
     for cand, ev in matched:
         stats=ev.setdefault('feedback_stats',{})
         stats[label]=int(stats.get(label,0))+1
@@ -848,8 +891,24 @@ def apply_collector_feedback(db:Session, keyword, label:str)->dict:
             ev['reject_reason']='feedback_'+label.lower()
         if cand.source_domain:
             domains.append(cand.source_domain)
+        if not ev.get('collector_target_ids'):
+            ev['collector_target_ids']=_collector_target_refs(db, {**ev, 'source_domain': cand.source_domain, 'query': ev.get('query') or cand.keyword})
+        for tid in ev.get('collector_target_ids') or []:
+            if tid not in target_ids: target_ids.append(tid)
         cand.evidence_json=json.dumps(ev, ensure_ascii=False)
         db.merge(cand)
+
+    # If the candidate evidence was not found (old imported keyword), fall back
+    # to root_terms metadata written during import.
+    if not target_ids:
+        try:
+            meta=json.loads(keyword.root_terms or '{}')
+            for tid in meta.get('collector_target_ids') or []:
+                if tid not in target_ids: target_ids.append(tid)
+        except Exception:
+            pass
+    if target_ids:
+        _touch_collector_target_ids(db, target_ids, success=good, reject=bad)
 
     # Learn seeds/domains from reviewed collector outputs. Keep this conservative:
     # good collector keywords become auto seeds; Block removes them and adds them to blocked terms.
