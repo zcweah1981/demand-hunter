@@ -64,6 +64,15 @@ export function OpportunityCardView({card,compact=false,showFeedback=true,onFeed
 
   {!compact&&topEvidence.length>0&&<div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-3"><div className="mb-2 text-xs font-semibold tracking-wide text-slate-500">关键证据摘要</div><div className="space-y-1">{topEvidence.map((e:any,i:number)=><a key={i} className="block truncate text-xs text-blue-300 hover:text-blue-200" href={e.url} target="_blank">[{evidenceTypeLabel(e.type)}] {e.title}</a>)}</div></div>}
 
+  {!compact&&card.collector_lineage&&<section className="rounded-2xl border border-purple-500/30 bg-purple-500/10 p-4">
+   <div className="mb-3 text-xs font-semibold tracking-wide text-purple-200">采集来源链路 <span className="text-purple-300/60">Collector Lineage</span></div>
+   <div className="grid gap-3 text-xs text-slate-300 md:grid-cols-2">
+    <div><b className="text-slate-100">Collector</b><p className="mt-1 text-slate-400">{card.collector_lineage.candidate_source||card.keyword_source||'-'} {card.collector_lineage.candidate_id?`· candidate #${card.collector_lineage.candidate_id}`:''}</p></div>
+    <div><b className="text-slate-100">Source</b><p className="mt-1 truncate text-slate-400">{card.collector_lineage.source_domain||'-'} {card.collector_lineage.source_url&&<a className="ml-1 text-blue-300 hover:text-blue-200" href={card.collector_lineage.source_url} target="_blank">打开</a>}</p></div>
+   </div>
+   {card.collector_lineage.collector_targets?.length>0&&<div className="mt-3 space-y-2">{card.collector_lineage.collector_targets.map((t:any)=><div key={t.id} className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-xs"><div className="flex flex-wrap items-center gap-2"><span className={t.type==='keyword'?'text-emerald-300':'text-blue-300'}>{t.type}</span><b className="text-slate-100">{t.value}</b><span className="text-slate-500">#{t.id}</span><span className="text-slate-500">priority {Math.round(t.priority||0)}</span><span className={t.status==='active'?'text-emerald-300':'text-amber-300'}>{t.status}</span></div><div className="mt-1 text-slate-500">success {t.success_count||0} · reject {t.reject_count||0}{t.topic?` · ${t.topic}`:''}</div></div>)}</div>}
+  </section>}
+
   {!compact&&<details className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
    <summary className="cursor-pointer text-sm font-semibold text-slate-300 hover:text-white">展开完整商业分析 / MVP / 全部证据</summary>
    {business&&<section className="mt-4 rounded-2xl border border-blue-500/30 bg-blue-500/10 p-4">

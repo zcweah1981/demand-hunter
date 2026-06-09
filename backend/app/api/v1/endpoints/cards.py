@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -29,11 +30,50 @@ def cards(include_duplicates: bool = Query(False), _: bool = Depends(require_aut
             d["keyword_source"] = kw.source
             d["keyword_intent"] = kw.intent
             d["keyword_status"] = kw.status
+            try:
+                meta = json.loads(kw.root_terms or "{}") if (kw.root_terms or "").strip().startswith("{") else {}
+            except Exception:
+                meta = {}
+            lineage = {
+                "candidate_id": meta.get("candidate_id"),
+                "candidate_source": meta.get("candidate_source"),
+                "source_url": meta.get("source_url"),
+                "source_domain": meta.get("source_domain"),
+                "collector_targets": [],
+            }
+            target_ids = list(meta.get("collector_target_ids") or [])
+            if not target_ids:
+                # Backfill display lineage for older imported keywords that
+                # stored candidate/source metadata before target attribution
+                # existed.
+                source_domain = str(meta.get("source_domain") or "").strip().lower().removeprefix("www.")
+                if source_domain:
+                    target_ids.extend([r.id for r in db.query(models.CollectorTarget).filter_by(target_type="domain", value=source_domain).limit(6).all()])
+                q = kw.query.strip().lower()
+                if q:
+                    target_ids.extend([r.id for r in db.query(models.CollectorTarget).filter_by(target_type="keyword", value=q).limit(6).all()])
+                seen=[]
+                target_ids=[x for x in target_ids if not (x in seen or seen.append(x))]
+            for tid in target_ids[:12]:
+                target = db.get(models.CollectorTarget, tid)
+                if target:
+                    lineage["collector_targets"].append({
+                        "id": target.id,
+                        "type": target.target_type,
+                        "value": target.value,
+                        "topic": target.topic,
+                        "priority": target.priority,
+                        "status": target.status,
+                        "success_count": target.success_count,
+                        "reject_count": target.reject_count,
+                    })
+            d["collector_lineage"] = lineage if (lineage["candidate_id"] or lineage["collector_targets"]) else None
         else:
             d["source_keyword"] = ""
             d["keyword_source"] = ""
             d["keyword_intent"] = ""
             d["keyword_status"] = ""
+            d["collector_lineage"] = None
         rows.append(d)
     return rows
 
