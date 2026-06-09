@@ -6,7 +6,7 @@ import requests
 from sqlalchemy.orm import Session
 from . import models, services
 
-STOPWORDS={"best","top","free","online","app","apps","software","tool","tools","page","blog","blogs","pricing","login","signup","about","contact","privacy","terms","docs","help","features","category","tag","author","news","article","post","posts","product","products","with","using","without","guide","guides","definition","meaning","en","www","youtube","reddit","github"}
+STOPWORDS={"best","top","free","online","app","apps","software","tool","tools","page","blog","blogs","pricing","login","signup","about","contact","privacy","terms","docs","help","features","category","tag","author","news","article","post","posts","product","products","with","using","without","guide","guides","definition","meaning","en","pt","de","fr","es","it","nl","pl","www","youtube","reddit","github"}
 TOOL_INTENT_TERMS={"calculator","generator","template","checker","converter","tracker","dashboard","analyzer","builder","creator","planner","estimator","form","spreadsheet","invoice","policy","report","monitor","automation","integration","api","alternative"}
 TOOL_INTENT_PLURALS={"calculators":"calculator","generators":"generator","templates":"template","checkers":"checker","converters":"converter","trackers":"tracker","tracking":"tracker","dashboards":"dashboard","analyzers":"analyzer","builders":"builder","planners":"planner","estimators":"estimator","forms":"form","spreadsheets":"spreadsheet","reports":"report","monitors":"monitor","automations":"automation","integrations":"integration","apis":"api","alternatives":"alternative"}
 COMMERCIAL_TERMS={"pricing","price","cost","fee","invoice","tax","compliance","shopify","woocommerce","quickbooks","hubspot","salesforce","stripe","paypal","b2b","business","agency","client","contractor","clinic","rental"}
@@ -20,6 +20,7 @@ NOISE_TITLE_PATTERNS=(
 )
 BLOCK_TARGET_DOMAINS={"google.com","youtube.com","wikipedia.org","reddit.com","facebook.com","linkedin.com","x.com","twitter.com","github.com","support.google.com","dictionary.com","merriam-webster.com","dictionary.cambridge.org","bestbuy.com","bestwestern.com","alternativeto.net","pinterest.com","capitalone.com","card.com","creditcards.chase.com","usafacts.org","apps.microsoft.com","play.google.com"}
 TECH_SOURCE_RADAR_TERMS={"ai","llm","rag","mcp","agent","agents","model","models","openai","anthropic","claude","gemini","vector","embedding","eval","benchmark","inference","gpu","workflow automation"}
+SHORT_TAIL_REWRITE_BAD_TERMS={"branding","history","quote","quotes","signature","signatures","receipt","receipts","settings","account","login","signup","profile"}
 def is_blocked_domain(domain:str)->bool:
     d=(domain or '').lower().removeprefix('www.')
     return any(d==b or d.endswith('.'+b) for b in BLOCK_TARGET_DOMAINS)
@@ -84,6 +85,11 @@ def expand_generic_short_tail(keyword:str)->list[str]:
     kw=normalize_keyword(keyword)
     if not kw: return []
     terms=set(kw.split())
+    raw_terms=set(re.split(r"\s+", (keyword or '').lower().strip()))
+    if raw_terms & SHORT_TAIL_REWRITE_BAD_TERMS:
+        return []
+    if any(len(t)<=2 and t not in {'ai'} for t in raw_terms):
+        return []
     variants=[]
     if 'shopify' in terms and 'tax' in terms:
         variants += ['shopify sales tax calculator','shopify tax compliance checklist','shopify sales tax api','shopify tax app alternatives']
@@ -727,6 +733,9 @@ def candidate_quality_reject_reason(keyword:str, source:str, evidence:dict|None=
         # they look like a concrete task/tool/checklist/compliance deadline.
         if not has_tool and not ({'compliance','tax','invoice'} & terms and {'checklist','deadline','requirements','cost','roi','automation'} & terms):
             return 'sitemap_editorial_path'
+    if source == 'short_tail_rewrite':
+        if not has_tool or not has_commercial:
+            return 'rewrite_missing_commercial_task'
     # Generic task words alone create endless duplicate pseudo-opportunities.
     generic_tools={'calculator','template','generator','tool','software','app'}
     if terms and terms.issubset(generic_tools | NOISE_TERMS):
