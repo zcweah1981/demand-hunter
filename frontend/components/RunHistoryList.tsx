@@ -1,7 +1,7 @@
 'use client'
 import {useState} from 'react'
 
-function fmtDate(s:string){if(!s) return '-'; const d=new Date(s); if(Number.isNaN(d.getTime())) return s; return d.toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}
+function fmtDate(s:string){if(!s) return '-'; const d=new Date(s); if(Number.isNaN(d.getTime())) return s; return d.toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}
 function arr(x:any){return Array.isArray(x)?x:[]}
 function runType(kind:string){const m:any={daily:'日常机会扫描',collector_autopilot:'采集器自动抓取',collector_auto_verify:'线索自动验证',collector_repair_autopilot:'自动优化检查',collector_repair:'单次优化'}; return m[kind]||kind||'运行'}
 function describeRun(r:any){const s=r.summary||{}; if(typeof s==='string') return {work:s.slice(0,160), inputs:[], outputs:[], highlights:[]}

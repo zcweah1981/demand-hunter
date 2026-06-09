@@ -2,7 +2,7 @@ import {api} from '../../lib/api'
 import {AutopilotPanel} from '../../components/AutopilotPanel'
 import {RunHistoryList} from '../../components/RunHistoryList'
 
-function fmtNextRun(s?:string){if(!s) return '暂无预计时间'; const d=new Date(s); if(Number.isNaN(d.getTime())) return s; return d.toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}
+function fmtNextRun(s?:string){if(!s) return '暂无预计时间'; const d=new Date(s); if(Number.isNaN(d.getTime())) return s; return `${d.toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})} 北京时间`}
 function runTime(r:any){const d=new Date(r.started_at||r.created_at||0); return Number.isNaN(d.getTime())?0:d.getTime()}
 function mergedTaskCount(runs:any[]){const sorted=[...(runs||[])].sort((a,b)=>runTime(b)-runTime(a)); let count=0; let last=0; for(const r of sorted){const t=runTime(r); if(!last||Math.abs(last-t)>5*60*1000) count++; last=t} return count}
 

@@ -33,7 +33,7 @@ const sourceCatalog = [
  {id:'source_radar', name:'一手信号雷达', group:'看早期信号', look:'HN / GitHub / arXiv 等源头', find:'新技术、新词、新需求苗头'},
 ]
 
-function fmtTime(s?:string){if(!s)return '-'; const d=new Date(s); if(Number.isNaN(d.getTime()))return '-'; return d.toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}
+function fmtTime(s?:string){if(!s)return '-'; const d=new Date(s); if(Number.isNaN(d.getTime()))return '-'; return d.toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}
 function sourceName(x?:string){return sourceLabels[x||''] || x || '未知来源'}
 function segmentName(x?:string){return segmentLabels[x||''] || x || '其他'}
 function statusFor(leads:number, problems:number){if(leads>0)return {icon:'✅',label:'有发现',tone:'green' as Tone}; if(problems>0)return {icon:'⚠️',label:'需检查',tone:'amber' as Tone}; return {icon:'—',label:'暂无发现',tone:'slate' as Tone}}

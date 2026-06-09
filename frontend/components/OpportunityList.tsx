@@ -8,7 +8,7 @@ import {api} from '../lib/api'
 
 function firstBusiness(card:any){return (card.evidence_json||[]).find((e:any)=>e.type==='business')||{}}
 function shortText(s:string, n=90){s=(s||'').replace(/\s+/g,' ').trim(); return s.length>n?s.slice(0,n)+'…':s}
-function fmtDate(s:string){if(!s) return '-'; const d=new Date(s); if(Number.isNaN(d.getTime())) return s; return d.toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}
+function fmtDate(s:string){if(!s) return '-'; const d=new Date(s); if(Number.isNaN(d.getTime())) return s; return d.toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}
 
 const SORTS:any={newest:'最新优先',oldest:'最早优先',score_desc:'分数高到低',score_asc:'分数低到高',verdict:'按判断分类'}
 const VERDICTS=['全部','Adopted','Action','Watch','Reject','Block']
