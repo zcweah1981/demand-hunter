@@ -1,6 +1,5 @@
 'use client'
 import {useEffect, useMemo, useState} from 'react'
-import Link from 'next/link'
 import {usePathname} from 'next/navigation'
 import {api, authToken} from '../lib/api'
 
@@ -114,14 +113,13 @@ export function CollectorsPage({initialSection='overview'}:{initialSection?:stri
    <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-sm font-semibold uppercase tracking-[0.3em] text-blue-300">Opportunity Discovery</p><h1 className="mt-3 text-4xl font-black text-white">机会发现中心</h1><p className="mt-3 max-w-3xl text-slate-300">用用户视角看结果：发现了多少线索、哪些进入验证、依据哪些搜索条件继续找。</p></div><div className="flex flex-wrap gap-2"><button className="btn" disabled={busy} onClick={runDiscovery}>开始抓取</button><button className="btn-secondary" disabled={busy} onClick={downloadDigest}>下载报告</button><button className="btn-secondary" disabled={busy} onClick={()=>setShowLog(true)}>优化记录</button></div></div>
   </section>
   {msg&&<div className="rounded-2xl border border-slate-800 bg-slate-950 p-3 text-sm text-slate-200">{msg}</div>}
-  <div className="grid gap-6 xl:grid-cols-[220px_1fr]"><aside className="rounded-3xl border border-slate-800 bg-slate-950/70 p-3 xl:sticky xl:top-4 xl:h-fit">{sectionItems.map(item=><Link key={item.id} href={`/collectors/${item.id}`} className={`mb-2 block rounded-2xl px-4 py-3 no-underline transition ${section===item.id?'bg-blue-600 text-white':'bg-slate-900/70 text-slate-300 hover:bg-slate-800'}`}><b>{item.label}</b><div className="mt-1 text-xs opacity-70">{item.desc}</div></Link>)}</aside>
-   <main className="space-y-6">
-    {section==='overview'&&<Overview health={health} latest={latest} totalLeads={totalLeads} totalLooked={totalLooked} problemSources={problemSources} highValue={highValue} candidates={candidates} sourceRows={sourceRows} openTrace={setTrace}/>} 
-    {section==='flow'&&<Flow/>}
-    {section==='conditions'&&<Conditions segSummary={segSummary} segMap={segMap} highValue={highValue} weak={weak} budget={budget} busy={busy} refreshConditions={refreshConditions} tidyConditions={tidyConditions} openTrace={setTrace}/>} 
-    {section==='sources'&&<Sources sourceRows={sourceRows}/>} 
-    {section==='records'&&<Records records={visibleRecords} allRecords={records} sources={sources} sourceFilter={recordSource} statusFilter={recordStatus} setSourceFilter={setRecordSource} setStatusFilter={setRecordStatus}/>} 
-   </main></div>
+  <main className="space-y-6">
+   {section==='overview'&&<Overview health={health} latest={latest} totalLeads={totalLeads} totalLooked={totalLooked} problemSources={problemSources} highValue={highValue} candidates={candidates} sourceRows={sourceRows} openTrace={setTrace}/>} 
+   {section==='flow'&&<Flow/>}
+   {section==='conditions'&&<Conditions segSummary={segSummary} segMap={segMap} highValue={highValue} weak={weak} budget={budget} busy={busy} refreshConditions={refreshConditions} tidyConditions={tidyConditions} openTrace={setTrace}/>} 
+   {section==='sources'&&<Sources sourceRows={sourceRows}/>} 
+   {section==='records'&&<Records records={visibleRecords} allRecords={records} sources={sources} sourceFilter={recordSource} statusFilter={recordStatus} setSourceFilter={setRecordSource} setStatusFilter={setRecordStatus}/>} 
+  </main>
   {trace&&<TraceModal trace={trace} onClose={()=>setTrace(null)}/>} {showLog&&<OptimizationLog onClose={()=>setShowLog(false)} repairRuns={repairRuns} repairAutoRuns={repairAutoRuns} rejectedReasons={rejectedReasons} inspectRejected={inspectRejected} busy={busy}/>} 
  </div>
 }
