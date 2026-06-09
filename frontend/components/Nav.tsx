@@ -14,7 +14,6 @@ const mainItems = [
 
 const collectorItems = [
   ['/collectors/overview', '总览'],
-  ['/collectors/flow', '发现流程'],
   ['/collectors/conditions', '搜索条件'],
   ['/collectors/sources', '发现来源'],
   ['/collectors/records', '抓取记录'],
