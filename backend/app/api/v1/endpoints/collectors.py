@@ -36,6 +36,11 @@ def rejected_cleanup(payload: dict | None = None, _: bool = Depends(require_auth
 def repair_missing_tool_intent(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
     return collectors.apply_missing_tool_intent_repair(db)
 
+@router.post("/repairs/generic-short-tail")
+def repair_generic_short_tail(payload: dict | None = None, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    payload=payload or {}
+    return collectors.apply_generic_short_tail_repair(db, limit=max(1, int(payload.get('limit') or 300)))
+
 @router.get("/summary")
 def collector_summary(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
     return collectors.collector_pool_summary(db)

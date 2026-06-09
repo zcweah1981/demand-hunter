@@ -79,6 +79,30 @@ def _keyword_variants_from_text(text:str)->list[str]:
         if nv and nv not in out and not candidate_noise_reason(nv): out.append(nv)
     return out[:24]
 
+def expand_generic_short_tail(keyword:str)->list[str]:
+    """Rewrite short generic heads into executable long-tail task queries."""
+    kw=normalize_keyword(keyword)
+    if not kw: return []
+    terms=set(kw.split())
+    variants=[]
+    if 'shopify' in terms and 'tax' in terms:
+        variants += ['shopify sales tax calculator','shopify tax compliance checklist','shopify sales tax api','shopify tax app alternatives']
+    if 'compliance' in terms and ('tracker' in terms or 'tracking' in terms):
+        variants += ['vendor compliance tracker template','compliance audit tracker template','compliance evidence tracker','compliance automation tracker']
+    if 'compliance' in terms and 'calculator' in terms:
+        variants += ['compliance cost calculator','compliance roi calculator','soc 2 compliance cost calculator','gdpr compliance cost calculator','hipaa compliance cost calculator']
+    if 'invoice' in terms and 'calculator' in terms:
+        variants += ['invoice total calculator','invoice late fee calculator','invoice payment terms calculator','invoice tax calculator template']
+    if 'vendor' in terms and 'compliance' in terms:
+        variants += ['vendor compliance checklist template','vendor compliance tracker','vendor risk assessment checklist','vendor compliance audit template']
+    if not variants and len(terms)<=2:
+        variants += [f'{kw} template', f'{kw} calculator', f'{kw} checklist', f'{kw} tracker']
+    out=[]
+    for v in variants:
+        nv=normalize_keyword(v)
+        if nv and nv!=kw and nv not in out and not candidate_noise_reason(nv): out.append(nv)
+    return out[:12]
+
 def refresh_collector_targets_from_cards(db:Session, limit:int=80)->dict:
     """Generate collector targets from Action/Watch cards and their SERP evidence.
 
@@ -318,6 +342,7 @@ def collector_system_health(db:Session)->dict:
         score-=10; issues.append({'code':'candidate_reject_heavy','severity':'info','text':f'rejected candidates are {round(rejected/max(1,total)*100)}% of pool'})
         repairs.append({'id':'inspect_rejected_reasons','label':'查看 rejected reason 分布','safety':'只读','endpoint':'/api/collectors/rejected-reasons'})
         repairs.append({'id':'repair_missing_tool_intent','label':'修复 missing_tool_intent 噪音','safety':'可逆：调整 source 权重并开启 source_radar tech-only','endpoint':'/api/collectors/repairs/missing-tool-intent'})
+        repairs.append({'id':'repair_generic_short_tail','label':'改写 generic_short_tail 短头词','safety':'可逆：新增 rewrite candidates，保留原 rejected','endpoint':'/api/collectors/repairs/generic-short-tail'})
         repairs.append({'id':'cleanup_old_rejected','label':'清理旧 rejected candidates','safety':'可逆性低：删除 rejected 候选记录，不影响 keywords/cards','endpoint':'/api/collectors/candidates/rejected/cleanup'})
     if new_candidates > 0:
         strengths.append({'code':'candidate_pool_has_work','text':f'{new_candidates} new candidates waiting'})
@@ -391,6 +416,31 @@ def apply_missing_tool_intent_repair(db:Session)->dict:
     row.value='true'; row.secret=False; db.merge(row)
     audit={'changes':changes,'source_radar_tech_only':True,'top_reasons':dist.get('by_reason',[])[:8],'top_sources':dist.get('by_source',[])[:8]}
     db.add(models.RunHistory(kind='collector_repair', status='ok', summary=json.dumps({'repair':'missing_tool_intent','result':audit}, ensure_ascii=False), finished_at=datetime.utcnow()))
+    db.commit()
+    return {'ok':True, **audit}
+
+def apply_generic_short_tail_repair(db:Session, limit:int=300)->dict:
+    """Rewrite rejected generic short-tail candidates into concrete task variants."""
+    rows=db.query(models.CandidateKeyword).filter_by(status='rejected').order_by(models.CandidateKeyword.created_at.desc()).limit(max(1,min(1000,limit))).all()
+    scanned=0; rewritten=0; variants_saved=0; examples=[]
+    for r in rows:
+        try: ev=json.loads(r.evidence_json or '{}')
+        except Exception: ev={}
+        if ev.get('reject_reason') != 'generic_short_tail':
+            continue
+        scanned+=1
+        variants=expand_generic_short_tail(r.keyword)
+        if not variants: continue
+        ev['rewrite_candidates']=variants
+        r.evidence_json=json.dumps(ev, ensure_ascii=False)
+        db.merge(r); rewritten+=1
+        for v in variants:
+            row=upsert_candidate(db, v, 'short_tail_rewrite', r.source_url, r.source_domain, '短头词改写', {**ev, 'original_keyword': r.keyword, 'rewrite_reason':'generic_short_tail'}, 0.57)
+            if row: variants_saved+=1
+        if len(examples)<10: examples.append({'original':r.keyword,'variants':variants})
+    db.commit()
+    audit={'scanned_generic_short_tail':scanned,'rewritten':rewritten,'variants_saved':variants_saved,'examples':examples}
+    db.add(models.RunHistory(kind='collector_repair', status='ok', summary=json.dumps({'repair':'generic_short_tail','result':audit}, ensure_ascii=False), finished_at=datetime.utcnow()))
     db.commit()
     return {'ok':True, **audit}
 
@@ -809,6 +859,14 @@ def upsert_candidate(db:Session, keyword:str, source:str, source_url:str='', sou
         if isinstance(obj, models.CandidateKeyword) and obj.keyword == kw and obj.source == source and (obj.source_url or '') == source_url:
             return None
     if reason:
+        if reason == 'generic_short_tail':
+            rewrites=[]
+            for variant in expand_generic_short_tail(kw):
+                rewrites.append(variant)
+                # Add rewritten task variants as importable candidates while
+                # preserving the original short-head as rejected evidence.
+                upsert_candidate(db, variant, 'short_tail_rewrite', source_url, source_domain, '短头词改写', {**evidence, 'original_keyword': kw, 'rewrite_reason': reason}, max(score, 0.57))
+            evidence['rewrite_candidates']=rewrites
         # Store rejected evidence for observability, but never let obvious source
         # noise enter the importable candidate pool.
         with db.no_autoflush:
