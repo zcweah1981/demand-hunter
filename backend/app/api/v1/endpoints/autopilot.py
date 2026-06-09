@@ -96,7 +96,7 @@ def autopilot_status(_: bool = Depends(require_auth), db: Session = Depends(get_
         "providers": providers,
         "seeds": seeds,
         "domains": domains,
-        "counts": {"discoveries": discoveries, "cards": cards, "pending_review": pending_review, "action": actions, "watch": watch, "unit": "opportunity_group"},
+        "counts": {"discoveries": discoveries, **opportunity_counts},
         "collectors": collector_summary,
         "diagnosis": last.get("summary", {}).get("diagnosis") if last and isinstance(last.get("summary"), dict) else None,
         "active_experiment": active_experiment,
