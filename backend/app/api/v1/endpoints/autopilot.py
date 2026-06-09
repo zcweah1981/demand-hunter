@@ -21,6 +21,10 @@ def _bool_setting(db: Session, key: str) -> bool:
 
 def _opportunity_group_counts(db: Session) -> dict:
     counts=services.opportunity_group_counts(db)
+    try:
+        counts["min_action_score"] = float(services.setting(db, "MIN_ACTION_SCORE") or "74")
+    except Exception:
+        counts["min_action_score"] = 74
     counts["pending_review"] = len([c for c in services.grouped_opportunity_cards(db,"All") if (not c.feedback_label) and c.verdict in {"Action","Watch"}])
     return counts
 
