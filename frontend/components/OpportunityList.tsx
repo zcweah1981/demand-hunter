@@ -62,7 +62,9 @@ export function OpportunityList({cards, empty='暂无卡片', showVerdictFilter=
  }
  useEffect(()=>{
   const id=new URLSearchParams(location.search).get('card')
-  if(id){const found=(localCards||[]).find(c=>String(c.id)===id); if(found) setSelected(found)}
+  const q=new URLSearchParams(location.search).get('q')?.toLowerCase()
+  if(id){const found=(localCards||[]).find(c=>String(c.id)===id); if(found){setSelected(found); return}}
+  if(q){const found=(localCards||[]).find(c=>`${c.source_keyword||''} ${c.title||''} ${c.opportunity_group?.canonical_keyword||''}`.toLowerCase().includes(q)); if(found) setSelected(found)}
  },[localCards])
  useEffect(()=>{
   function isTypingTarget(t:any){const tag=(t?.tagName||'').toLowerCase(); return tag==='input'||tag==='textarea'||tag==='select'||t?.isContentEditable}

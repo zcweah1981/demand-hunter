@@ -21,12 +21,12 @@ function describeRun(r:any){const s=r.summary||{}; if(typeof s==='string') retur
  const work = r.kind==='collector_auto_verify'?'把已导入线索跑验证，判断是否形成机会卡':r.kind==='collector_autopilot'?'按当前预算抓取来源、清洗线索、导入关键词并自动验证':r.kind==='daily'?'运行完整机会猎手：关键词、SERP、竞品和机会卡':r.kind==='collector_repair_autopilot'?'检查采集器健康并执行安全优化':'执行系统维护/优化'
  return {work, inputs, outputs, highlights}
 }
-function unique(xs:string[]){return Array.from(new Set(xs.filter(Boolean))).slice(0,30)}
+function unique(xs:any[]){const seen=new Set(); const out:any[]=[]; for(const x of xs.filter(Boolean)){const key=typeof x==='string'?x:(x.label||x.href||JSON.stringify(x)); if(seen.has(key)) continue; seen.add(key); out.push(x)} return out.slice(0,30)}
 function runLists(r:any){const s=r.summary||{}; if(typeof s==='string') return {opportunities:[], imported:[], skipped:[], sources:[]}
  const opportunities=unique([
-  ...arr(s.verified).map((x:any)=>x.query),
-  ...arr(s.auto_verify?.verified).map((x:any)=>x.query),
-  ...arr(s.created_cards).map((x:any)=>x.query||x.keyword||x.title),
+  ...arr(s.verified).map((x:any)=>{const q=x.query||x.keyword||x.title; return {label:q, href:`/hunter/opportunities?verdict=All${x.card_id?`&card=${x.card_id}`:''}${q?`&q=${encodeURIComponent(q)}`:''}`}}),
+  ...arr(s.auto_verify?.verified).map((x:any)=>{const q=x.query||x.keyword||x.title; return {label:q, href:`/hunter/opportunities?verdict=All${x.card_id?`&card=${x.card_id}`:''}${q?`&q=${encodeURIComponent(q)}`:''}`}}),
+  ...arr(s.created_cards).map((x:any)=>{const q=x.query||x.keyword||x.title; return {label:q, href:`/hunter/opportunities?verdict=All${(x.card_id||x.id)?`&card=${x.card_id||x.id}`:''}${q?`&q=${encodeURIComponent(q)}`:''}`}}),
  ])
  const imported=unique([
   ...arr(s.import?.imported_keywords).map((x:any)=>typeof x==='string'?x:x.query||x.keyword),
@@ -59,4 +59,4 @@ export function RunHistoryList({runs}:{runs:any[]}){
  </>
 }
 
-function RunListBlock({title,items,empty,tone}:{title:string;items:string[];empty:string;tone:string}){return <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4"><h3 className={`font-bold ${tone}`}>{title}</h3>{items.length?<ul className="mt-3 space-y-2 text-sm text-slate-300">{items.map((x,i)=><li key={`${x}-${i}`} className="rounded-xl bg-slate-950 px-3 py-2">{x}</li>)}</ul>:<p className="mt-3 text-sm text-slate-500">{empty}</p>}</section>}
+function RunListBlock({title,items,empty,tone}:{title:string;items:any[];empty:string;tone:string}){return <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4"><h3 className={`font-bold ${tone}`}>{title}</h3>{items.length?<ul className="mt-3 space-y-2 text-sm text-slate-300">{items.map((x:any,i:number)=>{const label=typeof x==='string'?x:x.label; const href=typeof x==='string'?null:x.href; return <li key={`${label}-${i}`} className="rounded-xl bg-slate-950 px-3 py-2">{href?<a className="text-blue-300 hover:text-blue-200" href={href}>{label} <span className="text-xs text-slate-500">→ 查看机会</span></a>:label}</li>})}</ul>:<p className="mt-3 text-sm text-slate-500">{empty}</p>}</section>}
