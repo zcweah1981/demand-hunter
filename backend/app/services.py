@@ -349,21 +349,25 @@ def grouped_opportunity_cards(db: Session, verdict: str = "All", limit: int = 30
     except Exception: min_action=74.0
     rows=db.query(models.OpportunityCard).order_by(models.OpportunityCard.created_at.desc()).limit(limit).all()
     def final(c): return c.feedback_label or c.verdict
-    filtered=[]
-    for c in rows:
-        fv=final(c)
-        ok = verdict=="All" or fv==verdict
-        if ok and verdict=="Action": ok=float(c.score or 0)>=min_action
-        if ok: filtered.append(c)
     by={}
     def rank(c):
         fv=final(c)
         group=opportunity_group_for_card(db,c)
         return ({"Adopted":5,"Action":4,"Watch":3,"Reject":1,"Block":0}.get(fv,1))*1000 + float(c.score or 0) + float(group.get("probability") or 0)*100
-    for c in filtered:
+    # First pick one representative/final state per group across ALL cards.
+    # Filtering before grouping is wrong: if a group has one Adopted card and
+    # one older Action variant, it must live under Adopted only, not both.
+    for c in rows:
         gid=opportunity_group_for_card(db,c).get("group_id") or f"card-{c.id}"
         if gid not in by or rank(c)>rank(by[gid]): by[gid]=c
-    return sorted(by.values(), key=lambda c: (rank(c), c.created_at), reverse=True)
+    reps=list(by.values())
+    filtered=[]
+    for c in reps:
+        fv=final(c)
+        ok = verdict=="All" or fv==verdict
+        if ok and verdict=="Action": ok=float(c.score or 0)>=min_action
+        if ok: filtered.append(c)
+    return sorted(filtered, key=lambda c: (rank(c), c.created_at), reverse=True)
 
 def opportunity_group_counts(db: Session) -> dict:
     return {
