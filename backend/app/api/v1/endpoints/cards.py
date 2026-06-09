@@ -102,6 +102,13 @@ def feedback(card_id: int, payload: schemas.FeedbackIn, _: bool = Depends(requir
         raise HTTPException(404, "card not found")
     return obj(services.apply_feedback(db, card, payload.label, payload.note))
 
+@router.post("/{card_id}/reanalyze")
+def reanalyze(card_id: int, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    card = db.get(models.OpportunityCard, card_id)
+    if not card:
+        raise HTTPException(404, "card not found")
+    return _card_obj(db, services.reanalyze_card_business(db, card))
+
 @router.post("/bulk-feedback")
 def bulk_feedback(payload: dict, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     ids=[int(x) for x in (payload.get("card_ids") or [])]

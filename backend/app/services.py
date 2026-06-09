@@ -1483,6 +1483,53 @@ def make_card(db: Session, keyword: models.Keyword) -> models.OpportunityCard:
         db.add(card)
     keyword.score=total; keyword.status=card.verdict.lower(); db.commit(); db.refresh(card); return card
 
+def reanalyze_card_business(db: Session, card: models.OpportunityCard) -> models.OpportunityCard:
+    """Refresh business analysis for an existing card without changing human state.
+
+    Used when a card has generic rules_fallback/restored content. Preserves
+    feedback_label/verdict but replaces the business evidence block with LLM
+    output when available, otherwise a keyword-specific fallback clearly marked.
+    """
+    keyword=db.get(models.Keyword, card.keyword_id)
+    if not keyword:
+        return card
+    serp=db.query(models.SerpResult).filter_by(keyword_id=keyword.id).all() or run_serp(db, keyword)
+    comps=analyze_competitors(db, keyword)
+    socials=collect_social(db, keyword)
+    gap=sum(s.weakness_score for s in serp[:10]) / max(1, len(serp[:10]))
+    strong_count=sum(1 for s in serp if "strong_brand" in (s.gap_tags or ""))
+    mismatch_count=sum(1 for s in serp if "query_mismatch" in (s.gap_tags or ""))
+    relevant_count=max(0, len(serp)-mismatch_count)
+    forum_count=sum(1 for s in serp if "forum_heavy" in (s.gap_tags or ""))
+    demand=min(1.0, 0.30 + 0.06*relevant_count + 0.08*len(socials))
+    comp=min(1.0, 0.35 + 0.1*len(comps) + 0.08*forum_count - 0.06*strong_count)
+    mtype, mscore=monetization(keyword.query, keyword.intent)
+    biz=business_profile(keyword.query, keyword.intent, mtype)
+    commercial=float(biz.get("commercial_score",0.55))
+    rule_verdict=card.feedback_label or card.verdict or "Watch"
+    reason=_zh_verdict_reason("Watch" if rule_verdict=="Adopted" else rule_verdict, float(card.score or 0), gap, strong_count, relevant_count, len(socials)>0, (setting(db,"REQUIRE_SOCIAL_FOR_ACTION") or "true").lower() in {"1","true","yes","on"}, mismatch_count)
+    metrics={"total_score":card.score,"demand_score":round(demand,2),"serp_gap_score":round(gap,2),"competitor_weakness_score":round(comp,2),"commercial_score":commercial,"monetization_score":mscore,"strong_count":strong_count,"mismatch_count":mismatch_count,"relevant_count":relevant_count,"has_social":len(socials)>0}
+    llm=_llm_opportunity_analysis(db, keyword, serp, comps, socials, metrics, "Watch" if rule_verdict=="Adopted" else rule_verdict, reason)
+    if llm:
+        commercial=max(0.0,min(1.0,float(llm.get("commercial_score") or commercial)))
+        biz.update({"business_type":str(llm.get("business_type") or biz.get("business_type")),"icp":str(llm.get("icp") or biz.get("icp")),"pain":str(llm.get("pain") or biz.get("pain")),"pay_trigger":str(llm.get("pay_trigger") or biz.get("pay_trigger")),"wedge":str(llm.get("wedge") or biz.get("wedge")),"commercial_mvp":str(llm.get("mvp_plan") or biz.get("commercial_mvp")),"revenue_path":str(llm.get("revenue_path") or biz.get("revenue_path")),"pricing":str(llm.get("pricing") or biz.get("pricing")),"gtm":str(llm.get("gtm") or biz.get("gtm")),"first_sale_test":llm.get("first_sale_test") if isinstance(llm.get("first_sale_test"),list) else biz.get("first_sale_test"),"key_assumption":str(llm.get("key_assumption") or biz.get("key_assumption")),"commercial_score":commercial,"keyword_type":str(llm.get("keyword_type") or "unknown"),"seo_fit":str(llm.get("seo_fit") or "unknown"),"missing_evidence":llm.get("missing_evidence") if isinstance(llm.get("missing_evidence"),list) else [],"analysis_source":"llm_reanalysis"})
+        card.title=str(llm.get("title") or card.title)
+        card.mvp_plan=str(llm.get("mvp_plan") or card.mvp_plan)
+        if isinstance(llm.get("risks"),list): card.risks=json.dumps([str(x) for x in llm.get("risks")],ensure_ascii=False)
+        card.monetization_type=str(llm.get("business_type") or card.monetization_type)
+    else:
+        detail=_keyword_task_detail(keyword.query)
+        biz.update({"analysis_source":"specific_rules_fallback_no_llm","commercial_mvp":_keyword_specific_mvp(keyword.query,biz,"Watch" if rule_verdict=="Adopted" else rule_verdict,reason),"wedge":detail["artifact"],"first_sale_test":[detail["test"]],"missing_evidence":["LLM 分析未返回有效 JSON，需要人工/模型重跑","需要补搜索量/CPC/KD/趋势/国家分布"]})
+        card.mvp_plan=biz["commercial_mvp"]
+    biz["type"]="business"; biz["verdict_reason"]=str((llm or {}).get("verdict_reason") or reason)
+    try:
+        ev=json.loads(card.evidence_json or "[]")
+        if not isinstance(ev,list): ev=[ev]
+    except Exception: ev=[]
+    ev=[x for x in ev if not (isinstance(x,dict) and x.get("type")=="business")]
+    card.evidence_json=json.dumps([biz]+ev,ensure_ascii=False)
+    db.merge(card); db.commit(); db.refresh(card); return card
+
 def select_old_keywords_for_recheck(db: Session, limit: int = 4) -> list[models.Keyword]:
     """Pick existing keywords for periodic re-evaluation.
 
