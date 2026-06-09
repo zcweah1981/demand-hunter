@@ -87,28 +87,29 @@ export function OpportunityCardView({card,compact=false,showFeedback=true,onFeed
   </section>}
 
   {!compact&&<details className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
-   <summary className="cursor-pointer text-sm font-semibold text-slate-300 hover:text-white">展开完整商业分析 / MVP / 全部证据</summary>
-   {business&&<section className="mt-4 rounded-2xl border border-blue-500/30 bg-blue-500/10 p-4">
-    <div className="mb-3 text-xs font-semibold tracking-wide text-blue-200">商业化判断 <span className="text-blue-300/60">Commercialization Brief</span></div>
-    <div className="mb-3 flex flex-wrap gap-2 text-xs">
-     {business.keyword_type&&<span className="badge">词类型：{business.keyword_type}</span>}
-     {business.seo_fit&&<span className="badge badge-action">SEO 适配：{business.seo_fit}</span>}
-     {business.analysis_source&&<span className="badge badge-watch">分析来源：{business.analysis_source}</span>}
-    </div>
-    <div className="grid gap-3 text-sm text-slate-200 md:grid-cols-2">
-     <div><b>目标用户 <span className="text-slate-500">ICP</span></b><p className="mt-1 text-slate-400">{business.icp}</p></div>
-     <div><b>付费触发 <span className="text-slate-500">Pay Trigger</span></b><p className="mt-1 text-slate-400">{business.pay_trigger}</p></div>
-     <div><b>快速商业 MVP <span className="text-slate-500">Commercial MVP</span></b><p className="mt-1 text-slate-400">{business.commercial_mvp}</p></div>
-     <div><b>收入路径 <span className="text-slate-500">Revenue Path</span></b><p className="mt-1 text-slate-400">{business.revenue_path}</p></div>
-     <div><b>定价 <span className="text-slate-500">Pricing</span></b><p className="mt-1 text-slate-400">{business.pricing}</p></div>
-     <div><b>获客方式 <span className="text-slate-500">GTM</span></b><p className="mt-1 text-slate-400">{business.gtm}</p></div>
-     <div><b>切入点 <span className="text-slate-500">Wedge</span></b><p className="mt-1 text-slate-400">{business.wedge}</p></div>
-    </div>
-    {business.first_sale_test?.length>0&&<div className="mt-3"><b className="text-sm">第一笔钱测试 <span className="text-slate-500">First Sale Test</span></b><ol className="mt-2 list-decimal pl-5 text-xs text-slate-300">{business.first_sale_test.map((x:string)=><li key={x}>{x}</li>)}</ol></div>}
-    {business.key_assumption&&<p className="safe-text mt-3 rounded-xl bg-slate-950/70 p-3 text-xs text-slate-300"><b>关键假设：</b>{business.key_assumption}</p>}
-   </section>}
-   {card.mvp_plan&&<div className="safe-text mt-4 text-sm leading-6 text-slate-300"><div className="mb-1 text-xs font-semibold text-slate-500">MVP 计划</div>{card.mvp_plan}</div>}
-   {evidence.length>0&&<div className="mt-4"><div className="mb-2 text-xs font-semibold tracking-wide text-slate-500">全部证据 Evidence</div><div className="space-y-1">{evidence.map((e:any,i:number)=><a key={i} className="block truncate text-xs text-blue-300 hover:text-blue-200" href={e.url} target="_blank">[{evidenceTypeLabel(e.type)}] {e.title}</a>)}</div></div>}
+   <summary className="cursor-pointer text-sm font-semibold text-slate-300 hover:text-white">展开完整分析</summary>
+   <div className="mt-4 space-y-4">
+    {business&&<section className="rounded-2xl border border-blue-500/30 bg-blue-500/10 p-4">
+     <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><h3 className="font-bold text-blue-100">1. 商业判断</h3><div className="flex flex-wrap gap-2 text-xs">{business.keyword_type&&<span className="badge">词类型：{business.keyword_type}</span>}{business.seo_fit&&<span className="badge badge-action">SEO：{business.seo_fit}</span>}{business.analysis_source&&<span className="badge badge-watch">{business.analysis_source}</span>}</div></div>
+     {business.verdict_reason&&<p className="mb-3 rounded-xl bg-slate-950/60 p-3 text-sm leading-6 text-slate-200"><b>判断理由：</b>{business.verdict_reason}</p>}
+     <div className="grid gap-3 text-sm md:grid-cols-2">
+      <InfoBox title="目标用户" text={business.icp}/><InfoBox title="痛点" text={business.pain}/><InfoBox title="付费触发" text={business.pay_trigger}/><InfoBox title="切入点" text={business.wedge}/><InfoBox title="收入路径" text={business.revenue_path}/><InfoBox title="定价测试" text={business.pricing}/><InfoBox title="获客方式" text={business.gtm}/><InfoBox title="关键假设" text={business.key_assumption}/>
+     </div>
+    </section>}
+    <section className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+     <h3 className="font-bold text-emerald-100">2. MVP / 第一笔钱测试</h3>
+     <div className="mt-3 grid gap-3 md:grid-cols-2"><InfoBox title="最小商业 MVP" text={business?.commercial_mvp||card.mvp_plan}/><div className="rounded-xl bg-slate-950/70 p-3"><b className="text-slate-100">第一笔钱测试</b>{business?.first_sale_test?.length?<ol className="mt-2 list-decimal pl-5 text-sm text-slate-300">{business.first_sale_test.map((x:string)=><li key={x}>{x}</li>)}</ol>:<p className="mt-1 text-sm text-slate-400">暂无明确测试步骤。</p>}</div></div>
+     {card.mvp_plan&&<div className="safe-text mt-3 rounded-xl bg-slate-950/70 p-3 text-sm leading-6 text-slate-300"><b className="text-slate-100">完整 MVP 计划：</b><br/>{card.mvp_plan}</div>}
+    </section>
+    <section className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
+     <h3 className="font-bold text-amber-100">3. 风险与待补证据</h3>
+     <div className="mt-3 grid gap-3 md:grid-cols-2"><ListBox title="风险" items={card.risks||[]}/><ListBox title="待补证据" items={business?.missing_evidence||[]}/></div>
+    </section>
+    <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+     <h3 className="font-bold text-slate-100">4. 证据链</h3>
+     {evidence.length>0?<div className="mt-3 grid gap-2">{evidence.map((e:any,i:number)=>e.url?<a key={i} className="rounded-xl bg-slate-950 px-3 py-2 text-xs text-blue-300 hover:text-blue-200" href={e.url} target="_blank">[{evidenceTypeLabel(e.type)}] {e.title||e.url}</a>:<div key={i} className="rounded-xl bg-slate-950 px-3 py-2 text-xs text-slate-300">[{evidenceTypeLabel(e.type)}] {e.title||e.keyword||e.note||JSON.stringify(e).slice(0,160)}</div>)}</div>:<p className="mt-3 text-sm text-slate-500">暂无证据链。</p>}
+    </section>
+   </div>
   </details>}
 
   {showFeedback&&compact&&<div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-3">
@@ -117,6 +118,9 @@ export function OpportunityCardView({card,compact=false,showFeedback=true,onFeed
   </div>}
  </article>
 }
+
+function InfoBox({title,text}:{title:string;text?:string}){return <div className="rounded-xl bg-slate-950/70 p-3"><b className="text-slate-100">{title}</b><p className="mt-1 text-sm leading-6 text-slate-400">{text||'-'}</p></div>}
+function ListBox({title,items}:{title:string;items:string[]}){return <div className="rounded-xl bg-slate-950/70 p-3"><b className="text-slate-100">{title}</b>{items?.length?<ul className="mt-2 list-disc pl-5 text-sm text-slate-300">{items.map((x:string)=><li key={x}>{x}</li>)}</ul>:<p className="mt-1 text-sm text-slate-500">暂无。</p>}</div>}
 
 function fbClass(x:string){const m:any={Watch:'border-blue-500/40 bg-blue-500/10 text-blue-200 hover:bg-blue-500/20',Action:'border-emerald-500/40 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20',Adopted:'border-purple-500/40 bg-purple-500/10 text-purple-200 hover:bg-purple-500/20',Reject:'border-amber-500/40 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20',Block:'border-rose-500/40 bg-rose-500/10 text-rose-200 hover:bg-rose-500/20'}; return `rounded border px-2 py-1 text-xs ${m[x]}`}
 function InlineFeedback({onFeedback}:{onFeedback:(label:string)=>void}){const labels:any={Watch:'观察',Action:'行动',Adopted:'采纳',Reject:'拒绝',Block:'屏蔽'}; return <div className="flex flex-wrap gap-2">{['Watch','Action','Adopted','Reject','Block'].map(x=><button key={x} title={x} className={fbClass(x)} onClick={()=>onFeedback(x)}>{labels[x]} <span className="opacity-60">{x}</span></button>)}</div>}
