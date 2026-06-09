@@ -1952,6 +1952,13 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
                 })
         clean = (collector_summary or {}).get("clean") or {}
         imported = (collector_summary or {}).get("import") or {}
+        collector_self_repair_report = None
+        if collector_summary and collector_summary.get("enabled", True):
+            try:
+                from . import collectors as collector_service
+                collector_self_repair_report = collector_service.collector_autopilot_self_repair_report(db)
+            except Exception as e:
+                collector_self_repair_report = {"ok": False, "error": str(e)[:180]}
         card_by_source={}
         for p in processed:
             key=p.get("source") or "unknown"
@@ -1971,6 +1978,8 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
                 "pool": (collector_summary or {}).get("summary") or {},
                 "clean": clean,
                 "import": imported,
+                "safe_repair": (collector_summary or {}).get("safe_repair"),
+                "self_repair_report": collector_self_repair_report,
             },
             "funnel": {
                 "collector_seen": sum(int(x.get("seen") or 0) for x in collector_by_source),
@@ -2166,6 +2175,16 @@ def export_latest_markdown(db: Session) -> str:
     out_dir.mkdir(parents=True, exist_ok=True)
     cards = db.query(models.OpportunityCard).order_by(models.OpportunityCard.score.desc()).limit(30).all()
     lines = ["# Demand Hunter Latest Cards", "", f"Generated: {datetime.utcnow().isoformat()}Z", ""]
+    latest_daily = db.query(models.RunHistory).filter_by(kind="daily", status="ok").order_by(models.RunHistory.started_at.desc()).first()
+    if latest_daily:
+        try: daily_summary=json.loads(latest_daily.summary or "{}")
+        except Exception: daily_summary={}
+        sr=((daily_summary.get("quality_report") or {}).get("collector") or {}).get("self_repair_report") or {}
+        if sr.get("ok") and sr.get("report"):
+            lines += ["## Collector Autopilot / Safe Repair Audit", "", f"Daily Run: #{latest_daily.id}", "", "```text", sr.get("report"), "```", ""]
+        elif (daily_summary.get("collector_summary") or {}).get("safe_repair"):
+            safe=(daily_summary.get("collector_summary") or {}).get("safe_repair") or {}
+            lines += ["## Collector Autopilot / Safe Repair Audit", "", f"Daily Run: #{latest_daily.id}", f"- Safe repair applied: {safe.get('applied_count')}", f"- Safe repair blocked: {safe.get('blocked_count')}", ""]
     for c in cards:
         kw = db.get(models.Keyword, c.keyword_id)
         lines += [f"## {c.verdict} · {c.score} · {kw.query if kw else c.title}", "", f"- Monetization: {c.monetization_type}", f"- Demand: {c.demand_score}", f"- SERP Gap: {c.serp_gap_score}", f"- Competitor Weakness: {c.competitor_weakness_score}", f"- Commercial: {c.mvp_score}", "", "Commercialization:", c.mvp_plan, ""]
