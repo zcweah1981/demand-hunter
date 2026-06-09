@@ -171,6 +171,18 @@ def keyword_noise_reason(query: str, source: str = "") -> str:
         return "developer_or_documentation_noise"
     if re.search(r"\b(after|before)\b", q):
         return "search_operator_noise"
+    if re.search(r"^[a-z0-9][a-z0-9 ._-]{1,24}:\s+", q) or re.search(r"\bwhich\s+.+\bbest\b", q) or re.search(r"\bfor\s+your\s+(small\s+)?business\b", q) or q.rstrip().endswith("?"):
+        return "title_or_brand_residue"
+    if re.search(r"\b(best|top)\b.+\b(plugin|plugins|extension|extensions|software|apps?)\b", q) or re.search(r"\b(plugin|plugins|extension|extensions)\b.+\b(compared|comparison|review|reviews)\b", q) or re.search(r"\b(compared|comparison|review|reviews)\b", q):
+        return "comparison_or_listicle_intent"
+    if re.search(r"\b(woocommerce|shopify|wordpress)\b", q) and re.search(r"\b(extension|plugin|plugins|marketplace)\b", q) and not re.search(r"\b(template|calculator|checklist|tracker|generator|automation|dashboard|workflow)\b", q):
+        return "plugin_product_title_residue"
+    if re.search(r"\b\d{8,}\b", q) or re.search(r"\b(activity|post|tweet|status|story)\s+\d{5,}\b", q):
+        return "social_activity_id_noise"
+    if len(q.split()) <= 2 and not re.search(r"\b(calculator|template|generator|tracker|checklist|converter|analyzer|detector|builder|planner|scheduler)\b", q):
+        return "generic_short_tail"
+    if re.search(r"\bhow to\b", q) and not re.search(r"\b(template|calculator|generator|tracker|checklist|dashboard|workflow|automation|software)\b", q):
+        return "tutorial_intent_not_tool"
     plural_map={"calculators":"calculator","generators":"generator","templates":"template","checkers":"checker","converters":"converter","trackers":"tracker","dashboards":"dashboard","analyzers":"analyzer","builders":"builder","planners":"planner","estimators":"estimator","forms":"form","spreadsheets":"spreadsheet","reports":"report","monitors":"monitor","automations":"automation","integrations":"integration","apis":"api"}
     terms=[plural_map.get(t,t) for t in normalized_opportunity_key(query).split()]
     if len(terms) < 2:
@@ -261,6 +273,9 @@ def discover_keywords_four_find(db: Session, limit=24, seeds: list[str] | None =
 
     This keeps discovery as a backend/API capability rather than a shell script.
     """
+    import time as _time
+    _ff_start = _time.monotonic()
+    _ff_max = 35  # total budget in seconds for Four-Find discovery
     from . import four_find
     raw_domains = setting(db, "FOUR_FIND_AUTO_DOMAINS") or ""
     domains = [x.strip() for x in re.split(r"[\n,]+", raw_domains) if x.strip()]
@@ -278,9 +293,13 @@ def discover_keywords_four_find(db: Session, limit=24, seeds: list[str] | None =
     # Site→Keyword and Site→Site loop: learned domains from feedback are now
     # first-class automatic discovery seeds, not just passive records.
     for domain in domains[:max(1, limit // 2)]:
+        if _time.monotonic() - _ff_start > _ff_max:
+            break
         four_find.find_keywords_from_site(db, domain, searxng_search, limit=8)
         similar = four_find.find_similar_sites(db, domain, searxng_search, limit=4)
         for site in similar[:2]:
+            if _time.monotonic() - _ff_start > _ff_max:
+                break
             four_find.find_keywords_from_site(db, site.similar_domain, searxng_search, limit=4)
         for kw in four_find.import_discovered_keywords(db, limit=max(1, min(import_limit, limit))):
             if kw.query not in seen:
@@ -289,7 +308,17 @@ def discover_keywords_four_find(db: Session, limit=24, seeds: list[str] | None =
                 return out
     per_seed = max(1, min(import_limit, limit) // max(1, len(seeds)))
     for seed in seeds:
-        four_find.run_four_find_and_import(db, seed, searxng_search, depth=2, import_limit=per_seed)
+        if _time.monotonic() - _ff_start > _ff_max:
+            print(f"[four_find] budget exceeded, stopping at seed={seed}", flush=True)
+            break
+        _seed_start = _time.monotonic()
+        _seed_timeout = 15  # per-seed budget
+        # run_four_find_and_import doesn't accept a timeout; wrap in a simple elapsed check
+        # by calling with depth=1 when budget is tight
+        remaining_budget = _ff_max - (_time.monotonic() - _ff_start)
+        use_depth = 2 if remaining_budget > 25 else 1
+        four_find.run_four_find_and_import(db, seed, searxng_search, depth=use_depth, import_limit=per_seed)
+        print(f"[four_find] seed={seed} depth={use_depth} done, elapsed={_time.monotonic()-_ff_start:.1f}s", flush=True)
         rows = db.query(models.Keyword).filter(models.Keyword.source.like("four_find:%")).order_by(models.Keyword.created_at.desc()).limit(limit).all()
         for row in rows:
             if row.query not in seen:
@@ -986,6 +1015,7 @@ def analyze_competitors(db: Session, keyword: models.Keyword) -> list[models.Com
 
 def monetization(query: str, intent: str) -> tuple[str, float]:
     q=query.lower()
+    if any(w in q for w in ["shopify", "woocommerce"]) and any(w in q for w in ["tax", "api", "sales tax"]): return "垂直 SaaS / API 集成订阅", 0.78
     if any(w in q for w in ["calculator","template","generator"]): return "SEO 工具 + 广告/联盟/线索捕获", 0.75
     if any(w in q for w in ["integration","sync","automation","dashboard","reconciliation"]): return "垂直微型 SaaS 订阅", 0.8
     if "compliance" in q: return "线索捕获 + 付费报告", 0.65
@@ -1013,7 +1043,19 @@ def business_profile(query: str, intent: str, monetization_type: str) -> dict:
     gtm = "长尾 SEO + 对比页 + 模板/工具目录分发。"
     commercial_score = 0.55
     business_type = "内容/工具站 + 联盟变现"
-    if any(w in q for w in ["appointment", "patient", "clinic", "dental", "salon"]):
+    if any(w in q for w in ["shopify", "woocommerce"]) and any(w in q for w in ["tax", "sales tax", "api"]):
+        icp = "跨州销售的 Shopify / WooCommerce 店主，以及为他们做结账、税务和合规集成的开发者/代理商"
+        pain = "销售税规则、州 nexus、税率 API、Checkout/订单税行和申报工具之间容易错配；商家需要确认现有平台税务能力是否够用，开发者需要更快接入税务计算/校验。"
+        pay_trigger = "当店铺开始跨州销售、遇到税务设置不确定、或需要把外部税务 API 接入 Shopify/WooCommerce 订单流程时，才有明确付费动机。"
+        wedge = "不是泛泛写 Shopify tax 教程，而是做一个 sales-tax API readiness checker：输入平台、销售州、nexus 状态和现有插件，输出是否需要 Avalara/TaxCloud/Zamp 等 API、缺口清单和接入步骤。"
+        business_type = "垂直 SaaS / API 集成线索捕获"
+        commercial_mvp = "做一个 Shopify/WooCommerce sales-tax API readiness checker，输出税务 API 需求判断、集成清单和供应商对比 CTA。"
+        revenue_path = "SEO/API 搜索入口 → 免费 readiness check → 邮箱/店铺信息捕获 → 税务 API 联盟/实施服务/轻量监控订阅。"
+        pricing = "$49-$199 一次性设置审计；或 $29-$99/月销售税配置监控/提醒；也可走税务 API/插件联盟佣金。"
+        first_sale_test = ["上线 readiness checker 并追踪提交率", "提供 $99 Shopify sales-tax setup audit CTA", "测试税务 API 供应商推荐/联盟点击"]
+        gtm = "Shopify/WooCommerce 税务长尾 SEO + 开发者文档对比页 + agency/税务顾问渠道。"
+        commercial_score = 0.66
+    elif any(w in q for w in ["appointment", "patient", "clinic", "dental", "salon"]):
         icp = "小诊所 / 预约密集型本地服务商"
         pain = "他们需要可复用的预约模板、提醒、取消/改期流程或 intake 表单。"
         pay_trigger = "当爽约、行政时间和沟通不一致造成可见成本时，才会付费。"
@@ -1066,6 +1108,8 @@ def _zh_verdict_reason(verdict: str, total: float, gap: float, strong_count: int
 
 def _keyword_task_detail(keyword_query: str) -> dict:
     ql = keyword_query.lower()
+    if any(w in ql for w in ["shopify", "woocommerce"]) and any(w in ql for w in ["tax", "sales tax", "api"]):
+        return {"task":"判断 Shopify/WooCommerce 店铺是否需要外部 sales-tax API，并列出接入/配置缺口", "artifact":"销售税 API readiness report + 平台配置清单 + 供应商对比/实施 CTA", "test":"让店主或 agency 输入店铺平台、销售州和 nexus 状态，测试是否愿意预约 $99 设置审计或点击税务 API 推荐"}
     if "late fee" in ql or "rental" in ql:
         return {"task":"生成一份可发送给租客的 late fee notice，并自动计算滞纳金、宽限期和付款截止日", "artifact":"滞纳金通知模板 + 金额计算 + 可复制邮件/短信文本", "test":"让房东/物业用户填写租金、到期日、州/合同规则，测试是否愿意为可导出通知付费"}
     if "reminder" in ql:
@@ -1213,6 +1257,11 @@ def make_card(db: Session, keyword: models.Keyword) -> models.OpportunityCard:
     require_social = (setting(db, "REQUIRE_SOCIAL_FOR_ACTION") or "true").lower() in {"1", "true", "yes", "on"}
     social_ok = has_social or not require_social
     verdict = "Action" if total >= min_action_score and strong_count <= 2 and gap >= .52 and social_ok and relevant_count >= 5 else ("Watch" if total >= 55 and relevant_count >= 3 else "Reject")
+    if verdict == "Action" and any(w in keyword.query.lower() for w in ["api", "shopify", "woocommerce", "sales tax"]):
+        # API/platform tax queries often look commercially strong but SERP is
+        # dominated by docs, vendors, and setup guides. Keep as Watch until a
+        # concrete paid workflow / first-sale test is validated.
+        verdict = "Watch"
     reason = _zh_verdict_reason(verdict, total, gap, strong_count, relevant_count, has_social, require_social, mismatch_count)
     risks=[]
     if strong_count>3: risks.append("SERP 强品牌过多，切入难度高")
@@ -1818,6 +1867,7 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
                 run.summary=json.dumps({"phase":"collectors", "collector_limit": collector_limit, "collector_import_limit": collector_import_limit}, ensure_ascii=False)
                 db.commit()
                 collector_summary = collector_service.run_collector_autopilot(db, limit=collector_limit, import_limit=collector_import_limit)
+                print(f"[daily_run] collector done, selecting keywords", flush=True)
             except Exception as e:
                 collector_summary = {"enabled": True, "error": str(e)[:240]}
         try:
@@ -1825,10 +1875,13 @@ def daily_run(db: Session, limit=12, roots=None, use_four_find: bool | None = No
         except Exception:
             recheck_limit = 4
         old_kws = select_old_keywords_for_recheck(db, limit=min(recheck_limit, max(0, limit)))
+        print(f"[daily_run] old_kws={len(old_kws)}", flush=True)
         collector_kws = select_collector_keywords(db, limit=max(0, min(limit - len(old_kws), int((limit or 1) * 0.5))))
+        print(f"[daily_run] collector_kws={len(collector_kws)}", flush=True)
         new_limit = max(0, limit - len(old_kws) - len(collector_kws))
         if use_four_find:
             kws = old_kws + collector_kws + discover_keywords_four_find(db, limit=new_limit, seeds=seeds)
+            print(f"[daily_run] four_find kws={len(kws)}", flush=True)
             if len(kws) < limit:
                 existing = {kw.query for kw in kws}
                 for kw in discover_keywords(db, limit=limit, roots=roots):

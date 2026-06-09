@@ -14,6 +14,16 @@ BAD_SINGLE_MODIFIERS = {
     "for", "and", "with", "from", "your", "their", "this", "that", "login", "city", "home",
     "page", "about", "contact", "support", "license", "portal", "map", "started",
 }
+TITLE_RESIDUE_PATTERNS = (
+    r"^[a-z0-9][a-z0-9 ._-]{1,24}:\s+",  # brand/page title prefix, e.g. "wave: ..."
+    r"\bwhich\s+.+\bbest\b",
+    r"\b(best|top)\s+.+\bfor\s+your\b",
+    r"\bfor\s+your\s+(small\s+)?business\b",
+    r"\?$",
+    r"\b(best|top)\b.+\b(plugin|plugins|extension|extensions|software|apps?)\b",
+    r"\b(plugin|plugins|extension|extensions)\b.+\b(compared|comparison|review|reviews)\b",
+    r"\b(compared|comparison|review|reviews)\b",
+)
 GOOD_INTENT_TERMS = {
     # SEO/tool-page intent roots. These come from the merged Four-Find + SEO keyword method:
     # use roots to find existing search demand, then validate by SERP/competition.
@@ -217,6 +227,8 @@ def keyword_quality_score(seed: str, keyword: str, source_domain: str = "") -> t
         score -= 0.45; reasons.append("seed_repeated_or_brand_echo")
     if any(term in kw for term in BAD_KEYWORD_TERMS):
         score -= 0.45; reasons.append("blocked_noise_term")
+    if any(re.search(p, kw) for p in TITLE_RESIDUE_PATTERNS):
+        score -= 0.7; reasons.append("title_or_brand_residue")
     words = re.findall(r"[a-z0-9]+", kw)
     if len(words) < 2:
         score -= 0.3; reasons.append("too_short_phrase")
@@ -250,7 +262,7 @@ def keyword_quality_score(seed: str, keyword: str, source_domain: str = "") -> t
 
 def candidate_is_importable(seed: str, keyword: str, source_domain: str = "") -> bool:
     score, reasons = keyword_quality_score(seed, keyword, source_domain)
-    return score >= 0.68 and "blocked_noise_term" not in reasons and "seed_repeated_or_brand_echo" not in reasons and "weak_added_modifier" not in reasons and "no_commercial_signal" not in reasons
+    return score >= 0.68 and "blocked_noise_term" not in reasons and "title_or_brand_residue" not in reasons and "seed_repeated_or_brand_echo" not in reasons and "weak_added_modifier" not in reasons and "no_commercial_signal" not in reasons
 
 # --- 1. 词找词 (Keyword → Keyword) ---
 

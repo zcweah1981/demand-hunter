@@ -384,17 +384,40 @@ def rejected_candidate_reasons(db:Session, limit:int=500)->dict:
             examples.append({'id':r.id,'keyword':r.keyword,'source':r.source,'reason':reason,'source_url':r.source_url})
     return {'ok':True,'scanned':len(rows),'by_reason':sorted([{'reason':k,'count':v} for k,v in by_reason.items()], key=lambda x:x['count'], reverse=True),'by_source':sorted([{'source':k,'count':v} for k,v in by_source.items()], key=lambda x:x['count'], reverse=True),'examples':examples}
 
-def cleanup_rejected_candidates(db:Session, keep_latest:int=300)->dict:
+def cleanup_rejected_candidates(db:Session, keep_latest:int=300, force:bool=False)->dict:
     rows=db.query(models.CandidateKeyword).filter_by(status='rejected').order_by(models.CandidateKeyword.created_at.desc()).all()
+    preview=preview_cleanup_rejected_candidates(db, keep_latest=keep_latest)
+    if preview.get('repair_safety',{}).get('status')=='risky' and not force:
+        return {'ok':False,'blocked':True,'reason':'cleanup_preview_risky','preview':preview,'message':'cleanup rejected candidates is risky; increase keep_latest or run with force=true'}
     delete_rows=rows[max(0,keep_latest):]
     deleted=0
     for r in delete_rows:
         db.delete(r); deleted+=1
+    audit={'kept':min(len(rows),keep_latest),'deleted':deleted,'total_rejected_before':len(rows),'keep_latest':keep_latest,'force':force}
+    audit['repair_safety']=repair_safety_score({'rejected':deleted,'scanned':len(rows)})
+    db.add(models.RunHistory(kind='collector_repair', status='ok', summary=json.dumps({'repair':'cleanup_rejected_candidates','result':audit}, ensure_ascii=False), finished_at=datetime.utcnow()))
     db.commit()
-    return {'ok':True,'kept':min(len(rows),keep_latest),'deleted':deleted,'total_rejected_before':len(rows)}
+    return {'ok':True, **audit}
 
-def apply_missing_tool_intent_repair(db:Session)->dict:
+def preview_cleanup_rejected_candidates(db:Session, keep_latest:int=300)->dict:
+    rows=db.query(models.CandidateKeyword).filter_by(status='rejected').order_by(models.CandidateKeyword.created_at.desc()).all()
+    delete_rows=rows[max(0,keep_latest):]
+    by_source={}; by_reason={}
+    for r in delete_rows[:2000]:
+        by_source[r.source or 'unknown']=by_source.get(r.source or 'unknown',0)+1
+        try: ev=json.loads(r.evidence_json or '{}')
+        except Exception: ev={}
+        reason=ev.get('reject_reason') or 'unknown'
+        by_reason[reason]=by_reason.get(reason,0)+1
+    result={'keep_latest':keep_latest,'will_delete':len(delete_rows),'total_rejected':len(rows),'by_source':sorted([{'source':k,'count':v} for k,v in by_source.items()], key=lambda x:x['count'], reverse=True)[:12],'by_reason':sorted([{'reason':k,'count':v} for k,v in by_reason.items()], key=lambda x:x['count'], reverse=True)[:12],'preview':True}
+    result['repair_safety']=repair_safety_score({'rejected':len(delete_rows),'scanned':len(rows)})
+    return {'ok':True, **result}
+
+def apply_missing_tool_intent_repair(db:Session, force:bool=False)->dict:
     """Reduce future missing_tool_intent noise by tightening source radar and demoting noisy sources."""
+    preview=preview_missing_tool_intent_repair(db)
+    if preview.get('repair_safety',{}).get('status')=='risky' and not force:
+        return {'ok':False,'blocked':True,'reason':'missing_tool_intent_preview_risky','preview':preview,'message':'missing_tool_intent repair is risky due to many source weight changes; run with force=true to override'}
     dist=rejected_candidate_reasons(db, limit=1000)
     missing_by_source={}
     total_by_source={}
@@ -423,9 +446,32 @@ def apply_missing_tool_intent_repair(db:Session)->dict:
     row.value='true'; row.secret=False; db.merge(row)
     audit={'changes':changes,'source_radar_tech_only':True,'top_reasons':dist.get('by_reason',[])[:8],'top_sources':dist.get('by_source',[])[:8]}
     audit['repair_safety']=repair_safety_score(audit)
+    audit['preview_before']=preview
     db.add(models.RunHistory(kind='collector_repair', status='ok', summary=json.dumps({'repair':'missing_tool_intent','result':audit}, ensure_ascii=False), finished_at=datetime.utcnow()))
     db.commit()
     return {'ok':True, **audit}
+
+def preview_missing_tool_intent_repair(db:Session)->dict:
+    dist=rejected_candidate_reasons(db, limit=1000)
+    missing_by_source={}; total_by_source={}
+    for r in db.query(models.CandidateKeyword).filter_by(status='rejected').order_by(models.CandidateKeyword.created_at.desc()).limit(1000):
+        try: ev=json.loads(r.evidence_json or '{}')
+        except Exception: ev={}
+        total_by_source[r.source or 'unknown']=total_by_source.get(r.source or 'unknown',0)+1
+        if (ev.get('reject_reason') or '') == 'missing_tool_intent':
+            missing_by_source[r.source or 'unknown']=missing_by_source.get(r.source or 'unknown',0)+1
+    weights=_collector_source_weights(db); changes=[]
+    for source,count in missing_by_source.items():
+        total=total_by_source.get(source,count)
+        if count >= 8 or count/max(1,total) >= 0.45:
+            entry=weights.get(source,{}) if isinstance(weights.get(source,{}),dict) else {}
+            old=float(entry.get('weight',1.0))
+            new=round(max(0.25, old*0.82),3)
+            if new != old:
+                changes.append({'source':source,'old':old,'new':new,'missing_tool_intent':count,'rejected_total':total})
+    result={'changes':changes,'source_radar_tech_only':True,'top_reasons':dist.get('by_reason',[])[:8],'top_sources':dist.get('by_source',[])[:8],'preview':True}
+    result['repair_safety']=repair_safety_score(result)
+    return {'ok':True, **result}
 
 def repair_safety_score(result:dict)->dict:
     """Score a repair result for overreach/noise risk.
@@ -506,8 +552,11 @@ def apply_generic_short_tail_repair(db:Session, limit:int=300, max_rewrites:int=
     db.commit()
     return {'ok':True, **audit}
 
-def apply_sitemap_editorial_path_repair(db:Session, limit:int=500)->dict:
+def apply_sitemap_editorial_path_repair(db:Session, limit:int=500, force:bool=False)->dict:
     """Move editorial sitemap URL-path candidates out of the importable pool."""
+    preview=preview_sitemap_editorial_path_repair(db, limit=limit)
+    if preview.get('repair_safety',{}).get('status')=='risky' and not force:
+        return {'ok':False,'blocked':True,'reason':'sitemap_editorial_preview_risky','preview':preview,'message':'sitemap editorial repair is risky; run with force=true to override'}
     rows=db.query(models.CandidateKeyword).filter(models.CandidateKeyword.source=='sitemap').order_by(models.CandidateKeyword.created_at.desc()).limit(max(1,min(2000,limit))).all()
     scanned=0; rejected=0; examples=[]
     for r in rows:
@@ -524,9 +573,22 @@ def apply_sitemap_editorial_path_repair(db:Session, limit:int=500)->dict:
         if len(examples)<10: examples.append({'id':r.id,'keyword':r.keyword,'url':r.source_url})
     audit={'scanned':scanned,'rejected':rejected,'examples':examples,'sitemap_path_gate':'task_pages_only'}
     audit['repair_safety']=repair_safety_score(audit)
+    audit['preview_before']=preview
     db.add(models.RunHistory(kind='collector_repair', status='ok', summary=json.dumps({'repair':'sitemap_editorial_path','result':audit}, ensure_ascii=False), finished_at=datetime.utcnow()))
     db.commit()
     return {'ok':True, **audit}
+
+def preview_sitemap_editorial_path_repair(db:Session, limit:int=500)->dict:
+    rows=db.query(models.CandidateKeyword).filter(models.CandidateKeyword.source=='sitemap').order_by(models.CandidateKeyword.created_at.desc()).limit(max(1,min(2000,limit))).all()
+    scanned=len(rows); would_reject=0; examples=[]
+    for r in rows:
+        if sitemap_url_is_task_page(r.source_url or ''):
+            continue
+        would_reject+=1
+        if len(examples)<10: examples.append({'id':r.id,'keyword':r.keyword,'url':r.source_url})
+    result={'scanned':scanned,'would_reject':would_reject,'examples':examples,'sitemap_path_gate':'task_pages_only','preview':True}
+    result['repair_safety']=repair_safety_score({'rejected':would_reject,'scanned':scanned})
+    return {'ok':True, **result}
 
 def collector_roi_weight_recommendations(db:Session, limit:int=12, min_runs:int=2)->dict:
     """Recommend persistent COLLECTOR_SOURCE_WEIGHTS changes from ROI.

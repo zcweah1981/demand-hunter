@@ -30,11 +30,16 @@ def rejected_reasons(limit: int = 500, _: bool = Depends(require_auth), db: Sess
 @router.post("/candidates/rejected/cleanup")
 def rejected_cleanup(payload: dict | None = None, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     payload=payload or {}
-    return collectors.cleanup_rejected_candidates(db, keep_latest=max(0, int(payload.get('keep_latest') or 300)))
+    if payload.get('preview'):
+        return collectors.preview_cleanup_rejected_candidates(db, keep_latest=max(0, int(payload.get('keep_latest') or 300)))
+    return collectors.cleanup_rejected_candidates(db, keep_latest=max(0, int(payload.get('keep_latest') or 300)), force=bool(payload.get('force')))
 
 @router.post("/repairs/missing-tool-intent")
-def repair_missing_tool_intent(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
-    return collectors.apply_missing_tool_intent_repair(db)
+def repair_missing_tool_intent(payload: dict | None = None, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    payload=payload or {}
+    if payload.get('preview'):
+        return collectors.preview_missing_tool_intent_repair(db)
+    return collectors.apply_missing_tool_intent_repair(db, force=bool(payload.get('force')))
 
 @router.post("/repairs/generic-short-tail")
 def repair_generic_short_tail(payload: dict | None = None, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
@@ -46,7 +51,9 @@ def repair_generic_short_tail(payload: dict | None = None, _: bool = Depends(req
 @router.post("/repairs/sitemap-editorial-path")
 def repair_sitemap_editorial_path(payload: dict | None = None, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     payload=payload or {}
-    return collectors.apply_sitemap_editorial_path_repair(db, limit=max(1, int(payload.get('limit') or 500)))
+    if payload.get('preview'):
+        return collectors.preview_sitemap_editorial_path_repair(db, limit=max(1, int(payload.get('limit') or 500)))
+    return collectors.apply_sitemap_editorial_path_repair(db, limit=max(1, int(payload.get('limit') or 500)), force=bool(payload.get('force')))
 
 @router.get("/summary")
 def collector_summary(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
