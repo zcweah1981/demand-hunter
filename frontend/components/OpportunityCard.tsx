@@ -8,7 +8,7 @@ function shortText(s:string,n=180){s=(s||'').replace(/\s+/g,' ').trim(); return 
 
 export function OpportunityCardView({card,compact=false,showFeedback=true,onFeedback,mode='review'}:{card:any;compact?:boolean;showFeedback?:boolean;onFeedback?:(label:string)=>void;mode?:'review'|'execute'}){
  const allEvidence=card.evidence_json||[]
- const business=allEvidence.find((e:any)=>e.type==='business')
+ const business=allEvidence.find((e:any)=>e.type==='business') || {business_type:card.monetization_type, commercial_mvp:card.mvp_plan, verdict_reason:card.mvp_plan||'暂无完整商业分析；请先查看分数、风险和证据链，必要时重新生成商业分析。', missing_evidence:['缺少 business evidence block'], commercial_score:(Number(card.monetization_score||0)/100)||0, go_no_go:card.verdict==='Action'?'Go':card.verdict}
  const evidence=allEvidence.filter((e:any)=>e.type!=='business')
  const topEvidence=evidence.slice(0,2)
  const labels:any={Demand:'需求强度',SERP:'搜索缺口',Weakness:'竞品弱点',Commercial:'MVP 可行性',Money:'变现潜力'}
