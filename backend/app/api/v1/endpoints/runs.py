@@ -29,5 +29,6 @@ def run_daily(payload: schemas.DailyRunIn, _: bool = Depends(require_auth), db: 
     return {"started": True, "background": True}
 
 @router.get("")
-def runs(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
-    return [obj(x) for x in db.query(models.RunHistory).order_by(models.RunHistory.started_at.desc()).limit(50).all()]
+def runs(limit: int = 20, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    limit=max(1, min(50, limit))
+    return [obj(x) for x in db.query(models.RunHistory).order_by(models.RunHistory.started_at.desc()).limit(limit).all()]

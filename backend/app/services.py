@@ -340,43 +340,73 @@ def opportunity_group_for_card(db: Session, card: models.OpportunityCard) -> dic
         "variants": variants[:24],
     }
 
-def grouped_opportunity_cards(db: Session, verdict: str = "All", limit: int = 300) -> list[models.OpportunityCard]:
-    """Return representative cards by opportunity group with one canonical ranking.
+def _grouped_opportunity_reps(db: Session, limit: int = 300) -> tuple[list[models.OpportunityCard], dict[int, dict]]:
+    """Build opportunity-group representatives once.
 
-    This is the single source of truth for overview counts and opportunity list.
+    `opportunity_group_for_card()` is intentionally rich but expensive. The
+    overview and opportunity pages used to call it many times per request
+    (counts called grouped_opportunity_cards five times, and each call ranked
+    every card repeatedly). Keep one cache per request so menu navigation does
+    not spend seconds recomputing the same groups.
     """
-    try: min_action=float(setting(db,"MIN_ACTION_SCORE") or "74")
-    except Exception: min_action=74.0
     rows=db.query(models.OpportunityCard).order_by(models.OpportunityCard.created_at.desc()).limit(limit).all()
+    group_cache: dict[int, dict] = {}
+    def group(c):
+        if c.id not in group_cache:
+            group_cache[c.id]=opportunity_group_for_card(db,c)
+        return group_cache[c.id]
     def final(c): return c.feedback_label or c.verdict
-    by={}
     def rank(c):
         fv=final(c)
-        group=opportunity_group_for_card(db,c)
-        return ({"Adopted":5,"Action":4,"Watch":3,"Reject":1,"Block":0}.get(fv,1))*1000 + float(c.score or 0) + float(group.get("probability") or 0)*100
+        g=group(c)
+        return ({"Adopted":5,"Action":4,"Watch":3,"Reject":1,"Block":0}.get(fv,1))*1000 + float(c.score or 0) + float(g.get("probability") or 0)*100
+    by={}
     # First pick one representative/final state per group across ALL cards.
     # Filtering before grouping is wrong: if a group has one Adopted card and
     # one older Action variant, it must live under Adopted only, not both.
     for c in rows:
-        gid=opportunity_group_for_card(db,c).get("group_id") or f"card-{c.id}"
+        gid=group(c).get("group_id") or f"card-{c.id}"
         if gid not in by or rank(c)>rank(by[gid]): by[gid]=c
-    reps=list(by.values())
+    reps=sorted(list(by.values()), key=lambda c: (rank(c), c.created_at), reverse=True)
+    return reps, group_cache
+
+def grouped_opportunity_cards_with_groups(db: Session, verdict: str = "All", limit: int = 300) -> list[tuple[models.OpportunityCard, dict]]:
+    """Return representative cards and their already-computed group metadata."""
+    try: min_action=float(setting(db,"MIN_ACTION_SCORE") or "74")
+    except Exception: min_action=74.0
+    reps,groups=_grouped_opportunity_reps(db, limit)
+    def final(c): return c.feedback_label or c.verdict
     filtered=[]
     for c in reps:
         fv=final(c)
         ok = verdict=="All" or fv==verdict
         if ok and verdict=="Action" and not c.feedback_label: ok=float(c.score or 0)>=min_action
-        if ok: filtered.append(c)
-    return sorted(filtered, key=lambda c: (rank(c), c.created_at), reverse=True)
+        if ok: filtered.append((c, groups.get(c.id) or opportunity_group_for_card(db,c)))
+    return filtered
+
+def grouped_opportunity_cards(db: Session, verdict: str = "All", limit: int = 300) -> list[models.OpportunityCard]:
+    """Return representative cards by opportunity group with one canonical ranking.
+
+    This is the single source of truth for overview counts and opportunity list.
+    """
+    return [c for c,_group in grouped_opportunity_cards_with_groups(db, verdict, limit)]
 
 def opportunity_group_counts(db: Session) -> dict:
-    adopted=len(grouped_opportunity_cards(db,"Adopted"))
-    action=len(grouped_opportunity_cards(db,"Action"))
-    watch=len(grouped_opportunity_cards(db,"Watch"))
-    reject=len(grouped_opportunity_cards(db,"Reject"))
-    block=len(grouped_opportunity_cards(db,"Block"))
+    try: min_action=float(setting(db,"MIN_ACTION_SCORE") or "74")
+    except Exception: min_action=74.0
+    reps,_groups=_grouped_opportunity_reps(db)
+    counts={"adopted":0,"action":0,"watch":0,"reject":0,"block":0,"pending_review":0}
+    for c in reps:
+        fv=c.feedback_label or c.verdict
+        if fv=="Action" and not c.feedback_label and float(c.score or 0)<min_action:
+            continue
+        key={"Adopted":"adopted","Action":"action","Watch":"watch","Reject":"reject","Block":"block"}.get(fv)
+        if key: counts[key]+=1
+        if (not c.feedback_label) and c.verdict in {"Action","Watch"}:
+            counts["pending_review"]+=1
     # Overview total must equal the visible status buckets exactly.
-    return {"cards": adopted+action+watch+reject+block, "adopted": adopted, "action": action, "watch": watch, "reject": reject, "block": block, "unit":"opportunity_group"}
+    total=counts["adopted"]+counts["action"]+counts["watch"]+counts["reject"]+counts["block"]
+    return {"cards": total, **counts, "unit":"opportunity_group"}
 
 def classify_intent(query: str) -> str:
     q = query.lower()

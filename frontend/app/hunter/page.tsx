@@ -8,8 +8,8 @@ function mergedTaskCount(runs:any[]){const sorted=[...(runs||[])].sort((a,b)=>ru
 
 export default async function Page(){
  const [autopilot,runs] = await Promise.all([
-  api<any>('/api/autopilot/status').catch(()=>null),
-  api<any[]>('/api/runs').catch(()=>[]),
+  api<any>('/api/autopilot/status?compact=true').catch(()=>null),
+  api<any[]>('/api/runs?limit=20').catch(()=>[]),
  ])
  const merged=[...runs].sort((a:any,b:any)=>new Date(b.started_at||b.created_at||0).getTime()-new Date(a.started_at||a.created_at||0).getTime()).slice(0,30)
  const taskCount=mergedTaskCount(merged)

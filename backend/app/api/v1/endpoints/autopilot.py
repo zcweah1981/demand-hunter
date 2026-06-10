@@ -1,5 +1,6 @@
 from __future__ import annotations
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app import collectors, models, schemas, services
 from app.core.security import require_auth
@@ -25,12 +26,11 @@ def _opportunity_group_counts(db: Session) -> dict:
         counts["min_action_score"] = float(services.setting(db, "MIN_ACTION_SCORE") or "74")
     except Exception:
         counts["min_action_score"] = 74
-    counts["pending_review"] = len([c for c in services.grouped_opportunity_cards(db,"All") if (not c.feedback_label) and c.verdict in {"Action","Watch"}])
     return counts
 
 
 @router.get("/status")
-def autopilot_status(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
+def autopilot_status(compact: bool = Query(False), _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     services.init_defaults(db)
     auto = services.auto_status(db)
     providers = services.available_serp_providers(db)
@@ -42,10 +42,19 @@ def autopilot_status(_: bool = Depends(require_auth), db: Session = Depends(get_
     actions = opportunity_counts["action"]
     watch = opportunity_counts["watch"]
     discoveries = db.query(models.DiscoveryExpansion).count() + db.query(models.CompetitorKeyword).count() + db.query(models.CompetitorSite).count()
-    collector_summary = collectors.collector_pool_summary(db)
-    experiments = services.list_repair_experiments(db, limit=5)
-    active_experiment = next((x for x in experiments if x.get("status") == "running" or (x.get("effect") or {}).get("status") in {"pending", "no_baseline"}), None)
-    latest_experiment = experiments[0] if experiments else None
+    if compact:
+        by_status = {}
+        for status,count in db.query(models.CandidateKeyword.status, func.count(models.CandidateKeyword.id)).group_by(models.CandidateKeyword.status).all():
+            by_status[status or "unknown"] = count
+        collector_summary = {"by_status": by_status}
+        experiments = []
+        active_experiment = None
+        latest_experiment = None
+    else:
+        collector_summary = collectors.collector_pool_summary(db)
+        experiments = services.list_repair_experiments(db, limit=5)
+        active_experiment = next((x for x in experiments if x.get("status") == "running" or (x.get("effect") or {}).get("status") in {"pending", "no_baseline"}), None)
+        latest_experiment = experiments[0] if experiments else None
     last = auto.get("last_run")
     running = bool(last and last.get("status") == "running")
     ready_checks = [
@@ -119,7 +128,7 @@ def autopilot_start(_: bool = Depends(require_auth), db: Session = Depends(get_d
         _set_setting(db, "AUTO_RUN_INTERVAL_MINUTES", "360")
     db.commit()
     started = start_run_thread(force=True)
-    return {"ok": True, "started": started, "status": autopilot_status(True, db)}
+    return {"ok": True, "started": started, "status": autopilot_status(compact=False, _=True, db=db)}
 
 @router.post("/repair")
 def autopilot_repair(payload: schemas.RepairActionIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
