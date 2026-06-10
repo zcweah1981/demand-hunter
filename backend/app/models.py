@@ -244,6 +244,49 @@ class CompetitorSnapshot(Base):
     summary_json: Mapped[str] = mapped_column(Text, default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
+class ProgressHypothesis(Base):
+    __tablename__ = "progress_hypotheses"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(Integer, index=True)
+    title: Mapped[str] = mapped_column(Text, default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(40), default="unverified")
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    evidence_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    next_check_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class ProgressEvidenceTask(Base):
+    __tablename__ = "progress_evidence_tasks"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(Integer, index=True)
+    hypothesis_id: Mapped[int] = mapped_column(Integer, index=True, default=0)
+    query: Mapped[str] = mapped_column(String(300), index=True)
+    task_type: Mapped[str] = mapped_column(String(60), default="web_search")
+    status: Mapped[str] = mapped_column(String(40), default="pending")
+    priority: Mapped[str] = mapped_column(String(20), default="medium")
+    result_summary: Mapped[str] = mapped_column(Text, default="")
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class ProgressEvidenceItem(Base):
+    __tablename__ = "progress_evidence_items"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(Integer, index=True)
+    hypothesis_id: Mapped[int] = mapped_column(Integer, index=True, default=0)
+    task_id: Mapped[int] = mapped_column(Integer, index=True, default=0)
+    title: Mapped[str] = mapped_column(Text, default="")
+    url: Mapped[str] = mapped_column(Text, default="")
+    source_domain: Mapped[str] = mapped_column(String(255), default="")
+    snippet: Mapped[str] = mapped_column(Text, default="")
+    effect: Mapped[str] = mapped_column(String(40), default="neutral")
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    captured_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
 class MvpStrategyRecommendation(Base):
     __tablename__ = "mvp_strategy_recommendations"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

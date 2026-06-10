@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PRD_ROOT = ROOT / "prds"
 
 def ensure_tables():
-    for cls in [models.MvpProject, models.MvpValidationRun, models.TrackedCompetitor, models.CompetitorSnapshot, models.MvpStrategyRecommendation]:
+    for cls in [models.MvpProject, models.MvpValidationRun, models.TrackedCompetitor, models.CompetitorSnapshot, models.MvpStrategyRecommendation, models.ProgressHypothesis, models.ProgressEvidenceTask, models.ProgressEvidenceItem]:
         cls.__table__.create(bind=engine, checkfirst=True)
 
 def slugify(s:str)->str:
@@ -77,9 +77,12 @@ def get_project(db:Session, project_id:int):
     runs=db.query(models.MvpValidationRun).filter_by(project_id=p.id).order_by(models.MvpValidationRun.started_at.desc()).limit(20).all()
     competitors=db.query(models.TrackedCompetitor).filter_by(project_id=p.id).order_by(models.TrackedCompetitor.created_at.desc()).all()
     recs=db.query(models.MvpStrategyRecommendation).filter_by(project_id=p.id).order_by(models.MvpStrategyRecommendation.created_at.desc()).all()
+    hyps=db.query(models.ProgressHypothesis).filter_by(project_id=p.id).order_by(models.ProgressHypothesis.created_at.asc()).all()
+    tasks=db.query(models.ProgressEvidenceTask).filter_by(project_id=p.id).order_by(models.ProgressEvidenceTask.created_at.asc()).all()
+    evidence=db.query(models.ProgressEvidenceItem).filter_by(project_id=p.id).order_by(models.ProgressEvidenceItem.captured_at.desc()).limit(80).all()
     original=float(card.score or 0) if card else 0.0
     display_score=float(p.feasibility_score or original or 0)
-    return {"project":list_projects(db=[].__class__) if False else {"id":p.id,"opportunity_group_id":p.opportunity_group_id,"canonical_keyword":p.canonical_keyword,"representative_card_id":p.representative_card_id,"status":p.status,"prd_path":p.prd_path,"prd_version":p.prd_version,"prd_content":p.prd_content,"feasibility_score":display_score,"original_score":original,"score_delta":round(display_score-original,1) if p.last_validated_at else 0,"risk_level":p.risk_level,"next_action":p.next_action,"created_at":p.created_at.isoformat(),"updated_at":p.updated_at.isoformat(),"last_validated_at":p.last_validated_at.isoformat() if p.last_validated_at else None,"opportunity":_card_detail(db,card)},"runs":[{"id":r.id,"kind":r.kind,"status":r.status,"summary":json.loads(r.summary_json or "{}"),"score_delta":r.score_delta,"started_at":r.started_at.isoformat(),"finished_at":r.finished_at.isoformat() if r.finished_at else None} for r in runs],"competitors":[{"id":c.id,"domain":c.domain,"name":c.name,"url":c.url,"pricing_url":c.pricing_url,"sitemap_url":c.sitemap_url,"status":c.status,"notes":c.notes,"last_seen_at":c.last_seen_at.isoformat() if c.last_seen_at else None} for c in competitors],"recommendations":[{"id":r.id,"type":r.type,"title":r.title,"content":r.content,"confidence":r.confidence,"status":r.status,"created_at":r.created_at.isoformat()} for r in recs]}
+    return {"project":list_projects(db=[].__class__) if False else {"id":p.id,"opportunity_group_id":p.opportunity_group_id,"canonical_keyword":p.canonical_keyword,"representative_card_id":p.representative_card_id,"status":p.status,"prd_path":p.prd_path,"prd_version":p.prd_version,"prd_content":p.prd_content,"feasibility_score":display_score,"original_score":original,"score_delta":round(display_score-original,1) if p.last_validated_at else 0,"risk_level":p.risk_level,"next_action":p.next_action,"created_at":p.created_at.isoformat(),"updated_at":p.updated_at.isoformat(),"last_validated_at":p.last_validated_at.isoformat() if p.last_validated_at else None,"opportunity":_card_detail(db,card)},"runs":[{"id":r.id,"kind":r.kind,"status":r.status,"summary":json.loads(r.summary_json or "{}"),"score_delta":r.score_delta,"started_at":r.started_at.isoformat(),"finished_at":r.finished_at.isoformat() if r.finished_at else None} for r in runs],"competitors":[{"id":c.id,"domain":c.domain,"name":c.name,"url":c.url,"pricing_url":c.pricing_url,"sitemap_url":c.sitemap_url,"status":c.status,"notes":c.notes,"last_seen_at":c.last_seen_at.isoformat() if c.last_seen_at else None} for c in competitors],"recommendations":[{"id":r.id,"type":r.type,"title":r.title,"content":r.content,"confidence":r.confidence,"status":r.status,"created_at":r.created_at.isoformat()} for r in recs],"hypotheses":[{"id":h.id,"title":h.title,"description":h.description,"status":h.status,"confidence":h.confidence,"evidence_count":h.evidence_count,"last_checked_at":h.last_checked_at.isoformat() if h.last_checked_at else None,"next_check_at":h.next_check_at.isoformat() if h.next_check_at else None} for h in hyps],"evidence_tasks":[{"id":t.id,"hypothesis_id":t.hypothesis_id,"query":t.query,"task_type":t.task_type,"status":t.status,"priority":t.priority,"result_summary":t.result_summary,"last_run_at":t.last_run_at.isoformat() if t.last_run_at else None,"next_run_at":t.next_run_at.isoformat() if t.next_run_at else None} for t in tasks],"evidence_items":[{"id":e.id,"hypothesis_id":e.hypothesis_id,"task_id":e.task_id,"title":e.title,"url":e.url,"source_domain":e.source_domain,"snippet":e.snippet,"effect":e.effect,"confidence":e.confidence,"captured_at":e.captured_at.isoformat()} for e in evidence]}
 
 def create_project_from_card(db:Session, card_id:int):
     ensure_tables()
@@ -165,6 +168,60 @@ def _sitemap_probe(db:Session, competitors:list[models.TrackedCompetitor]):
             db.rollback()
     return snapshots
 
+def _seed_progress_loop(db:Session, p:models.MvpProject, analysis:dict, queries:list[str]):
+    existing=db.query(models.ProgressHypothesis).filter_by(project_id=p.id).count()
+    if existing:
+        return
+    base=[]
+    for item in (analysis.get('evidence_plan') or [])[:6]:
+        title=item.get('hypothesis') or item.get('area') or '' if isinstance(item,dict) else str(item)
+        if title: base.append((title, item.get('current_evidence','') if isinstance(item,dict) else '', item.get('priority','medium') if isinstance(item,dict) else 'medium'))
+    if not base:
+        base=[('服务商愿意在官网嵌入评估工具','验证嵌入式问答/assessment 是否是服务商真实采用的获客路径','high'),('服务商愿意为白标 lead capture 工具付费','验证第三方 white-label assessment 工具和价格锚点','high'),('通用 quiz/form 工具不足以满足 SOC 2 销售上下文','验证 Typeform/LeadQuizzes/Outgrow 等替代方案缺口','medium'),('SOC 2 服务商需要带销售上下文的报告和线索','验证 sales brief / CRM-ready fields 是否能提高跟进效率','high')]
+    for title,desc,priority in base[:8]:
+        h=models.ProgressHypothesis(project_id=p.id,title=title,description=desc,status='unverified',confidence=0.25)
+        db.add(h); db.commit(); db.refresh(h)
+        task_queries=[]
+        low=(title+' '+desc).lower()
+        if '嵌入' in title or 'embed' in low or '官网' in title:
+            task_queries=['SOC 2 consultant embedded assessment','SOC 2 readiness quiz consultant website']
+        elif '白标' in title or 'white' in low:
+            task_queries=['white label assessment platform for consultants','white label compliance assessment software']
+        elif 'quiz' in low or 'form' in low or '替代' in title:
+            task_queries=['LeadQuizzes pricing CRM lead scoring','Outgrow calculator lead generation pricing']
+        else:
+            task_queries=queries[:2]
+        for q in task_queries[:2]:
+            db.add(models.ProgressEvidenceTask(project_id=p.id,hypothesis_id=h.id,query=q[:300],task_type='web_search',status='pending',priority=priority or 'medium'))
+    db.commit()
+
+def run_next_validation_round(db:Session, project_id:int, limit:int=2):
+    ensure_tables()
+    p=db.get(models.MvpProject, project_id)
+    if not p: raise ValueError('project_not_found')
+    tasks=db.query(models.ProgressEvidenceTask).filter_by(project_id=p.id).filter(models.ProgressEvidenceTask.status.in_(['pending','active'])).order_by(models.ProgressEvidenceTask.created_at.asc()).limit(limit).all()
+    found=0
+    for t in tasks:
+        try:
+            items=services.searxng_search(db,t.query,limit=3)
+            summaries=[]
+            for item in items[:3]:
+                url=item.get('url') or ''
+                title=item.get('title') or item.get('content') or t.query
+                snip=item.get('content') or item.get('snippet') or ''
+                if not url and not title: continue
+                e=models.ProgressEvidenceItem(project_id=p.id,hypothesis_id=t.hypothesis_id,task_id=t.id,title=title[:500],url=url,source_domain=_domain(url),snippet=snip[:1000],effect='neutral',confidence=0.45)
+                db.add(e); found+=1; summaries.append(title[:120])
+            t.status='done'; t.last_run_at=datetime.utcnow(); t.result_summary='；'.join(summaries[:3]) or '未发现明显证据'; db.merge(t)
+            h=db.get(models.ProgressHypothesis,t.hypothesis_id) if t.hypothesis_id else None
+            if h:
+                h.evidence_count=db.query(models.ProgressEvidenceItem).filter_by(hypothesis_id=h.id).count(); h.last_checked_at=datetime.utcnow(); h.status='supported' if h.evidence_count>=3 else 'unverified'; h.confidence=min(0.85,0.25+h.evidence_count*0.1); db.merge(h)
+            db.commit()
+        except Exception:
+            db.rollback(); t.status='failed'; t.result_summary='验证失败'; db.merge(t); db.commit()
+    p.next_action=f'已运行下一轮验证，新增/更新证据 {found} 条。继续查看假设状态和证据链。'; db.merge(p); db.commit()
+    return get_project(db,project_id)
+
 def validate_project(db:Session, project_id:int):
     ensure_tables()
     p=db.get(models.MvpProject, project_id)
@@ -232,5 +289,6 @@ def _validate_inner(db:Session, p, run, old_score):
         val=obj.get(key) or []
         content="\n".join([str(x) for x in val]) if isinstance(val,list) else str(val)
         if content.strip(): db.add(models.MvpStrategyRecommendation(project_id=p.id,type=typ,title=title,content=content,confidence=score/100,status="open"))
+    _seed_progress_loop(db,p,obj,queries)
     run.status="ok"; run.summary_json=json.dumps({"llm":bool(obj),"analysis_type":"product_analysis","queries":queries,"competitors":len(competitors),"sitemap_snapshots":len(snaps),"old_score":old_score,"new_score":score,"score_delta":score-old_score,"analysis":obj},ensure_ascii=False); run.score_delta=score-old_score; run.finished_at=datetime.utcnow(); db.merge(run)
     db.commit(); db.refresh(run); db.refresh(p); return run

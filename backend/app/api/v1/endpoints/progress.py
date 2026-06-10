@@ -35,3 +35,8 @@ def validate(project_id:int, _: bool = Depends(require_auth), db: Session = Depe
         mvp_progress.validate_project(db, project_id)
         return mvp_progress.get_project(db, project_id)
     except ValueError as e: raise HTTPException(400, str(e))
+
+@router.post("/{project_id}/verify-next")
+def verify_next(project_id:int, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    try: return mvp_progress.run_next_validation_round(db, project_id)
+    except ValueError as e: raise HTTPException(400, str(e))
