@@ -13,6 +13,14 @@ PRD_ROOT = ROOT / "prds"
 def ensure_tables():
     for cls in [models.MvpProject, models.MvpValidationRun, models.TrackedCompetitor, models.CompetitorSnapshot, models.MvpStrategyRecommendation, models.ProgressHypothesis, models.ProgressEvidenceTask, models.ProgressEvidenceItem]:
         cls.__table__.create(bind=engine, checkfirst=True)
+    # Lightweight SQLite-compatible column migration for iterative progress tables.
+    try:
+        with engine.begin() as conn:
+            cols=[r[1] for r in conn.exec_driver_sql('PRAGMA table_info(progress_evidence_items)').fetchall()]
+            if 'reason' not in cols:
+                conn.exec_driver_sql('ALTER TABLE progress_evidence_items ADD COLUMN reason TEXT DEFAULT ""')
+    except Exception:
+        pass
 
 def slugify(s:str)->str:
     return re.sub(r"[^a-z0-9]+","-",(s or "project").lower()).strip("-")[:80] or "project"
@@ -82,7 +90,7 @@ def get_project(db:Session, project_id:int):
     evidence=db.query(models.ProgressEvidenceItem).filter_by(project_id=p.id).order_by(models.ProgressEvidenceItem.captured_at.desc()).limit(80).all()
     original=float(card.score or 0) if card else 0.0
     display_score=float(p.feasibility_score or original or 0)
-    return {"project":list_projects(db=[].__class__) if False else {"id":p.id,"opportunity_group_id":p.opportunity_group_id,"canonical_keyword":p.canonical_keyword,"representative_card_id":p.representative_card_id,"status":p.status,"prd_path":p.prd_path,"prd_version":p.prd_version,"prd_content":p.prd_content,"feasibility_score":display_score,"original_score":original,"score_delta":round(display_score-original,1) if p.last_validated_at else 0,"risk_level":p.risk_level,"next_action":p.next_action,"created_at":p.created_at.isoformat(),"updated_at":p.updated_at.isoformat(),"last_validated_at":p.last_validated_at.isoformat() if p.last_validated_at else None,"opportunity":_card_detail(db,card)},"runs":[{"id":r.id,"kind":r.kind,"status":r.status,"summary":json.loads(r.summary_json or "{}"),"score_delta":r.score_delta,"started_at":r.started_at.isoformat(),"finished_at":r.finished_at.isoformat() if r.finished_at else None} for r in runs],"competitors":[{"id":c.id,"domain":c.domain,"name":c.name,"url":c.url,"pricing_url":c.pricing_url,"sitemap_url":c.sitemap_url,"status":c.status,"notes":c.notes,"last_seen_at":c.last_seen_at.isoformat() if c.last_seen_at else None} for c in competitors],"recommendations":[{"id":r.id,"type":r.type,"title":r.title,"content":r.content,"confidence":r.confidence,"status":r.status,"created_at":r.created_at.isoformat()} for r in recs],"hypotheses":[{"id":h.id,"title":h.title,"description":h.description,"status":h.status,"confidence":h.confidence,"evidence_count":h.evidence_count,"last_checked_at":h.last_checked_at.isoformat() if h.last_checked_at else None,"next_check_at":h.next_check_at.isoformat() if h.next_check_at else None} for h in hyps],"evidence_tasks":[{"id":t.id,"hypothesis_id":t.hypothesis_id,"query":t.query,"task_type":t.task_type,"status":t.status,"priority":t.priority,"result_summary":t.result_summary,"last_run_at":t.last_run_at.isoformat() if t.last_run_at else None,"next_run_at":t.next_run_at.isoformat() if t.next_run_at else None} for t in tasks],"evidence_items":[{"id":e.id,"hypothesis_id":e.hypothesis_id,"task_id":e.task_id,"title":e.title,"url":e.url,"source_domain":e.source_domain,"snippet":e.snippet,"effect":e.effect,"confidence":e.confidence,"captured_at":e.captured_at.isoformat()} for e in evidence]}
+    return {"project":list_projects(db=[].__class__) if False else {"id":p.id,"opportunity_group_id":p.opportunity_group_id,"canonical_keyword":p.canonical_keyword,"representative_card_id":p.representative_card_id,"status":p.status,"prd_path":p.prd_path,"prd_version":p.prd_version,"prd_content":p.prd_content,"feasibility_score":display_score,"original_score":original,"score_delta":round(display_score-original,1) if p.last_validated_at else 0,"risk_level":p.risk_level,"next_action":p.next_action,"created_at":p.created_at.isoformat(),"updated_at":p.updated_at.isoformat(),"last_validated_at":p.last_validated_at.isoformat() if p.last_validated_at else None,"opportunity":_card_detail(db,card)},"runs":[{"id":r.id,"kind":r.kind,"status":r.status,"summary":json.loads(r.summary_json or "{}"),"score_delta":r.score_delta,"started_at":r.started_at.isoformat(),"finished_at":r.finished_at.isoformat() if r.finished_at else None} for r in runs],"competitors":[{"id":c.id,"domain":c.domain,"name":c.name,"url":c.url,"pricing_url":c.pricing_url,"sitemap_url":c.sitemap_url,"status":c.status,"notes":c.notes,"last_seen_at":c.last_seen_at.isoformat() if c.last_seen_at else None} for c in competitors],"recommendations":[{"id":r.id,"type":r.type,"title":r.title,"content":r.content,"confidence":r.confidence,"status":r.status,"created_at":r.created_at.isoformat()} for r in recs],"hypotheses":[{"id":h.id,"title":h.title,"description":h.description,"status":h.status,"confidence":h.confidence,"evidence_count":h.evidence_count,"last_checked_at":h.last_checked_at.isoformat() if h.last_checked_at else None,"next_check_at":h.next_check_at.isoformat() if h.next_check_at else None} for h in hyps],"evidence_tasks":[{"id":t.id,"hypothesis_id":t.hypothesis_id,"query":t.query,"task_type":t.task_type,"status":t.status,"priority":t.priority,"result_summary":t.result_summary,"last_run_at":t.last_run_at.isoformat() if t.last_run_at else None,"next_run_at":t.next_run_at.isoformat() if t.next_run_at else None} for t in tasks],"evidence_items":[{"id":e.id,"hypothesis_id":e.hypothesis_id,"task_id":e.task_id,"title":e.title,"url":e.url,"source_domain":e.source_domain,"snippet":e.snippet,"effect":e.effect,"reason":getattr(e,'reason',''),"confidence":e.confidence,"captured_at":e.captured_at.isoformat()} for e in evidence]}
 
 def create_project_from_card(db:Session, card_id:int):
     ensure_tables()
@@ -195,6 +203,23 @@ def _seed_progress_loop(db:Session, p:models.MvpProject, analysis:dict, queries:
             db.add(models.ProgressEvidenceTask(project_id=p.id,hypothesis_id=h.id,query=q[:300],task_type='web_search',status='pending',priority=priority or 'medium'))
     db.commit()
 
+def _classify_evidence(db:Session, hypothesis:models.ProgressHypothesis|None, task:models.ProgressEvidenceTask, items:list[dict]):
+    if not items or not hypothesis:
+        return []
+    system="""你是机会验证分析员。判断搜索结果是支持、削弱还是中性。必须严格 JSON。"""
+    payload={"hypothesis":{"title":hypothesis.title,"description":hypothesis.description},"task_query":task.query,"schema":{"items":[{"index":0,"effect":"support|weaken|neutral","confidence":"0-1","reason":"一句话原因"}]},"search_results":[{"index":i,"title":x.get('title',''),"url":x.get('url',''),"snippet":(x.get('content') or x.get('snippet') or '')[:500]} for i,x in enumerate(items[:5])]}
+    obj=services._llm_json(db,system,json.dumps(payload,ensure_ascii=False),temperature=0.05) or {}
+    rows=obj.get('items') or []
+    out=[]
+    for i,_ in enumerate(items):
+        row=next((r for r in rows if int(r.get('index',-1))==i),{}) if isinstance(rows,list) else {}
+        effect=str(row.get('effect') or 'neutral').lower()
+        if effect not in {'support','weaken','neutral'}: effect='neutral'
+        try: conf=float(row.get('confidence') or 0.45)
+        except Exception: conf=0.45
+        out.append({'effect':effect,'confidence':max(0,min(1,conf)),'reason':str(row.get('reason') or '')[:500]})
+    return out
+
 def run_next_validation_round(db:Session, project_id:int, limit:int=2):
     ensure_tables()
     p=db.get(models.MvpProject, project_id)
@@ -204,21 +229,30 @@ def run_next_validation_round(db:Session, project_id:int, limit:int=2):
     for t in tasks:
         try:
             items=services.searxng_search(db,t.query,limit=3)
+            h=db.get(models.ProgressHypothesis,t.hypothesis_id) if t.hypothesis_id else None
+            judgments=_classify_evidence(db,h,t,items[:3])
             summaries=[]
-            for item in items[:3]:
+            for idx,item in enumerate(items[:3]):
                 url=item.get('url') or ''
                 title=item.get('title') or item.get('content') or t.query
                 snip=item.get('content') or item.get('snippet') or ''
                 if not url and not title: continue
-                e=models.ProgressEvidenceItem(project_id=p.id,hypothesis_id=t.hypothesis_id,task_id=t.id,title=title[:500],url=url,source_domain=_domain(url),snippet=snip[:1000],effect='neutral',confidence=0.45)
-                db.add(e); found+=1; summaries.append(title[:120])
+                j=judgments[idx] if idx < len(judgments) else {'effect':'neutral','confidence':0.45,'reason':''}
+                e=models.ProgressEvidenceItem(project_id=p.id,hypothesis_id=t.hypothesis_id,task_id=t.id,title=title[:500],url=url,source_domain=_domain(url),snippet=snip[:1000],effect=j['effect'],reason=j.get('reason',''),confidence=j['confidence'])
+                db.add(e); found+=1; summaries.append(f"{j['effect']}: {title[:100]}")
             t.status='done'; t.last_run_at=datetime.utcnow(); t.result_summary='；'.join(summaries[:3]) or '未发现明显证据'; db.merge(t)
-            h=db.get(models.ProgressHypothesis,t.hypothesis_id) if t.hypothesis_id else None
             if h:
-                h.evidence_count=db.query(models.ProgressEvidenceItem).filter_by(hypothesis_id=h.id).count(); h.last_checked_at=datetime.utcnow(); h.status='supported' if h.evidence_count>=3 else 'unverified'; h.confidence=min(0.85,0.25+h.evidence_count*0.1); db.merge(h)
+                db.flush()
+                all_ev=db.query(models.ProgressEvidenceItem).filter_by(hypothesis_id=h.id).all(); h.evidence_count=len(all_ev); h.last_checked_at=datetime.utcnow()
+                support=sum(1 for e in all_ev if e.effect=='support'); weaken=sum(1 for e in all_ev if e.effect=='weaken')
+                h.status='supported' if support>=2 and support>weaken else ('weakened' if weaken>=2 and weaken>=support else 'unverified')
+                h.confidence=min(0.9,max(0.15,0.25+support*0.15-weaken*0.12)); db.merge(h)
             db.commit()
         except Exception:
             db.rollback(); t.status='failed'; t.result_summary='验证失败'; db.merge(t); db.commit()
+    for h in db.query(models.ProgressHypothesis).filter_by(project_id=p.id).all():
+        all_ev=db.query(models.ProgressEvidenceItem).filter_by(hypothesis_id=h.id).all(); support=sum(1 for e in all_ev if e.effect=='support'); weaken=sum(1 for e in all_ev if e.effect=='weaken')
+        h.evidence_count=len(all_ev); h.status='supported' if support>=2 and support>weaken else ('weakened' if weaken>=2 and weaken>=support else 'unverified'); h.confidence=min(0.9,max(0.15,0.25+support*0.15-weaken*0.12)); db.merge(h)
     p.next_action=f'已运行下一轮验证，新增/更新证据 {found} 条。继续查看假设状态和证据链。'; db.merge(p); db.commit()
     return get_project(db,project_id)
 

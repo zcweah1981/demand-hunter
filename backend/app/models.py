@@ -284,6 +284,7 @@ class ProgressEvidenceItem(Base):
     source_domain: Mapped[str] = mapped_column(String(255), default="")
     snippet: Mapped[str] = mapped_column(Text, default="")
     effect: Mapped[str] = mapped_column(String(40), default="neutral")
+    reason: Mapped[str] = mapped_column(Text, default="")
     confidence: Mapped[float] = mapped_column(Float, default=0.0)
     captured_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
