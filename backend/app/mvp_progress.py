@@ -284,7 +284,14 @@ def validate_project(db:Session, project_id:int):
         err=str(e)[:2000]
         try:
             run.status="failed"; run.summary_json=json.dumps({"error":err,"old_score":old_score},ensure_ascii=False); run.finished_at=datetime.utcnow(); db.merge(run)
-            p.status="analysis_failed"; p.next_action=f"产品分析失败：{err[:300]}。请检查后端日志或点击「重新分析」。"; db.merge(p)
+            has_valid=False
+            for prev in db.query(models.MvpValidationRun).filter_by(project_id=p.id,status='ok').order_by(models.MvpValidationRun.finished_at.desc()).limit(5).all():
+                try:
+                    sm=json.loads(prev.summary_json or '{}'); has_valid=bool(sm.get('analysis_type')=='product_analysis' and sm.get('analysis'))
+                except Exception: has_valid=False
+                if has_valid: break
+            if not has_valid:
+                p.status="analysis_failed"; p.next_action=f"产品分析失败：{err[:300]}。请检查后端日志或点击「重新分析」。"; db.merge(p)
             db.commit()
         except Exception:
             db.rollback()
