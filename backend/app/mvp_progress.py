@@ -1,5 +1,5 @@
 from __future__ import annotations
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 import hashlib, json, re, requests
 from urllib.parse import urlparse
@@ -192,15 +192,15 @@ def _seed_progress_loop(db:Session, p:models.MvpProject, analysis:dict, queries:
         task_queries=[]
         low=(title+' '+desc).lower()
         if '嵌入' in title or 'embed' in low or '官网' in title:
-            task_queries=['SOC 2 consultant embedded assessment','SOC 2 readiness quiz consultant website']
+            task_specs=[('service_provider_case','SOC 2 consultant embedded assessment'),('service_provider_case','SOC 2 readiness quiz consultant website')]
         elif '白标' in title or 'white' in low:
-            task_queries=['white label assessment platform for consultants','white label compliance assessment software']
+            task_specs=[('competitor_watch','white label assessment platform for consultants'),('competitor_watch','white label compliance assessment software')]
         elif 'quiz' in low or 'form' in low or '替代' in title:
-            task_queries=['LeadQuizzes pricing CRM lead scoring','Outgrow calculator lead generation pricing']
+            task_specs=[('alternative_watch','LeadQuizzes pricing CRM lead scoring'),('alternative_watch','Outgrow calculator lead generation pricing')]
         else:
-            task_queries=queries[:2]
-        for q in task_queries[:2]:
-            db.add(models.ProgressEvidenceTask(project_id=p.id,hypothesis_id=h.id,query=q[:300],task_type='web_search',status='pending',priority=priority or 'medium'))
+            task_specs=[('evidence_search',q) for q in queries[:2]]
+        for task_type,q in task_specs[:2]:
+            db.add(models.ProgressEvidenceTask(project_id=p.id,hypothesis_id=h.id,query=q[:300],task_type=task_type,status='pending',priority=priority or 'medium',next_run_at=datetime.utcnow()+timedelta(days=7)))
     db.commit()
 
 def _classify_evidence(db:Session, hypothesis:models.ProgressHypothesis|None, task:models.ProgressEvidenceTask, items:list[dict]):
