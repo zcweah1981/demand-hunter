@@ -26,7 +26,7 @@ def _json_loads(s, default):
     try: return json.loads(s or "")
     except Exception: return default
 
-def _short(s:str, n:int=50000)->str:
+def _short(s:str, n:int=12000)->str:
     s=s or ""
     return s if len(s)<=n else s[:n] + f"\n\n[TRUNCATED_FOR_ANALYSIS original_chars={len(s)}]"
 
@@ -155,9 +155,25 @@ def validate_project(db:Session, project_id:int):
     old_score=float(p.feasibility_score or 0)
     run=models.MvpValidationRun(project_id=p.id,kind="product_analysis",status="running")
     db.add(run); db.commit(); db.refresh(run)
+    try:
+        return _validate_inner(db, p, run, old_score)
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        err=str(e)[:2000]
+        try:
+            run.status="failed"; run.summary_json=json.dumps({"error":err,"old_score":old_score},ensure_ascii=False); run.finished_at=datetime.utcnow(); db.merge(run)
+            p.status="analysis_failed"; p.next_action=f"产品分析失败：{err[:300]}。请检查后端日志或点击「重新分析」。"; db.merge(p)
+            db.commit()
+        except Exception:
+            db.rollback()
+        return run
+
+def _validate_inner(db:Session, p, run, old_score):
     card=db.get(models.OpportunityCard,p.representative_card_id)
     group=services.opportunity_group_for_card(db,card) if card else {}
     card_detail=_card_detail(db,card)
+    slim_card={k:card_detail[k] for k in ['title','keyword','verdict','score','demand_score','serp_gap_score','competitor_weakness_score','commercial_score','monetization_score','monetization_type','mvp_plan','business'] if k in (card_detail or {})}
+    slim_card['risks']=(card_detail.get('risks') or [])[:5]
     biz=(card_detail or {}).get("business") or {}
     icp=biz.get("icp") or "potential customers"
     queries=[p.canonical_keyword, f"{p.canonical_keyword} competitors", f"{p.canonical_keyword} alternatives", f"{p.canonical_keyword} pricing", f"{p.canonical_keyword} template", f"{p.canonical_keyword} calculator", f"{p.canonical_keyword} software", f"{p.canonical_keyword} reddit", f"{icp} {p.canonical_keyword}"]
@@ -173,7 +189,7 @@ def validate_project(db:Session, project_id:int):
         try: summary=json.loads(s.summary_json or "{}")
         except Exception: summary={}
         sitemap_payload.append({"competitor_id":s.competitor_id,"url_count":summary.get("url_count"),"interesting":summary.get("interesting",[])[:10]})
-    user=json.dumps({"schema":{"feasibility_score":"0-100 after product analysis","score_change_reason":"为什么升分/降分/保持","risk_level":"low|medium|high|critical","verdict":"continue|need_evidence|adjust_prd|pause","decision_summary":{"decision":"继续推进|需要补证|需要改PRD|暂停","reason":"一句话主因","score_change_reason":"分数变化原因","biggest_opportunity":"最大机会","biggest_risk":"最大风险","next_step":"下一步动作"},"prd_reasonableness":{"verdict":"reasonable|needs_revision|weak","strengths":[],"problems":[],"missing_sections":[],"revision_advice":[]},"product_plan":{"positioning":"产品定位","core_workflow":"核心流程","mvp_scope":[],"must_not_build":[],"first_validation":"首个验证动作"},"target_users":[{"segment":"目标用户分群","pain":"痛点","payment_trigger":"付费触发","entry":"可触达入口/关键词/社区","evidence":"证据摘要","confidence":"low|medium|high"}],"commercial_logic":{"why_now":"为什么现在需要","value_proposition":"价值主张","business_model":"商业模式","budget_owner":"预算归属","main_assumption":"最大假设"},"payment_path":{"buyer":"谁付费","trigger":"何时付费","pricing_test":"定价测试","conversion_path":"从入口到付费路径","first_sale_test":"第一笔钱测试"},"competitor_table":[{"name":"竞品名","domain":"域名","url":"官网/证据链接","positioning":"定位","target_customer":"目标客户","core_features":["核心功能"],"pricing":"定价/收费信号","maturity":"low|medium|high","strengths":["做得好的方面"],"weaknesses":["弱项/缺口"],"direct_competition":"none|indirect|direct","similarity":"low|medium|high","threat":"low|medium|high","moat":"壁垒/护城河","acquisition":"主要获客方式/渠道信号","why_users_choose_them":"用户为什么会选它","why_users_leave":"用户为什么会不满意或离开","our_wedge":"我们可切入/绕开的突破口","evidence":"用于判断的证据摘要","confidence":"low|medium|high"}],"acquisition_channels":[{"channel":"获客方式","entry":"入口/关键词/社区","test_action":"可执行验证动作","evidence":"证据","cost":"low|medium|high","confidence":"low|medium|high"}],"evidence_plan":[{"hypothesis":"待验证假设","current_evidence":"当前证据","method":"抓取/搜索/访谈/落地页测试","success_signal":"成功信号","priority":"high|medium|low"}],"wedge":"总体突破口/差异化入口；没有则说明没有","prd_gaps":[],"next_actions":[],"notification":"给用户的简短结论"},"prd":_short(p.prd_content),"original_opportunity":card_detail,"opportunity_group":group,"evidence_queries":queries,"competitors":comp_payload,"sitemap":sitemap_payload},ensure_ascii=False)
+    user=json.dumps({"schema":{"feasibility_score":"0-100 after product analysis","score_change_reason":"为什么升分/降分/保持","risk_level":"low|medium|high|critical","verdict":"continue|need_evidence|adjust_prd|pause","decision_summary":{"decision":"继续推进|需要补证|需要改PRD|暂停","reason":"一句话主因","score_change_reason":"分数变化原因","biggest_opportunity":"最大机会","biggest_risk":"最大风险","next_step":"下一步动作"},"prd_reasonableness":{"verdict":"reasonable|needs_revision|weak","strengths":[],"problems":[],"missing_sections":[],"revision_advice":[]},"product_plan":{"positioning":"产品定位","core_workflow":"核心流程","mvp_scope":[],"must_not_build":[],"first_validation":"首个验证动作"},"target_users":[{"segment":"目标用户分群","pain":"痛点","payment_trigger":"付费触发","entry":"可触达入口/关键词/社区","evidence":"证据摘要","confidence":"low|medium|high"}],"commercial_logic":{"why_now":"为什么现在需要","value_proposition":"价值主张","business_model":"商业模式","budget_owner":"预算归属","main_assumption":"最大假设"},"payment_path":{"buyer":"谁付费","trigger":"何时付费","pricing_test":"定价测试","conversion_path":"从入口到付费路径","first_sale_test":"第一笔钱测试"},"competitor_table":[{"name":"竞品名","domain":"域名","url":"官网/证据链接","positioning":"定位","target_customer":"目标客户","core_features":["核心功能"],"pricing":"定价/收费信号","maturity":"low|medium|high","strengths":["做得好的方面"],"weaknesses":["弱项/缺口"],"direct_competition":"none|indirect|direct","similarity":"low|medium|high","threat":"low|medium|high","moat":"壁垒/护城河","acquisition":"主要获客方式/渠道信号","why_users_choose_them":"用户为什么会选它","why_users_leave":"用户为什么会不满意或离开","our_wedge":"我们可切入/绕开的突破口","evidence":"用于判断的证据摘要","confidence":"low|medium|high"}],"acquisition_channels":[{"channel":"获客方式","entry":"入口/关键词/社区","test_action":"可执行验证动作","evidence":"证据","cost":"low|medium|high","confidence":"low|medium|high"}],"evidence_plan":[{"hypothesis":"待验证假设","current_evidence":"当前证据","method":"抓取/搜索/访谈/落地页测试","success_signal":"成功信号","priority":"high|medium|low"}],"wedge":"总体突破口/差异化入口；没有则说明没有","prd_gaps":[],"next_actions":[],"notification":"给用户的简短结论"},"prd":_short(p.prd_content,8000),"original_opportunity":slim_card,"opportunity_group":group,"evidence_queries":queries,"competitors":comp_payload,"sitemap":sitemap_payload},ensure_ascii=False)
     obj=services._llm_json(db,system,user,temperature=0.15) or {}
     score=float(obj.get("feasibility_score") or 50)
     risk=str(obj.get("risk_level") or "medium")
