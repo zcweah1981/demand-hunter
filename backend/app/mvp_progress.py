@@ -111,21 +111,39 @@ def _domain(url:str)->str:
     try: return urlparse(url).netloc.replace("www.","")
     except Exception: return ""
 
+def _prd_competitor_queries(db:Session, project:models.MvpProject, slim_card:dict):
+    text=((project.prd_content or "")+" "+project.canonical_keyword).lower()
+    queries=[]
+    # Deterministic PRD-shape competitor discovery: understand product shape, not just original keyword.
+    if "soc 2" in text or "soc2" in text:
+        queries += ["SOC 2 readiness assessment software", "SOC 2 compliance questionnaire tool"]
+    if any(x in text for x in ["embed","embedded","嵌入","white label","white-label","白标"]):
+        queries += ["white label compliance assessment tool", "embedded assessment tool for consultants"]
+    if any(x in text for x in ["lead","线索","sales brief","crm","服务商","consultant","msp","vciso"]):
+        queries += ["compliance lead generation tool", "vCISO assessment tool for lead generation"]
+    if any(x in text for x in ["calculator","计算器","cost","成本"]):
+        queries += ["SOC 2 cost calculator", "compliance cost calculator software"]
+    if not queries:
+        queries=[project.canonical_keyword, f"{project.canonical_keyword} alternatives", f"{project.canonical_keyword} competitors"]
+    out=[]
+    for q in queries:
+        if q not in out: out.append(q)
+    return out[:4]
+
 def _extract_competitors_from_serp(db:Session, project:models.MvpProject, queries:list[str]):
     out=[]; seen=set()
-    for q in queries[:8]:
-        kw=models.Keyword(query=q[:250], source="mvp_progress", intent="competitor_discovery", score=0.0)
-        # do not insert keyword; use search provider directly via run_serp needs DB keyword, so temporary commit then keep as evidence keyword
+    for q in queries[:4]:
         try:
-            db.add(kw); db.commit(); db.refresh(kw)
-            serp=services.run_serp(db, kw)
-            for s in serp[:8]:
-                d=_domain(s.url)
-                if not d or d in seen: continue
+            items=services.searxng_search(db, q, limit=4)
+            for item in items[:4]:
+                url=item.get("url") or item.get("link") or ""
+                d=_domain(url)
+                if not d or d in seen or d.endswith(".gov"): continue
                 seen.add(d)
+                title=(item.get("title") or d)[:250]
                 c=db.query(models.TrackedCompetitor).filter_by(project_id=project.id, domain=d).first()
                 if not c:
-                    c=models.TrackedCompetitor(project_id=project.id,domain=d,name=s.title[:250],url=s.url,pricing_url="",sitemap_url=f"https://{d}/sitemap.xml",notes=f"来自搜索：{q}",last_seen_at=datetime.utcnow())
+                    c=models.TrackedCompetitor(project_id=project.id,domain=d,name=title,url=url,pricing_url="",sitemap_url=f"https://{d}/sitemap.xml",notes=f"来自PRD竞品搜索：{q}",last_seen_at=datetime.utcnow())
                     db.add(c); db.commit(); db.refresh(c)
                 out.append(c)
         except Exception:
@@ -176,14 +194,14 @@ def _validate_inner(db:Session, p, run, old_score):
     slim_card['risks']=(card_detail.get('risks') or [])[:5]
     biz=(card_detail or {}).get("business") or {}
     icp=biz.get("icp") or "potential customers"
-    queries=[p.canonical_keyword, f"{p.canonical_keyword} competitors", f"{p.canonical_keyword} alternatives", f"{p.canonical_keyword} pricing", f"{p.canonical_keyword} template", f"{p.canonical_keyword} calculator", f"{p.canonical_keyword} software", f"{p.canonical_keyword} reddit", f"{icp} {p.canonical_keyword}"]
+    queries=_prd_competitor_queries(db,p,slim_card)
     system="""你是 PRD-first 的产品与商业化分析负责人。
 核心原则：当前 PRD 是主事实源，必须优先分析 PRD 描述的新产品方案本身；原采纳机会和原证据只作为历史基线/需求来源参考，不能把分析重点变成“和原机会做对比”。如果 PRD 相比原机会发生 pivot，要明确说明 pivot 后的新 ICP、商业模式、分发入口、付费路径是否成立。
 你必须围绕 PRD 回答：1) PRD 的核心产品 thesis 是什么；2) 目标用户/买方/使用方分别是谁；3) 核心工作流是否闭环；4) 商业逻辑是否成立；5) 付费路径和价格策略是否合理；6) 如果 PRD 包含服务商官网嵌入、白标、lead capture、CRM/export、销售简报等机制，必须专门分析该分发模式是否成立；7) 竞品是否正面竞争，还是可绕开；8) 第一批客户和第一笔钱如何验证；9) PRD 需要补强哪些内容；10) 是否应该提高、保持或降低产品可行性评分。
 评分规则：以 PRD 新方案为准。若新方案有更清晰 ICP、分发入口、付费理由、服务商价值和可验证 MVP，可升分；若 PRD 只是概念、价格不合理、服务商无付费动机、官网嵌入转化链条不清、获客不可执行，要降分或标记需改 PRD。不要只输出对比结论，必须剖析新方案。
 必须中文，严格 JSON。"""
     competitors=_extract_competitors_from_serp(db,p,queries)
-    snaps=_sitemap_probe(db,competitors)
+    snaps=_sitemap_probe(db,competitors[:4])
     comp_payload=[{"domain":c.domain,"url":c.url,"notes":c.notes,"sitemap_url":c.sitemap_url} for c in competitors[:20]]
     sitemap_payload=[]
     for s in snaps[:20]:
