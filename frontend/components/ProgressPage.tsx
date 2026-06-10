@@ -69,7 +69,9 @@ function ProgressDrawer({selected,busy,prd,uploadName,uploadSize,uploadError,fil
    <SectionTitle step="01" title="总体产品分析" desc="先给出总判断：值不值得推进、为什么变分、最大机会和最大风险。"/>
    <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]"><Info title="总体判断" text={fmtObj(decision)||analysis.notification||selected.project.next_action}/><Info title="评分变化原因" text={scoreReason}/></div>
    <div className="grid gap-4 xl:grid-cols-2"><Info title="最大机会" text={decision.biggest_opportunity||analysis.biggest_opportunity}/><Info title="最大风险" text={decision.biggest_risk||analysis.biggest_risk}/></div>
-   <SectionTitle step="02" title="PRD 合理性" desc="先判断 PRD 是否继承原机会、是否收窄到可验证 MVP、是否能导向付费。"/>
+   <SectionTitle step="02" title="PRD 新方案剖析" desc="以当前 PRD 为准，不只是和原机会对比；先看新方案本身的产品 thesis、分发模式和价格策略。"/>
+   <Info title="PRD 核心方案" text={fmtObj(analysis.prd_core_thesis)}/>
+   <div className="grid gap-4 xl:grid-cols-2"><Info title="官网嵌入 / 服务商分发策略" text={fmtObj(analysis.embedded_calculator_strategy)}/><Info title="价格策略分析" text={fmtObj(analysis.pricing_strategy)}/></div>
    <Info title="PRD 合理性分析" text={fmtObj(analysis.prd_reasonableness)}/>
    <Info title="产品方案" text={fmtObj(analysis.product_plan)}/>
    <SectionTitle step="03" title="目标用户与需求入口" desc="看谁真的痛、在哪里能触达、证据强不强。"/>
