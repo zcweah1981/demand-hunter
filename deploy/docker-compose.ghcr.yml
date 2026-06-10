@@ -1,6 +1,6 @@
 services:
   backend:
-    image: ${BACKEND_IMAGE:-ghcr.io/zcweah1981/demand-hunter-backend:main}
+    image: ghcr.io/zcweah1981/demand-hunter-backend:v0.1.0
     container_name: demand-hunter-backend
     restart: unless-stopped
     env_file: ./.env
@@ -14,7 +14,7 @@ services:
     networks: [proxy]
 
   frontend:
-    image: ${FRONTEND_IMAGE:-ghcr.io/zcweah1981/demand-hunter-frontend:main}
+    image: ghcr.io/zcweah1981/demand-hunter-frontend:v0.1.0
     container_name: demand-hunter-frontend
     restart: unless-stopped
     env_file: ./.env

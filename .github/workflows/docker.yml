@@ -3,6 +3,7 @@ name: Build and publish Docker images
 on:
   push:
     branches: [main]
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -52,6 +53,7 @@ jobs:
           tags: |
             type=sha,format=short
             type=raw,value=main,enable={{is_default_branch}}
+            type=ref,event=tag
 
       - name: Build and push ${{ matrix.name }}
         uses: docker/build-push-action@v6
