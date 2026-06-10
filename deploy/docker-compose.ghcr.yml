@@ -1,0 +1,30 @@
+services:
+  backend:
+    image: ${BACKEND_IMAGE:-ghcr.io/zcweah1981/demand-hunter-backend:main}
+    container_name: demand-hunter-backend
+    restart: unless-stopped
+    env_file: ./.env
+    environment:
+      DEMAND_HUNTER_AUTO_WORKER: "true"
+      DEMAND_HUNTER_DATA_DIR: /app/data
+      DEMAND_HUNTER_ROOT: /app
+    volumes:
+      - ./shared/data:/app/data
+      - ./shared/output:/app/output
+    networks: [proxy]
+
+  frontend:
+    image: ${FRONTEND_IMAGE:-ghcr.io/zcweah1981/demand-hunter-frontend:main}
+    container_name: demand-hunter-frontend
+    restart: unless-stopped
+    env_file: ./.env
+    environment:
+      INTERNAL_API_URL: http://backend:8100
+      INTERNAL_API_TOKEN: ${DEMAND_HUNTER_AUTH_TOKEN}
+      NEXT_PUBLIC_API_URL: ""
+    depends_on: [backend]
+    networks: [proxy]
+
+networks:
+  proxy:
+    external: true
