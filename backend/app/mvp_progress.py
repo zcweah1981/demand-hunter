@@ -91,7 +91,7 @@ def create_project_from_card(db:Session, card_id:int):
     gid=group.get("group_id") or f"card-{card.id}"
     existing=db.query(models.MvpProject).filter_by(opportunity_group_id=gid).first()
     if existing: return existing
-    p=models.MvpProject(opportunity_group_id=gid, canonical_keyword=group.get("canonical_keyword") or card.title, representative_card_id=card.id, status="needs_prd", feasibility_score=float(card.score or 0), risk_level="unknown", next_action="上传 PRD.md 后自动进入 Phase 1：证据验证、竞品/客户/突破口分析和重新评分。")
+    p=models.MvpProject(opportunity_group_id=gid, canonical_keyword=group.get("canonical_keyword") or card.title, representative_card_id=card.id, status="needs_prd", feasibility_score=float(card.score or 0), risk_level="unknown", next_action="上传 PRD.md 后开始产品分析：先判断 PRD 合理性，再验证目标用户、商业逻辑、付费路径、竞品、获客方式并重新评分。")
     db.add(p); db.commit(); db.refresh(p); return p
 
 def save_prd(db:Session, project_id:int, content:str):
@@ -104,7 +104,7 @@ def save_prd(db:Session, project_id:int, content:str):
     folder=PRD_ROOT/slug; folder.mkdir(parents=True, exist_ok=True)
     path=folder/"PRD.md"
     path.write_text(content, encoding="utf-8")
-    p.prd_content=content; p.prd_path=str(path.relative_to(ROOT)); p.prd_version=(p.prd_version or 0)+1; p.status="prd_ready"; p.next_action="PRD 已保存，准备启动 Phase 1 证据验证。"
+    p.prd_content=content; p.prd_path=str(path.relative_to(ROOT)); p.prd_version=(p.prd_version or 0)+1; p.status="prd_ready"; p.next_action="PRD 已保存，准备启动产品分析。"
     db.merge(p); db.commit(); db.refresh(p); return p
 
 def _domain(url:str)->str:
@@ -153,7 +153,7 @@ def validate_project(db:Session, project_id:int):
     if not p: raise ValueError("project_not_found")
     if not (p.prd_content or "").strip(): raise ValueError("prd_required_before_validation")
     old_score=float(p.feasibility_score or 0)
-    run=models.MvpValidationRun(project_id=p.id,kind="phase1_evidence_validation",status="running")
+    run=models.MvpValidationRun(project_id=p.id,kind="product_analysis",status="running")
     db.add(run); db.commit(); db.refresh(run)
     card=db.get(models.OpportunityCard,p.representative_card_id)
     group=services.opportunity_group_for_card(db,card) if card else {}
@@ -161,8 +161,8 @@ def validate_project(db:Session, project_id:int):
     biz=(card_detail or {}).get("business") or {}
     icp=biz.get("icp") or "potential customers"
     queries=[p.canonical_keyword, f"{p.canonical_keyword} competitors", f"{p.canonical_keyword} alternatives", f"{p.canonical_keyword} pricing", f"{p.canonical_keyword} template", f"{p.canonical_keyword} calculator", f"{p.canonical_keyword} software", f"{p.canonical_keyword} reddit", f"{icp} {p.canonical_keyword}"]
-    system="""你是机会推进 Phase 1 验证负责人。目标不是执行 MVP，而是基于 PRD 和真实证据重新判断方案是否值得推进。
-你必须判断：1) 原采纳机会的信息是否被 PRD 正确继承；2) SERP/竞品/潜在客户证据是否支持这个方案；3) 竞品是否强势到没有突破口；4) 是否存在差异化 wedge；5) PRD 需要如何补强；6) 是否应该提高、保持或降低可行性评分。
+    system="""你是机会推进的产品分析负责人。目标不是执行 MVP，而是先判断 PRD 是否合理，再基于真实证据重新判断方案是否值得推进。
+你必须判断：1) PRD 本身是否合理、是否继承了原采纳机会；2) 目标用户是否清晰且有真实需求入口；3) 商业逻辑是否成立；4) 付费路径是否合理；5) SERP/竞品/潜在客户证据是否支持这个方案；6) 竞品是否强势到没有突破口；7) 是否存在差异化 wedge；8) 获客方式是否可执行；9) PRD 需要如何补强；10) 是否应该提高、保持或降低可行性评分。
 评分规则：竞品强且同质化/无入口/无客户证据要降分；发现明确痛点、弱竞品、可触达客户、清晰突破口要升分；证据不足要标 Need Evidence 或降低置信。
 必须中文，严格 JSON。"""
     competitors=_extract_competitors_from_serp(db,p,queries)
@@ -173,22 +173,22 @@ def validate_project(db:Session, project_id:int):
         try: summary=json.loads(s.summary_json or "{}")
         except Exception: summary={}
         sitemap_payload.append({"competitor_id":s.competitor_id,"url_count":summary.get("url_count"),"interesting":summary.get("interesting",[])[:10]})
-    user=json.dumps({"schema":{"feasibility_score":"0-100 after evidence validation","score_change_reason":"为什么升分/降分/保持","risk_level":"low|medium|high|critical","verdict":"continue|need_evidence|adjust_prd|pause","original_opportunity_fit":"PRD 是否继承原机会判断","customer_evidence":["潜在客户/ICP/需求入口"],"competitor_findings":["竞品强弱和相似度"],"wedge":"可突破口/差异化入口；没有则说明没有","prd_gaps":[],"evidence_to_collect_next":[],"mvp_scope_changes":[],"pricing_strategy":[],"seo_strategy":[],"promotion_strategy":[],"iteration_strategy":[],"next_actions":[],"notification":"给用户的简短结论"},"prd":_short(p.prd_content),"original_opportunity":card_detail,"opportunity_group":group,"evidence_queries":queries,"competitors":comp_payload,"sitemap":sitemap_payload},ensure_ascii=False)
+    user=json.dumps({"schema":{"feasibility_score":"0-100 after product analysis","score_change_reason":"为什么升分/降分/保持","risk_level":"low|medium|high|critical","verdict":"continue|need_evidence|adjust_prd|pause","prd_reasonableness":{"verdict":"reasonable|needs_revision|weak","strengths":[],"problems":[],"missing_sections":[]},"product_plan":{"positioning":"产品定位","core_workflow":"核心流程","mvp_scope":[],"must_not_build":[]},"target_users":[{"segment":"目标用户分群","pain":"痛点","evidence":"证据/入口","confidence":"low|medium|high"}],"commercial_logic":{"why_now":"为什么现在需要","value_proposition":"价值主张","business_model":"商业模式","main_assumption":"最大假设"},"payment_path":{"buyer":"谁付费","trigger":"何时付费","pricing_test":"定价测试","conversion_path":"从入口到付费路径"},"competitor_table":[{"name":"竞品名","domain":"域名","positioning":"定位","pricing":"定价/收费信号","strength":"强项","weakness":"弱项","similarity":"low|medium|high","threat":"low|medium|high","wedge":"可突破口"}],"acquisition_channels":[{"channel":"获客方式","entry":"入口/关键词/社区","evidence":"证据","cost":"low|medium|high","confidence":"low|medium|high"}],"evidence_plan":[{"area":"需要验证的点","method":"抓取/搜索/访谈/落地页测试","success_signal":"成功信号"}],"wedge":"总体突破口/差异化入口；没有则说明没有","prd_gaps":[],"next_actions":[],"notification":"给用户的简短结论"},"prd":_short(p.prd_content),"original_opportunity":card_detail,"opportunity_group":group,"evidence_queries":queries,"competitors":comp_payload,"sitemap":sitemap_payload},ensure_ascii=False)
     obj=services._llm_json(db,system,user,temperature=0.15) or {}
     score=float(obj.get("feasibility_score") or 50)
     risk=str(obj.get("risk_level") or "medium")
     verdict=str(obj.get("verdict") or "need_evidence")
-    p.feasibility_score=score; p.risk_level=risk; p.status=f"phase1_{verdict}"[:40]; p.last_validated_at=datetime.utcnow(); p.next_action="；".join(obj.get("next_actions") or [])[:1000] or obj.get("notification") or "查看 Phase 1 证据验证结果，继续补证或调整 PRD。"
+    p.feasibility_score=score; p.risk_level=risk; p.status=f"analysis_{verdict}"[:40]; p.last_validated_at=datetime.utcnow(); p.next_action="；".join(obj.get("next_actions") or [])[:1000] or obj.get("notification") or "查看产品分析结果，继续补证或调整 PRD。"
     db.merge(p)
     db.query(models.MvpStrategyRecommendation).filter_by(project_id=p.id).delete()
-    phase1_blocks=[("phase1","score_change_reason","评分变化原因"),("customer","customer_evidence","潜在客户 / 需求入口"),("competitor","competitor_findings","竞品判断"),("wedge","wedge","突破口 / 差异化"),("prd","prd_gaps","PRD 待补强"),("evidence","evidence_to_collect_next","下一步补证")]
-    for typ,key,title in phase1_blocks:
+    analysis_blocks=[("score","score_change_reason","评分变化原因"),("prd","prd_reasonableness","PRD 合理性"),("plan","product_plan","产品方案"),("customer","target_users","目标用户"),("commercial","commercial_logic","商业逻辑"),("payment","payment_path","付费路径"),("competitor","competitor_table","竞品多维分析"),("acquisition","acquisition_channels","获客方式"),("wedge","wedge","突破口 / 差异化"),("evidence","evidence_plan","下一步证据计划"),("prd","prd_gaps","PRD 待补强")]
+    for typ,key,title in analysis_blocks:
         val=obj.get(key) or []
-        content="\n".join([str(x) for x in val]) if isinstance(val,list) else str(val)
+        content=json.dumps(val,ensure_ascii=False,indent=2) if isinstance(val,(list,dict)) else str(val)
         if content.strip(): db.add(models.MvpStrategyRecommendation(project_id=p.id,type=typ,title=title,content=content,confidence=score/100,status="open"))
     for typ,key,title in [("pricing","pricing_strategy","定价策略"),("seo","seo_strategy","SEO 策略"),("promotion","promotion_strategy","推广策略"),("iteration","iteration_strategy","迭代策略"),("prd","mvp_scope_changes","PRD/MVP 调整")]:
         val=obj.get(key) or []
         content="\n".join([str(x) for x in val]) if isinstance(val,list) else str(val)
         if content.strip(): db.add(models.MvpStrategyRecommendation(project_id=p.id,type=typ,title=title,content=content,confidence=score/100,status="open"))
-    run.status="ok"; run.summary_json=json.dumps({"llm":bool(obj),"phase":"evidence_validation","queries":queries,"competitors":len(competitors),"sitemap_snapshots":len(snaps),"old_score":old_score,"new_score":score,"score_delta":score-old_score,"analysis":obj},ensure_ascii=False); run.score_delta=score-old_score; run.finished_at=datetime.utcnow(); db.merge(run)
+    run.status="ok"; run.summary_json=json.dumps({"llm":bool(obj),"analysis_type":"product_analysis","queries":queries,"competitors":len(competitors),"sitemap_snapshots":len(snaps),"old_score":old_score,"new_score":score,"score_delta":score-old_score,"analysis":obj},ensure_ascii=False); run.score_delta=score-old_score; run.finished_at=datetime.utcnow(); db.merge(run)
     db.commit(); db.refresh(run); db.refresh(p); return run
