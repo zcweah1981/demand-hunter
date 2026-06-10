@@ -53,6 +53,7 @@ jobs:
           tags: |
             type=sha,format=short
             type=raw,value=main,enable={{is_default_branch}}
+            type=raw,value=latest
             type=ref,event=tag
 
       - name: Build and push ${{ matrix.name }}
