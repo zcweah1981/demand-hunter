@@ -2,7 +2,7 @@
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/opt/damand-hunter}"
-REPO="${REPO:-zcweah1981/demand-hunter}"
+REPO="${REPO:-zcweah1981/damand-hunter}"
 TAG="${1:-latest}"
 REF="${2:-main}"
 
