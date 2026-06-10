@@ -283,7 +283,7 @@ def validate_project(db:Session, project_id:int):
         import traceback; traceback.print_exc()
         err=str(e)[:2000]
         try:
-            run.status="failed"; run.summary_json=json.dumps({"error":err,"old_score":old_score},ensure_ascii=False); run.finished_at=datetime.utcnow(); db.merge(run)
+            run.status="failed"; run.summary_json=json.dumps({"error":err,"old_score":p.feasibility_score or old_score,"display_note":"产品重分析失败，保留上一版有效产品分析结果。"},ensure_ascii=False); run.finished_at=datetime.utcnow(); db.merge(run)
             has_valid=False
             for prev in db.query(models.MvpValidationRun).filter_by(project_id=p.id,status='ok').order_by(models.MvpValidationRun.finished_at.desc()).limit(5).all():
                 try:
