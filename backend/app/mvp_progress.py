@@ -224,8 +224,10 @@ def run_next_validation_round(db:Session, project_id:int, limit:int=2):
     ensure_tables()
     p=db.get(models.MvpProject, project_id)
     if not p: raise ValueError('project_not_found')
+    run=models.MvpValidationRun(project_id=p.id,kind='evidence_round',status='running')
+    db.add(run); db.commit(); db.refresh(run)
     tasks=db.query(models.ProgressEvidenceTask).filter_by(project_id=p.id).filter(models.ProgressEvidenceTask.status.in_(['pending','active'])).order_by(models.ProgressEvidenceTask.created_at.asc()).limit(limit).all()
-    found=0
+    found=0; support_count=0; weaken_count=0; neutral_count=0; task_summaries=[]; before_status={h.id:h.status for h in db.query(models.ProgressHypothesis).filter_by(project_id=p.id).all()}
     for t in tasks:
         try:
             items=services.searxng_search(db,t.query,limit=3)
@@ -239,8 +241,8 @@ def run_next_validation_round(db:Session, project_id:int, limit:int=2):
                 if not url and not title: continue
                 j=judgments[idx] if idx < len(judgments) else {'effect':'neutral','confidence':0.45,'reason':''}
                 e=models.ProgressEvidenceItem(project_id=p.id,hypothesis_id=t.hypothesis_id,task_id=t.id,title=title[:500],url=url,source_domain=_domain(url),snippet=snip[:1000],effect=j['effect'],reason=j.get('reason',''),confidence=j['confidence'])
-                db.add(e); found+=1; summaries.append(f"{j['effect']}: {title[:100]}")
-            t.status='done'; t.last_run_at=datetime.utcnow(); t.result_summary='；'.join(summaries[:3]) or '未发现明显证据'; db.merge(t)
+                db.add(e); found+=1; support_count+=1 if j['effect']=='support' else 0; weaken_count+=1 if j['effect']=='weaken' else 0; neutral_count+=1 if j['effect']=='neutral' else 0; summaries.append(f"{j['effect']}: {title[:100]}")
+            t.status='done'; t.last_run_at=datetime.utcnow(); t.result_summary='；'.join(summaries[:3]) or '未发现明显证据'; task_summaries.append({'task_id':t.id,'query':t.query,'summary':t.result_summary}); db.merge(t)
             if h:
                 db.flush()
                 all_ev=db.query(models.ProgressEvidenceItem).filter_by(hypothesis_id=h.id).all(); h.evidence_count=len(all_ev); h.last_checked_at=datetime.utcnow()
@@ -249,11 +251,22 @@ def run_next_validation_round(db:Session, project_id:int, limit:int=2):
                 h.confidence=min(0.9,max(0.15,0.25+support*0.15-weaken*0.12)); db.merge(h)
             db.commit()
         except Exception:
-            db.rollback(); t.status='failed'; t.result_summary='验证失败'; db.merge(t); db.commit()
+            db.rollback(); t.status='failed'; t.result_summary='验证失败'; task_summaries.append({'task_id':t.id,'query':t.query,'summary':'验证失败'}); db.merge(t); db.commit()
     for h in db.query(models.ProgressHypothesis).filter_by(project_id=p.id).all():
         all_ev=db.query(models.ProgressEvidenceItem).filter_by(hypothesis_id=h.id).all(); support=sum(1 for e in all_ev if e.effect=='support'); weaken=sum(1 for e in all_ev if e.effect=='weaken')
         h.evidence_count=len(all_ev); h.status='supported' if support>=2 and support>weaken else ('weakened' if weaken>=2 and weaken>=support else 'unverified'); h.confidence=min(0.9,max(0.15,0.25+support*0.15-weaken*0.12)); db.merge(h)
-    p.next_action=f'已运行下一轮验证，新增/更新证据 {found} 条。继续查看假设状态和证据链。'; db.merge(p); db.commit()
+    changed=[]
+    for h in db.query(models.ProgressHypothesis).filter_by(project_id=p.id).all():
+        if before_status.get(h.id)!=h.status:
+            changed.append({'hypothesis_id':h.id,'title':h.title,'from':before_status.get(h.id),'to':h.status,'confidence':h.confidence})
+    needs_reassessment=(support_count+weaken_count)>=4 or bool(changed)
+    action=f"已运行下一轮验证：新增证据 {found} 条（支持 {support_count} / 削弱 {weaken_count} / 中性 {neutral_count}）。"
+    if changed: action+=f" {len(changed)} 个假设状态变化。"
+    if needs_reassessment: action+=" 建议查看证据影响，必要时重新进行产品评估。"
+    else: action+=" 继续运行下一轮验证。"
+    p.next_action=action; db.merge(p)
+    run.status='ok'; run.finished_at=datetime.utcnow(); run.summary_json=json.dumps({'analysis_type':'evidence_round','tasks':task_summaries,'new_evidence':found,'support':support_count,'weaken':weaken_count,'neutral':neutral_count,'hypothesis_changes':changed,'needs_reassessment':needs_reassessment,'next_action':action},ensure_ascii=False); db.merge(run)
+    db.commit()
     return get_project(db,project_id)
 
 def validate_project(db:Session, project_id:int):
