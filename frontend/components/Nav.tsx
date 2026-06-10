@@ -83,25 +83,25 @@ export function Nav() {
         <div className="min-w-[170px] shrink-0 md:min-w-0">
           {sectionButton('hunter', '机会猎手')}
           {open==='hunter'&&<div className="mt-2 space-y-1 rounded-2xl border border-slate-800 bg-slate-900/50 p-2">
-            {hunterItems.map(([href, label]) => <Link key={href} className={childClass(href)} href={href}>{label}</Link>)}
+            {hunterItems.map(([href, label]) => <Link prefetch={false} key={href} className={childClass(href)} href={href}>{label}</Link>)}
           </div>}
         </div>
         <div className="min-w-[170px] shrink-0 md:min-w-0">
           {sectionButton('collectors', t('collectors'))}
           {open==='collectors'&&<div className="mt-2 space-y-1 rounded-2xl border border-slate-800 bg-slate-900/50 p-2">
-            {collectorItems.map(([href, label]) => <Link key={href} className={childClass(href)} href={href}>{label}</Link>)}
+            {collectorItems.map(([href, label]) => <Link prefetch={false} key={href} className={childClass(href)} href={href}>{label}</Link>)}
           </div>}
         </div>
         <div className="min-w-[170px] shrink-0 md:min-w-0">
           {sectionButton('settings', t('settings'))}
           {open==='settings'&&<div className="mt-2 space-y-1 rounded-2xl border border-slate-800 bg-slate-900/50 p-2">
-            {settingsItems.map(([href, label]) => <Link key={href} className={childClass(href)} href={href}>{label}</Link>)}
+            {settingsItems.map(([href, label]) => <Link prefetch={false} key={href} className={childClass(href)} href={href}>{label}</Link>)}
           </div>}
         </div>
         <div className="min-w-[150px] shrink-0 md:min-w-0">
           {sectionButton('advanced', t('advanced'))}
           {open==='advanced'&&<div className="mt-2 space-y-1 rounded-2xl border border-slate-800 bg-slate-900/50 p-2">
-            {advancedItems.map(([href, key]) => <Link key={href} className={childClass(href)} href={href}>{t(key)}</Link>)}
+            {advancedItems.map(([href, key]) => <Link prefetch={false} key={href} className={childClass(href)} href={href}>{t(key)}</Link>)}
           </div>}
         </div>
       </nav>
