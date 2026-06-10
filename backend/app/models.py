@@ -207,6 +207,13 @@ class MvpProject(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     last_validated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    auto_validation_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    auto_validation_schedule: Mapped[str] = mapped_column(String(20), default="weekly")
+    auto_validation_hour: Mapped[int] = mapped_column(Integer, default=9)
+    auto_validation_minute: Mapped[int] = mapped_column(Integer, default=0)
+    auto_validation_weekday: Mapped[int] = mapped_column(Integer, default=1)
+    next_auto_validation_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_auto_validation_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 class MvpValidationRun(Base):
     __tablename__ = "mvp_validation_runs"

@@ -39,6 +39,11 @@ def auto_loop():
     while True:
         try:
             start_run_thread(force=False)
+            from app.database import SessionLocal
+            from app import mvp_progress
+            db=SessionLocal()
+            try: mvp_progress.run_due_auto_validations(db)
+            finally: db.close()
         except Exception:
             pass
         time.sleep(60)

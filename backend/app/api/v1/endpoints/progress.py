@@ -40,3 +40,9 @@ def validate(project_id:int, _: bool = Depends(require_auth), db: Session = Depe
 def verify_next(project_id:int, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     try: return mvp_progress.run_next_validation_round(db, project_id)
     except ValueError as e: raise HTTPException(400, str(e))
+
+@router.post("/{project_id}/auto-validation")
+def set_auto_validation(project_id:int, payload:dict, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    try:
+        return mvp_progress.update_auto_validation(db, project_id, bool(payload.get('enabled')), str(payload.get('schedule') or 'weekly'), int(payload.get('hour') or 9), int(payload.get('minute') or 0), int(payload.get('weekday') or 1))
+    except ValueError as e: raise HTTPException(400, str(e))

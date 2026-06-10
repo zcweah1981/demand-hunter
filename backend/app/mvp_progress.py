@@ -19,6 +19,11 @@ def ensure_tables():
             cols=[r[1] for r in conn.exec_driver_sql('PRAGMA table_info(progress_evidence_items)').fetchall()]
             if 'reason' not in cols:
                 conn.exec_driver_sql('ALTER TABLE progress_evidence_items ADD COLUMN reason TEXT DEFAULT ""')
+            pcols=[r[1] for r in conn.exec_driver_sql('PRAGMA table_info(mvp_projects)').fetchall()]
+            additions=[('auto_validation_enabled','BOOLEAN DEFAULT 0'),('auto_validation_schedule','VARCHAR(20) DEFAULT "weekly"'),('auto_validation_hour','INTEGER DEFAULT 9'),('auto_validation_minute','INTEGER DEFAULT 0'),('auto_validation_weekday','INTEGER DEFAULT 1'),('next_auto_validation_at','DATETIME'),('last_auto_validation_at','DATETIME')]
+            for name,ddl in additions:
+                if name not in pcols:
+                    conn.exec_driver_sql(f'ALTER TABLE mvp_projects ADD COLUMN {name} {ddl}')
     except Exception:
         pass
 
@@ -74,7 +79,7 @@ def list_projects(db:Session):
         card=db.get(models.OpportunityCard,p.representative_card_id) if p.representative_card_id else None
         original=float(card.score or 0) if card else 0.0
         display_score=float(p.feasibility_score or original or 0)
-        out.append({"id":p.id,"opportunity_group_id":p.opportunity_group_id,"canonical_keyword":p.canonical_keyword,"representative_card_id":p.representative_card_id,"status":p.status,"prd_version":p.prd_version,"feasibility_score":display_score,"original_score":original,"score_delta":round(display_score-original,1) if p.last_validated_at else 0,"risk_level":p.risk_level,"next_action":p.next_action,"created_at":p.created_at.isoformat(),"updated_at":p.updated_at.isoformat(),"last_validated_at":p.last_validated_at.isoformat() if p.last_validated_at else None,"opportunity":_card_detail(db,card)})
+        out.append({"id":p.id,"opportunity_group_id":p.opportunity_group_id,"canonical_keyword":p.canonical_keyword,"representative_card_id":p.representative_card_id,"status":p.status,"prd_version":p.prd_version,"feasibility_score":display_score,"original_score":original,"score_delta":round(display_score-original,1) if p.last_validated_at else 0,"risk_level":p.risk_level,"next_action":p.next_action,"created_at":p.created_at.isoformat(),"updated_at":p.updated_at.isoformat(),"last_validated_at":p.last_validated_at.isoformat() if p.last_validated_at else None,"auto_validation_enabled":bool(getattr(p,'auto_validation_enabled',False)),"auto_validation_schedule":getattr(p,'auto_validation_schedule','weekly'),"auto_validation_hour":getattr(p,'auto_validation_hour',9),"auto_validation_minute":getattr(p,'auto_validation_minute',0),"auto_validation_weekday":getattr(p,'auto_validation_weekday',1),"next_auto_validation_at":p.next_auto_validation_at.isoformat() if getattr(p,'next_auto_validation_at',None) else None,"last_auto_validation_at":p.last_auto_validation_at.isoformat() if getattr(p,'last_auto_validation_at',None) else None,"opportunity":_card_detail(db,card)})
     return out
 
 def get_project(db:Session, project_id:int):
@@ -90,7 +95,7 @@ def get_project(db:Session, project_id:int):
     evidence=db.query(models.ProgressEvidenceItem).filter_by(project_id=p.id).order_by(models.ProgressEvidenceItem.captured_at.desc()).limit(80).all()
     original=float(card.score or 0) if card else 0.0
     display_score=float(p.feasibility_score or original or 0)
-    return {"project":list_projects(db=[].__class__) if False else {"id":p.id,"opportunity_group_id":p.opportunity_group_id,"canonical_keyword":p.canonical_keyword,"representative_card_id":p.representative_card_id,"status":p.status,"prd_path":p.prd_path,"prd_version":p.prd_version,"prd_content":p.prd_content,"feasibility_score":display_score,"original_score":original,"score_delta":round(display_score-original,1) if p.last_validated_at else 0,"risk_level":p.risk_level,"next_action":p.next_action,"created_at":p.created_at.isoformat(),"updated_at":p.updated_at.isoformat(),"last_validated_at":p.last_validated_at.isoformat() if p.last_validated_at else None,"opportunity":_card_detail(db,card)},"runs":[{"id":r.id,"kind":r.kind,"status":r.status,"summary":json.loads(r.summary_json or "{}"),"score_delta":r.score_delta,"started_at":r.started_at.isoformat(),"finished_at":r.finished_at.isoformat() if r.finished_at else None} for r in runs],"competitors":[{"id":c.id,"domain":c.domain,"name":c.name,"url":c.url,"pricing_url":c.pricing_url,"sitemap_url":c.sitemap_url,"status":c.status,"notes":c.notes,"last_seen_at":c.last_seen_at.isoformat() if c.last_seen_at else None} for c in competitors],"recommendations":[{"id":r.id,"type":r.type,"title":r.title,"content":r.content,"confidence":r.confidence,"status":r.status,"created_at":r.created_at.isoformat()} for r in recs],"hypotheses":[{"id":h.id,"title":h.title,"description":h.description,"status":h.status,"confidence":h.confidence,"evidence_count":h.evidence_count,"last_checked_at":h.last_checked_at.isoformat() if h.last_checked_at else None,"next_check_at":h.next_check_at.isoformat() if h.next_check_at else None} for h in hyps],"evidence_tasks":[{"id":t.id,"hypothesis_id":t.hypothesis_id,"query":t.query,"task_type":t.task_type,"status":t.status,"priority":t.priority,"result_summary":t.result_summary,"last_run_at":t.last_run_at.isoformat() if t.last_run_at else None,"next_run_at":t.next_run_at.isoformat() if t.next_run_at else None} for t in tasks],"evidence_items":[{"id":e.id,"hypothesis_id":e.hypothesis_id,"task_id":e.task_id,"title":e.title,"url":e.url,"source_domain":e.source_domain,"snippet":e.snippet,"effect":e.effect,"reason":getattr(e,'reason',''),"confidence":e.confidence,"captured_at":e.captured_at.isoformat()} for e in evidence]}
+    return {"project":list_projects(db=[].__class__) if False else {"id":p.id,"opportunity_group_id":p.opportunity_group_id,"canonical_keyword":p.canonical_keyword,"representative_card_id":p.representative_card_id,"status":p.status,"prd_path":p.prd_path,"prd_version":p.prd_version,"prd_content":p.prd_content,"feasibility_score":display_score,"original_score":original,"score_delta":round(display_score-original,1) if p.last_validated_at else 0,"risk_level":p.risk_level,"next_action":p.next_action,"created_at":p.created_at.isoformat(),"updated_at":p.updated_at.isoformat(),"last_validated_at":p.last_validated_at.isoformat() if p.last_validated_at else None,"auto_validation_enabled":bool(getattr(p,'auto_validation_enabled',False)),"auto_validation_schedule":getattr(p,'auto_validation_schedule','weekly'),"auto_validation_hour":getattr(p,'auto_validation_hour',9),"auto_validation_minute":getattr(p,'auto_validation_minute',0),"auto_validation_weekday":getattr(p,'auto_validation_weekday',1),"next_auto_validation_at":p.next_auto_validation_at.isoformat() if getattr(p,'next_auto_validation_at',None) else None,"last_auto_validation_at":p.last_auto_validation_at.isoformat() if getattr(p,'last_auto_validation_at',None) else None,"opportunity":_card_detail(db,card)},"runs":[{"id":r.id,"kind":r.kind,"status":r.status,"summary":json.loads(r.summary_json or "{}"),"score_delta":r.score_delta,"started_at":r.started_at.isoformat(),"finished_at":r.finished_at.isoformat() if r.finished_at else None} for r in runs],"competitors":[{"id":c.id,"domain":c.domain,"name":c.name,"url":c.url,"pricing_url":c.pricing_url,"sitemap_url":c.sitemap_url,"status":c.status,"notes":c.notes,"last_seen_at":c.last_seen_at.isoformat() if c.last_seen_at else None} for c in competitors],"recommendations":[{"id":r.id,"type":r.type,"title":r.title,"content":r.content,"confidence":r.confidence,"status":r.status,"created_at":r.created_at.isoformat()} for r in recs],"hypotheses":[{"id":h.id,"title":h.title,"description":h.description,"status":h.status,"confidence":h.confidence,"evidence_count":h.evidence_count,"last_checked_at":h.last_checked_at.isoformat() if h.last_checked_at else None,"next_check_at":h.next_check_at.isoformat() if h.next_check_at else None} for h in hyps],"evidence_tasks":[{"id":t.id,"hypothesis_id":t.hypothesis_id,"query":t.query,"task_type":t.task_type,"status":t.status,"priority":t.priority,"result_summary":t.result_summary,"last_run_at":t.last_run_at.isoformat() if t.last_run_at else None,"next_run_at":t.next_run_at.isoformat() if t.next_run_at else None} for t in tasks],"evidence_items":[{"id":e.id,"hypothesis_id":e.hypothesis_id,"task_id":e.task_id,"title":e.title,"url":e.url,"source_domain":e.source_domain,"snippet":e.snippet,"effect":e.effect,"reason":getattr(e,'reason',''),"confidence":e.confidence,"captured_at":e.captured_at.isoformat()} for e in evidence]}
 
 def create_project_from_card(db:Session, card_id:int):
     ensure_tables()
@@ -268,6 +273,32 @@ def run_next_validation_round(db:Session, project_id:int, limit:int=2):
     run.status='ok'; run.finished_at=datetime.utcnow(); run.summary_json=json.dumps({'analysis_type':'evidence_round','tasks':task_summaries,'new_evidence':found,'support':support_count,'weaken':weaken_count,'neutral':neutral_count,'hypothesis_changes':changed,'needs_reassessment':needs_reassessment,'next_action':action},ensure_ascii=False); db.merge(run)
     db.commit()
     return get_project(db,project_id)
+
+def _next_validation_time(schedule:str,hour:int,minute:int,weekday:int):
+    now=datetime.utcnow()+timedelta(hours=8)
+    target=now.replace(hour=hour,minute=minute,second=0,microsecond=0)
+    if schedule=='daily':
+        if target<=now: target+=timedelta(days=1)
+    else:
+        days=(weekday-target.weekday())%7
+        if days==0 and target<=now: days=7
+        target+=timedelta(days=days)
+    return target-timedelta(hours=8)
+
+def update_auto_validation(db:Session, project_id:int, enabled:bool, schedule:str='weekly', hour:int=9, minute:int=0, weekday:int=1):
+    ensure_tables(); p=db.get(models.MvpProject,project_id)
+    if not p: raise ValueError('project_not_found')
+    p.auto_validation_enabled=bool(enabled); p.auto_validation_schedule=schedule if schedule in {'daily','weekly'} else 'weekly'; p.auto_validation_hour=max(0,min(23,int(hour))); p.auto_validation_minute=max(0,min(59,int(minute))); p.auto_validation_weekday=max(0,min(6,int(weekday)))
+    p.next_auto_validation_at=_next_validation_time(p.auto_validation_schedule,p.auto_validation_hour,p.auto_validation_minute,p.auto_validation_weekday) if p.auto_validation_enabled else None
+    db.merge(p); db.commit(); return get_project(db,project_id)
+
+def run_due_auto_validations(db:Session, limit_projects:int=3):
+    ensure_tables(); now=datetime.utcnow(); ran=[]
+    rows=db.query(models.MvpProject).filter_by(auto_validation_enabled=True).filter(models.MvpProject.next_auto_validation_at!=None).filter(models.MvpProject.next_auto_validation_at<=now).limit(limit_projects).all()
+    for p in rows:
+        run_next_validation_round(db,p.id,limit=2)
+        p.last_auto_validation_at=now; p.next_auto_validation_at=_next_validation_time(p.auto_validation_schedule,p.auto_validation_hour,p.auto_validation_minute,p.auto_validation_weekday); db.merge(p); db.commit(); ran.append(p.id)
+    return ran
 
 def validate_project(db:Session, project_id:int):
     ensure_tables()
