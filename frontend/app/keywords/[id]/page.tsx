@@ -1,6 +1,9 @@
 import {api} from '../../../lib/api'
 import {SerpButton, CardButton} from '../../../components/Actions'
 import {I18nText} from '../../../components/I18nText'
+import {ContextActions} from '../../../components/ContextActions'
+import {EvidenceTimeline} from '../../../components/EvidenceTimeline'
+import {ScoreHistory} from '../../../components/ScoreHistory'
 
 function gapBadge(tag: string) {
   return <span className="inline-block rounded border border-cyan-500/30 bg-cyan-500/10 px-1.5 py-0.5 text-xs text-cyan-200">{tag}</span>
@@ -45,6 +48,10 @@ export default async function Page({params}:{params:{id:string}}) {
         <div className="mt-4 flex flex-wrap gap-2">
           <SerpButton id={+params.id}/>
           <CardButton id={+params.id}/>
+          <ContextActions actions={[
+            {label:'重新计算', actionType:'keyword.rescore', targetType:'keyword', targetId:params.id, variant:'secondary'},
+            {label:'补证据', actionType:'keyword.collect_evidence', targetType:'keyword', targetId:params.id},
+          ]} />
         </div>
         <p className="mt-3 text-xs text-slate-500">
           <I18nText
@@ -52,6 +59,14 @@ export default async function Page({params}:{params:{id:string}}) {
             en="Run SERP = search this keyword and analyze competitor weaknesses. Generate Card = evaluate if this direction is worth building."
           />
         </p>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+        <div className="panel">
+          <h2 className="mb-4 text-xl font-bold">证据时间线</h2>
+          <EvidenceTimeline targetType="keyword" targetId={params.id} />
+        </div>
+        <ScoreHistory title="关键词权重历史" events={d.weight_events || []} />
       </section>
 
       {/* SERP Results */}

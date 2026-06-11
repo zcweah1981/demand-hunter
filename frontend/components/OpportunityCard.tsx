@@ -1,5 +1,8 @@
 import {CreateProgressButton, ExportCardMarkdownButton, Feedback, ReanalyzeCardButton} from './Actions'
 import {I18nText} from './I18nText'
+import {ContextActions} from './ContextActions'
+import {EvidenceTimeline} from './EvidenceTimeline'
+import {ScoreHistory} from './ScoreHistory'
 
 export function verdictClass(v:string){return v==='Adopted'?'badge badge-action':v==='Action'?'badge badge-action':v==='Watch'?'badge badge-watch':'badge badge-reject'}
 export function verdictLabel(v:string){return v==='Adopted'?'已采纳 Adopted':v==='Action'?'行动 Action':v==='Watch'?'观察 Watch':v==='Reject'?'拒绝 Reject':v==='Block'?'屏蔽 Block':v}
@@ -37,6 +40,21 @@ export function OpportunityCardView({card,compact=false,showFeedback=true,onFeed
   <div className="grid grid-cols-2 gap-2 text-xs text-slate-300 sm:grid-cols-3 lg:grid-cols-5">
    {[['Demand',card.demand_score],['SERP',card.serp_gap_score],['Weakness',card.competitor_weakness_score],['Commercial',card.mvp_score],['Money',card.monetization_score]].map(([k,v])=><div className="rounded-xl bg-slate-950/80 p-2" key={k as string}><div className="text-slate-500">{labels[k as string]}</div><b>{v as any}</b></div>)}
   </div>
+
+  {!compact&&<section className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+   <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+    <div><div className="text-xs font-semibold tracking-wide text-slate-500">证据与重评分</div><p className="mt-1 text-xs text-slate-400">证据保持客观；机会分数只在重评分事件里变化。</p></div>
+    <ContextActions actions={[
+     {label:'重新计算', actionType:'opportunity.rescore', targetType:'opportunity_card', targetId:card.id, variant:'secondary'},
+     {label:'补证据', actionType:'opportunity.collect_evidence', targetType:'opportunity_card', targetId:card.id},
+     ...((card.feedback_label||card.verdict)==='Adopted'?[]:[{label:'推送到机会推进' as const, actionType:'opportunity.push_progress', targetType:'opportunity_card', targetId:card.id, variant:'secondary' as const}]),
+    ]}/>
+   </div>
+   <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+    <EvidenceTimeline targetType="opportunity_card" targetId={card.id}/>
+    <ScoreHistory title="机会重评分历史" events={card.score_events||[]}/>
+   </div>
+  </section>}
 
   {card.opportunity_group&&<section className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-4">
    <div className="flex flex-wrap items-center justify-between gap-3">

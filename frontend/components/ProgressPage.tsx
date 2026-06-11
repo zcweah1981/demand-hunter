@@ -1,6 +1,9 @@
 'use client'
 import {useEffect, useMemo, useRef, useState} from 'react'
 import {api} from '../lib/api'
+import {ContextActions} from './ContextActions'
+import {EvidenceTimeline} from './EvidenceTimeline'
+import {ScoreHistory} from './ScoreHistory'
 
 export function ProgressPage({initialProjects, adoptedCards}:{initialProjects:any[]; adoptedCards:any[]}){
  const [projects,setProjects]=useState(initialProjects||[])
@@ -65,6 +68,19 @@ function ProgressDrawer({selected,busy,prd,uploadName,uploadSize,uploadError,fil
  const scoreReason=analysis.score_change_reason||decision.score_change_reason||''
  return <div className="fixed inset-0 z-50"><button className="absolute inset-0 bg-black/60" onClick={onClose}/><aside className="absolute right-0 top-0 h-full w-full max-w-7xl overflow-y-auto overflow-x-hidden border-l border-slate-800 bg-slate-950 p-5 shadow-2xl"><div className="mb-5 flex items-start justify-between gap-3"><div><div className="text-xs uppercase tracking-[0.25em] text-purple-300">Product Decision Workspace</div><h2 className="mt-1 text-2xl font-bold text-white">{selected.project.canonical_keyword}</h2><p className="mt-1 text-sm text-slate-400">先看结论，再看依据；原机会只作为基线参考。</p></div><button className="btn-secondary" onClick={onClose}>关闭</button></div>
   <DecisionHero selected={selected} analysis={analysis}/>
+  <section className="mt-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-4">
+   <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+    <div><h3 className="font-bold text-white">项目证据时间线</h3><p className="mt-1 text-sm text-slate-400">每一轮新增证据、重新验证和评分变化都在这里追溯。</p></div>
+    <ContextActions actions={[
+     {label:'上传 / 更新 PRD', actionType:'progress.update_prd', targetType:'progress_project', targetId:selected.project.id, variant:'secondary'},
+     {label:'重新验证', actionType:'progress.revalidate', targetType:'progress_project', targetId:selected.project.id},
+    ]}/>
+   </div>
+   <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+    <EvidenceTimeline targetType="progress_project" targetId={selected.project.id}/>
+    <ScoreHistory title="推进重评分历史" events={(selected.runs||[]).filter((r:any)=>r.summary?.old_score!=null||r.summary?.new_score!=null).map((r:any)=>({id:r.id, created_at:r.finished_at||r.started_at, event_type:r.kind, reason:r.summary?.score_change_reason||r.summary?.next_action, old_score:r.summary?.old_score, new_score:r.summary?.new_score}))}/>
+   </div>
+  </section>
   <section className="mt-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-4"><div className="grid gap-4 lg:grid-cols-[1fr_auto]"><div><h3 className="font-bold text-white">PRD 文档</h3><p className="mt-1 text-sm text-slate-400">上传后进入产品分析：先判断 PRD 合理性，再验证用户、商业、付费、竞品和获客路径。</p><div className="mt-2 text-xs text-slate-500">保存路径：{selected.project.prd_path||'上传后生成 prds/<slug>/PRD.md'} · 当前长度 {(selected.project.prd_content||prd||'').trim().length} 字符</div>{uploadName&&<p className="mt-2 rounded-xl border border-emerald-500/20 bg-emerald-950/30 px-3 py-2 text-xs text-emerald-200">已上传并分析：{uploadName} · {formatBytes(uploadSize)}</p>}{uploadError&&<p className="mt-2 rounded-xl border border-amber-500/20 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">{uploadError}</p>}{busy&&<p className="mt-2 rounded-xl border border-blue-500/20 bg-blue-950/30 px-3 py-2 text-xs text-blue-200">正在进行产品分析和证据抓取...</p>}</div><div className="flex flex-wrap items-center gap-2"><input ref={fileInputRef} type="file" accept=".md,.markdown,text/markdown,text/plain" className="hidden" onChange={(e:any)=>onUpload(e.target.files?.[0]||null)}/><button className="btn" disabled={busy} onClick={()=>fileInputRef.current?.click()}>{selected.project.prd_content?'重新上传并分析':'上传 PRD 并分析'}</button><button className="btn-secondary" disabled={busy||!selected.project.prd_content} onClick={onAnalyze}>重新分析</button></div></div></section>
   <div className="mt-4 space-y-4">
    <OriginalBaseline opp={opp} biz={biz}/>

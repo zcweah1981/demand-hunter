@@ -1,3 +1,6 @@
+'use client'
+
+import {useEffect, useState} from 'react'
 import {evidenceApi, EvidenceTimelineItem} from '../lib/api'
 
 type Props = {
@@ -17,8 +20,23 @@ function relationLabel(raw: string) {
   return map[raw] || raw || '未标注关系'
 }
 
-export async function EvidenceTimeline({targetType, targetId}: Props) {
-  const rows = await evidenceApi.timeline(targetType, targetId).catch(() => [] as EvidenceTimelineItem[])
+export function EvidenceTimeline({targetType, targetId}: Props) {
+  const [rows, setRows] = useState<EvidenceTimelineItem[]>([])
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    let live = true
+    setLoaded(false)
+    evidenceApi.timeline(targetType, targetId)
+      .then(data => { if (live) setRows(data) })
+      .catch(() => { if (live) setRows([]) })
+      .finally(() => { if (live) setLoaded(true) })
+    return () => { live = false }
+  }, [targetType, targetId])
+
+  if (!loaded) {
+    return <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 text-sm text-slate-400">正在读取证据时间线...</div>
+  }
 
   if (!rows.length) {
     return <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 text-sm text-slate-400">暂无关联证据。</div>

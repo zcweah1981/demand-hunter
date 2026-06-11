@@ -1,3 +1,5 @@
+'use client'
+
 type ScoreEvent = {
   id?: number
   created_at?: string

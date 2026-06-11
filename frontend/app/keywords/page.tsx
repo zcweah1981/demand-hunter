@@ -2,6 +2,7 @@ import Link from 'next/link'
 import {api, Keyword} from '../../lib/api'
 import {DiscoverButton} from '../../components/Actions'
 import {I18nText} from '../../components/I18nText'
+import {ContextActions} from '../../components/ContextActions'
 
 /* ── helpers ── */
 
@@ -146,7 +147,13 @@ export default async function Page() {
           <I18nText zh="全部关键词" en="All Keywords"/>
           <span className="ml-2 text-sm font-normal text-slate-500">{rows.length}</span>
         </h2>
-        <DiscoverButton/>
+        <div className="flex flex-wrap gap-2">
+          <ContextActions actions={[
+            {label:'重新计算', actionType:'keyword.rescore_all', targetType:'keyword_library', targetId:'all', variant:'secondary'},
+            {label:'补证据', actionType:'keyword.collect_evidence', targetType:'keyword_library', targetId:'all'},
+          ]} />
+          <DiscoverButton/>
+        </div>
       </div>
 
       {/* ── Table ── */}
