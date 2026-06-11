@@ -7,7 +7,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from . import discovery_entries, models
+from . import discovery_entries, models, services
 
 
 def _iso(dt: datetime | None) -> str | None:
@@ -140,10 +140,26 @@ def execute_action(db: Session, action: dict[str, Any], now: datetime | None = N
     return {"ok": False, "action": action, "error": "target_not_found"}
 
 
-def run_automation_cycle(db: Session, now: datetime | None = None, max_seconds: int = 300, budget: dict[str, int] | None = None) -> dict[str, Any]:
+def run_automation_cycle(db: Session, now: datetime | None = None, max_seconds: int = 300, budget: dict[str, int] | None = None, run_legacy_daily: bool = False) -> dict[str, Any]:
     """Run one unified automation cycle."""
     now = now or datetime.utcnow()
     started = time.monotonic()
+    daily_summary: dict[str, Any] | None = None
+    if run_legacy_daily:
+        try:
+            limit = int(services.setting(db, "AUTO_RUN_LIMIT") or "6")
+        except Exception:
+            limit = 6
+        try:
+            daily = services.daily_run(db, limit=max(1, min(50, limit)), trigger="automation_cycle_manual")
+            try:
+                parsed = json.loads(daily.summary or "{}") if daily.summary and daily.summary.startswith("{") else daily.summary
+            except Exception:
+                parsed = daily.summary
+            daily_summary = {"ok": daily.status == "ok", "id": daily.id, "status": daily.status, "summary": parsed}
+        except Exception as exc:
+            daily_summary = {"ok": False, "error": str(exc)[:300]}
+
     actions = collect_due_actions(db, now=now, limit=sum((budget or {}).values()) if budget else 200)
     results = []
     for action in actions:
@@ -166,10 +182,11 @@ def run_automation_cycle(db: Session, now: datetime | None = None, max_seconds: 
         "failed": sum(1 for result in results if not result.get("ok")),
         "results": serialized_results,
         "started_at": _iso(now),
+        "daily_run": daily_summary,
     }
     row = models.RunHistory(
         kind="automation_cycle",
-        status="ok" if summary["failed"] == 0 else "partial",
+        status="ok" if summary["failed"] == 0 and (not daily_summary or daily_summary.get("ok")) else "partial",
         summary=json.dumps(summary, ensure_ascii=False),
         started_at=now,
         finished_at=datetime.utcnow(),
