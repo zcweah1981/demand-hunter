@@ -158,3 +158,29 @@ class CandidateEntryIn(BaseModel):
     source_url: str = ""
     raw_context: dict[str, Any] = {}
     priority: float = 0.0
+
+
+class EvidenceItemIn(BaseModel):
+    source_type: str
+    source_name: str = ""
+    url: str = ""
+    title: str = ""
+    summary: str = ""
+    raw_excerpt: str = ""
+    raw_json: dict[str, Any] = {}
+    confidence: float = 0.0
+
+
+class EvidenceLinkIn(BaseModel):
+    target_type: str
+    target_id: str
+    relation_type: str
+    relation_reason: str = ""
+    created_by: str = "system"
+
+
+class EvidenceDerivedEntryIn(BaseModel):
+    entry_type: str
+    name: str
+    relation_reason: str = ""
+    source_role: str = "evidence"
