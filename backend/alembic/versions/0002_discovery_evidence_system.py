@@ -6,6 +6,7 @@ Create Date: 2026-06-11
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 revision = "0002_discovery_evidence_system"
 down_revision = "0001_initial"
@@ -13,7 +14,80 @@ branch_labels = None
 depends_on = None
 
 
+def _has_table(table_name: str) -> bool:
+    return table_name in inspect(op.get_bind()).get_table_names()
+
+
+def _columns(table_name: str) -> set[str]:
+    if not _has_table(table_name):
+        return set()
+    return {col["name"] for col in inspect(op.get_bind()).get_columns(table_name)}
+
+
+def _add_column_if_missing(table_name: str, column: sa.Column) -> None:
+    if column.name not in _columns(table_name):
+        op.add_column(table_name, column)
+
+
+def _create_index_if_missing(index_name: str, table_name: str, columns: list[str], unique: bool = False) -> None:
+    if not _has_table(table_name):
+        return
+    existing = {idx["name"] for idx in inspect(op.get_bind()).get_indexes(table_name)}
+    if index_name not in existing:
+        op.create_index(index_name, table_name, columns, unique=unique)
+
+
+def _repair_legacy_tables() -> None:
+    """Upgrade older experimental discovery/evidence tables in copied SQLite DBs."""
+    bind = op.get_bind()
+
+    if _has_table("candidate_entries"):
+        _add_column_if_missing("candidate_entries", sa.Column("priority", sa.Float(), nullable=False, server_default="0"))
+        _add_column_if_missing("candidate_entries", sa.Column("next_due_at", sa.DateTime(), nullable=True))
+        _create_index_if_missing("ix_candidate_entries_entry_type", "candidate_entries", ["entry_type"])
+        _create_index_if_missing("ix_candidate_entries_name", "candidate_entries", ["name"])
+        _create_index_if_missing("ix_candidate_entries_source", "candidate_entries", ["source"])
+        _create_index_if_missing("ix_candidate_entries_source_role", "candidate_entries", ["source_role"])
+        _create_index_if_missing("ix_candidate_entries_status", "candidate_entries", ["status"])
+
+    if _has_table("evidence_items"):
+        _add_column_if_missing("evidence_items", sa.Column("source_type", sa.String(length=80), nullable=False, server_default="legacy"))
+        _add_column_if_missing("evidence_items", sa.Column("source_name", sa.String(length=120), nullable=False, server_default=""))
+        _add_column_if_missing("evidence_items", sa.Column("title", sa.Text(), nullable=False, server_default=""))
+        _add_column_if_missing("evidence_items", sa.Column("raw_excerpt", sa.Text(), nullable=False, server_default=""))
+        _add_column_if_missing("evidence_items", sa.Column("confidence", sa.Float(), nullable=False, server_default="0"))
+        _add_column_if_missing("evidence_items", sa.Column("content_hash", sa.String(length=120), nullable=False, server_default=""))
+        bind.exec_driver_sql("UPDATE evidence_items SET source_type = COALESCE(NULLIF(evidence_source, ''), 'legacy') WHERE source_type = 'legacy' OR source_type IS NULL OR source_type = ''")
+        bind.exec_driver_sql("UPDATE evidence_items SET source_name = COALESCE(NULLIF(evidence_role, ''), '') WHERE source_name IS NULL OR source_name = ''")
+        bind.exec_driver_sql("UPDATE evidence_items SET title = COALESCE(NULLIF(summary, ''), url, '') WHERE title IS NULL OR title = ''")
+        bind.exec_driver_sql("UPDATE evidence_items SET raw_excerpt = COALESCE(NULLIF(summary, ''), '') WHERE raw_excerpt IS NULL OR raw_excerpt = ''")
+        bind.exec_driver_sql("UPDATE evidence_items SET content_hash = 'legacy-evidence-' || id WHERE content_hash IS NULL OR content_hash = ''")
+        _create_index_if_missing("ix_evidence_items_source_type", "evidence_items", ["source_type"])
+        _create_index_if_missing("ix_evidence_items_source_name", "evidence_items", ["source_name"])
+        _create_index_if_missing("ix_evidence_items_content_hash", "evidence_items", ["content_hash"], unique=True)
+
+    if _has_table("source_runs"):
+        _add_column_if_missing("source_runs", sa.Column("run_kind", sa.String(length=80), nullable=False, server_default="manual"))
+        _add_column_if_missing("source_runs", sa.Column("started_at", sa.DateTime(), nullable=True))
+        _add_column_if_missing("source_runs", sa.Column("finished_at", sa.DateTime(), nullable=True))
+        bind.exec_driver_sql("UPDATE source_runs SET run_kind = COALESCE(NULLIF(run_mode, ''), 'manual') WHERE run_kind = 'manual' OR run_kind IS NULL OR run_kind = ''")
+        bind.exec_driver_sql("UPDATE source_runs SET started_at = COALESCE(created_at, CURRENT_TIMESTAMP) WHERE started_at IS NULL")
+        _create_index_if_missing("ix_source_runs_source", "source_runs", ["source"])
+        _create_index_if_missing("ix_source_runs_source_role", "source_runs", ["source_role"])
+        _create_index_if_missing("ix_source_runs_run_kind", "source_runs", ["run_kind"])
+        _create_index_if_missing("ix_source_runs_status", "source_runs", ["status"])
+
+    from app.database import Base
+    from app import models  # noqa: F401
+    Base.metadata.create_all(bind=bind)
+
+
 def upgrade():
+    existing_tables = set(inspect(op.get_bind()).get_table_names())
+    if existing_tables & {"candidate_entries", "evidence_items", "source_runs"}:
+        _repair_legacy_tables()
+        return
+
     op.create_table(
         "candidate_entries",
         sa.Column("id", sa.Integer(), primary_key=True),
