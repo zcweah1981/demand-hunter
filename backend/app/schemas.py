@@ -148,3 +148,13 @@ class CollectorAdvancedSearchIn(BaseModel):
 class CollectorSourceRadarIn(BaseModel):
     seeds: list[str]
     limit_per_seed: int = 10
+
+
+class CandidateEntryIn(BaseModel):
+    entry_type: str
+    name: str
+    source: str = ""
+    source_role: str = ""
+    source_url: str = ""
+    raw_context: dict[str, Any] = {}
+    priority: float = 0.0
