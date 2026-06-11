@@ -184,3 +184,16 @@ class EvidenceDerivedEntryIn(BaseModel):
     name: str
     relation_reason: str = ""
     source_role: str = "evidence"
+
+
+class ActionRequestIn(BaseModel):
+    action_type: str
+    target_type: str
+    target_id: str
+    requested_by: str = "user"
+    reason: str = ""
+    confirm: bool = False
+
+
+class ActionExecuteIn(BaseModel):
+    confirm: bool = False
