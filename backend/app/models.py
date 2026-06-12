@@ -215,7 +215,10 @@ class SourceRun(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     source: Mapped[str] = mapped_column(String(100), index=True)
     source_role: Mapped[str] = mapped_column(String(40), index=True, default="demand")
+    run_mode: Mapped[str] = mapped_column(String(40), default="manual")
     run_kind: Mapped[str] = mapped_column(String(80), index=True, default="manual")
+    target_type: Mapped[str] = mapped_column(String(60), default="")
+    target_id: Mapped[str] = mapped_column(String(80), default="")
     status: Mapped[str] = mapped_column(String(40), index=True, default="ok")
     inputs_json: Mapped[str] = mapped_column(Text, default="{}")
     outputs_json: Mapped[str] = mapped_column(Text, default="{}")
@@ -227,6 +230,7 @@ class SourceRun(Base):
     rejects_created: Mapped[int] = mapped_column(Integer, default=0)
     errors: Mapped[str] = mapped_column(Text, default="[]")
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 

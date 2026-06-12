@@ -1,6 +1,6 @@
 from __future__ import annotations
 from fastapi import APIRouter
-from app.api.v1.endpoints import actions, auth, auto, automation_cycle, autopilot, cards, collectors, discovery, entries, evidence, health, keywords, progress, reports, roots, runs, settings
+from app.api.v1.endpoints import actions, auth, auto, automation_cycle, autopilot, cards, clues, collectors, discovery, entries, evidence, health, keywords, progress, reports, roots, runs, settings
 
 api_router = APIRouter()
 api_router.include_router(health.router)
@@ -8,6 +8,7 @@ api_router.include_router(auth.router)
 api_router.include_router(autopilot.router)
 api_router.include_router(settings.router)
 api_router.include_router(collectors.router)
+api_router.include_router(clues.router)
 api_router.include_router(entries.router)
 api_router.include_router(evidence.router)
 api_router.include_router(discovery.router)

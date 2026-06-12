@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app import evidence_system, models, schemas
+from app import evidence_models, evidence_system, models, schemas
 from app.api.deps import obj
 from app.core.security import require_auth
 from app.database import get_db
@@ -46,6 +46,19 @@ def derived_entries(limit: int = 100, _: bool = Depends(require_auth), db: Sessi
         .all()
     )
     return [obj(row) for row in rows]
+
+
+@router.get("/models")
+def evidence_model_overview(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    return evidence_models.model_overview(db)
+
+
+@router.get("/models/{model_id}")
+def evidence_model_detail(model_id: str, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
+    detail = evidence_models.model_detail(db, model_id)
+    if not detail:
+        raise HTTPException(status_code=404, detail="evidence model not found")
+    return detail
 
 
 @router.get("/targets/{target_type}/{target_id}/timeline")

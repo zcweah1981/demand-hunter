@@ -2,7 +2,7 @@ from __future__ import annotations
 import json, re, hashlib
 from urllib.parse import urlparse
 from sqlalchemy.orm import Session
-from . import models
+from . import candidate_scoring, models
 
 BAD_KEYWORD_TERMS = {
     "login", "sign in", "signup", "get started", "our map", "contact", "support", "pricing",
@@ -214,55 +214,10 @@ def keyword_quality_score(seed: str, keyword: str, source_domain: str = "") -> t
     The goal is not to predict opportunity score; it only blocks obvious SERP noise
     before it wastes SERP/card budget.
     """
-    kw = re.sub(r"\s+", " ", (keyword or "").lower()).strip()
-    seed_l = (seed or "").lower().strip()
-    reasons: list[str] = []
-    score = 0.55
-
-    if len(kw) < 8 or len(kw) > 90:
-        score -= 0.25; reasons.append("bad_length")
-    if kw == seed_l:
-        score -= 0.2; reasons.append("same_as_seed")
-    if seed_l and seed_l.replace(" ", "") in kw.replace(" ", "") and kw.replace(" ", "").count(seed_l.replace(" ", "")) > 1:
-        score -= 0.45; reasons.append("seed_repeated_or_brand_echo")
-    if any(term in kw for term in BAD_KEYWORD_TERMS):
-        score -= 0.45; reasons.append("blocked_noise_term")
-    if any(re.search(p, kw) for p in TITLE_RESIDUE_PATTERNS):
-        score -= 0.7; reasons.append("title_or_brand_residue")
-    words = re.findall(r"[a-z0-9]+", kw)
-    if len(words) < 2:
-        score -= 0.3; reasons.append("too_short_phrase")
-    if words and words[-1] in BAD_SINGLE_MODIFIERS:
-        score -= 0.25; reasons.append("bad_modifier")
-    seed_words = set(re.findall(r"[a-z0-9]+", seed_l))
-    keyword_words = set(words)
-    added_words = keyword_words - seed_words
-
-    if any(term in kw for term in GOOD_INTENT_TERMS):
-        score += 0.18; reasons.append("good_intent_term")
-    commercial_hits = 0
-    if any(term in kw for term in COMMERCIAL_ICP_TERMS):
-        commercial_hits += 1; score += 0.12; reasons.append("commercial_icp")
-    if any(term in kw for term in COMMERCIAL_OUTPUT_TERMS):
-        commercial_hits += 1; score += 0.10; reasons.append("commercial_output")
-    if any(term in kw for term in PAY_TRIGGER_TERMS):
-        commercial_hits += 1; score += 0.14; reasons.append("pay_trigger")
-    if commercial_hits == 0:
-        score -= 0.18; reasons.append("no_commercial_signal")
-    if seed_l and len(set(seed_l.split()) & set(words)) >= max(1, min(2, len(seed_l.split()))):
-        score += 0.08; reasons.append("seed_overlap")
-    if seed_words and added_words and not (added_words & GOOD_MODIFIERS):
-        score -= 0.38; reasons.append("weak_added_modifier")
-    if seed_words and len(added_words) == 1 and not (added_words & GOOD_MODIFIERS):
-        score -= 0.22; reasons.append("single_noise_modifier")
-    if source_domain and any(d in source_domain for d in ("capterra.com", "g2.com", "spectrum.com", "facebook.com", "linkedin.com")):
-        score -= 0.25; reasons.append("weak_source_domain")
-
-    return max(0.0, min(1.0, round(score, 3))), reasons
+    return candidate_scoring.keyword_quality_score(seed, keyword, source_domain)
 
 def candidate_is_importable(seed: str, keyword: str, source_domain: str = "") -> bool:
-    score, reasons = keyword_quality_score(seed, keyword, source_domain)
-    return score >= 0.68 and "blocked_noise_term" not in reasons and "title_or_brand_residue" not in reasons and "seed_repeated_or_brand_echo" not in reasons and "weak_added_modifier" not in reasons and "no_commercial_signal" not in reasons
+    return candidate_scoring.candidate_is_importable(seed, keyword, source_domain)
 
 # --- 1. 词找词 (Keyword → Keyword) ---
 

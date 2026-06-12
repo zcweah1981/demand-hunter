@@ -34,6 +34,7 @@ export default async function Page() {
       </section>
 
       <section className="grid gap-5 xl:grid-cols-3">
+        <Link className="panel no-underline transition hover:border-blue-500/50" href="/evidence/models"><h2 className="text-xl font-bold text-white">证据模型</h2><p className="mt-2 text-sm text-slate-400">从四找、趋势和变化监控模型查看证据如何产生入口、关键词和机会。</p></Link>
         <Link className="panel no-underline transition hover:border-blue-500/50" href="/evidence/tasks"><h2 className="text-xl font-bold text-white">补证任务</h2><p className="mt-2 text-sm text-slate-400">为缺口对象补充来源、SERP、社区或变更证据。</p></Link>
         <Link className="panel no-underline transition hover:border-blue-500/50" href="/evidence/derived"><h2 className="text-xl font-bold text-white">证据新词</h2><p className="mt-2 text-sm text-slate-400">sitemap、changelog、社区变化产生的新机会词先回到入口池。</p></Link>
         <Link className="panel no-underline transition hover:border-blue-500/50" href="/evidence/repairs"><h2 className="text-xl font-bold text-white">异常修复</h2><p className="mt-2 text-sm text-slate-400">失败和关联错误使用修复动作，不隐藏问题。</p></Link>

@@ -5,14 +5,15 @@ import {ContextActions} from '../../../components/ContextActions'
 export const dynamic = 'force-dynamic'
 
 export default async function Page() {
-  const [entries, evidence, due] = await Promise.all([
-    discoveryApi.entries('?limit=40').catch(() => []),
+  const [clues, evidence, due] = await Promise.all([
+    discoveryApi.clues('?limit=200').catch(() => ({items: [], totals: {}, count: 0})),
     evidenceApi.list('?limit=40').catch(() => []),
     automationCycleApi.due().catch(() => []),
   ])
-  const demandEntries = entries.filter(row => row.entry_type === 'demand')
-  const trendEntries = entries.filter(row => row.entry_type === 'trend')
-  const needsEvidence = entries.filter(row => row.status === 'needs_evidence')
+  const items = clues.items || []
+  const demandClues = items.filter(row => row.demand_score >= row.trend_score)
+  const trendClues = items.filter(row => row.trend_score > row.demand_score)
+  const needsEvidence = items.filter(row => row.status === 'needs_evidence')
 
   return (
     <div className="space-y-6">
@@ -21,31 +22,31 @@ export default async function Page() {
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-300">Opportunity Discovery</p>
             <h1 className="mt-3 text-4xl font-black text-white">机会发现</h1>
-            <p className="mt-3 max-w-3xl text-slate-300">入口先进入候选池；需求入口和趋势入口分开评分，达标后再进入关键词库。</p>
+            <p className="mt-3 max-w-3xl text-slate-300">线索先进入线索池；需求线索和趋势线索分开评分，达标后再进入关键词库。</p>
           </div>
           <ContextActions actions={[{label:'运行一轮', actionType:'automation.run', targetType:'system', targetId:'automation_cycle'}]} />
         </div>
       </section>
 
       <section className="grid gap-4 md:grid-cols-4">
-        <div className="card"><div className="text-sm text-slate-400">入口池</div><div className="mt-2 text-3xl font-black text-white">{entries.length}</div></div>
-        <div className="card"><div className="text-sm text-slate-400">需求入口</div><div className="mt-2 text-3xl font-black text-white">{demandEntries.length}</div></div>
-        <div className="card"><div className="text-sm text-slate-400">趋势入口</div><div className="mt-2 text-3xl font-black text-white">{trendEntries.length}</div></div>
+        <div className="card"><div className="text-sm text-slate-400">线索池</div><div className="mt-2 text-3xl font-black text-white">{items.length}</div></div>
+        <div className="card"><div className="text-sm text-slate-400">需求线索</div><div className="mt-2 text-3xl font-black text-white">{demandClues.length}</div></div>
+        <div className="card"><div className="text-sm text-slate-400">趋势线索</div><div className="mt-2 text-3xl font-black text-white">{trendClues.length}</div></div>
         <div className="card"><div className="text-sm text-slate-400">待补证</div><div className="mt-2 text-3xl font-black text-white">{needsEvidence.length}</div></div>
       </section>
 
       <section className="grid gap-5 xl:grid-cols-3">
         <Link className="panel no-underline transition hover:border-blue-500/50" href="/discovery/entries">
-          <h2 className="text-xl font-bold text-white">入口池</h2>
-          <p className="mt-2 text-sm text-slate-400">承接搜索需求、趋势实体、来源监控产生的新入口。</p>
+          <h2 className="text-xl font-bold text-white">线索池</h2>
+          <p className="mt-2 text-sm text-slate-400">承接搜索需求、趋势实体、线索模型和证据系统产生的新线索。</p>
         </Link>
-        <Link className="panel no-underline transition hover:border-blue-500/50" href="/discovery/candidate-keywords">
-          <h2 className="text-xl font-bold text-white">候选关键词</h2>
-          <p className="mt-2 text-sm text-slate-400">趋势转译后的关键词和需求入口在这里进入质量门。</p>
+        <Link className="panel no-underline transition hover:border-blue-500/50" href="/discovery/entries">
+          <h2 className="text-xl font-bold text-white">候选关键词状态</h2>
+          <p className="mt-2 text-sm text-slate-400">候选关键词是线索池中的状态，可在主表中按状态筛选查看。</p>
         </Link>
         <Link className="panel no-underline transition hover:border-blue-500/50" href="/evidence">
           <h2 className="text-xl font-bold text-white">证据系统</h2>
-          <p className="mt-2 text-sm text-slate-400">证据保持客观，通过关联关系服务入口、关键词和机会。</p>
+          <p className="mt-2 text-sm text-slate-400">证据保持客观，通过关联关系服务线索、关键词和机会。</p>
         </Link>
       </section>
 

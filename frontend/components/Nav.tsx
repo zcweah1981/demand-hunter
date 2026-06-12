@@ -8,14 +8,14 @@ import {useLang} from '../lib/i18n'
 
 const discoveryItems = [
   ['/discovery/overview', '发现总览'],
-  ['/discovery/entries', '入口池'],
-  ['/discovery/candidate-keywords', '候选关键词'],
+  ['/collectors/sources', '线索模型库'],
+  ['/discovery/entries', '线索池'],
   ['/keywords', '关键词库'],
-  ['/collectors/sources', '来源表现'],
 ]
 
 const evidenceItems = [
   ['/evidence', '证据总览'],
+  ['/evidence/models', '证据模型'],
   ['/evidence/tasks', '补证任务'],
   ['/evidence/timeline', '证据时间线'],
   ['/evidence/watch', '监控对象'],

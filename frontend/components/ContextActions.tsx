@@ -16,6 +16,12 @@ type Props = {
   actions: ContextAction[]
 }
 
+function submittedMessage(action: ContextAction) {
+  if (action.label === '补证据') return '补证据请求已提交，会进入动作队列；需要自动任务执行后才会产生新证据。'
+  if (action.label === '运行一轮') return '运行请求已提交，完成后请刷新查看新结果。'
+  return `${action.label} 已提交`
+}
+
 export function ContextActions({actions}: Props) {
   const [pending, setPending] = useState<string>('')
   const [message, setMessage] = useState<string>('')
@@ -40,7 +46,7 @@ export function ContextActions({actions}: Props) {
         })
         if (!action.confirm) await actionsApi.execute(request.id, false)
       }
-      setMessage(`${action.label} 已提交`)
+      setMessage(submittedMessage(action))
     } catch (err) {
       setMessage(err instanceof Error ? err.message : `${action.label} 失败`)
     } finally {

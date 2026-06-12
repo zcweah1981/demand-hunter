@@ -4,7 +4,7 @@ from datetime import datetime
 from urllib.parse import urljoin, urlparse, unquote
 import requests
 from sqlalchemy.orm import Session
-from . import models, services
+from . import candidate_scoring, models, services
 
 STOPWORDS={"best","top","free","online","app","apps","software","tool","tools","page","blog","blogs","pricing","login","signup","about","contact","privacy","terms","docs","help","features","category","tag","author","news","article","post","posts","product","products","with","using","without","guide","guides","definition","meaning","en","pt","de","fr","es","it","nl","pl","www","youtube","reddit","github"}
 TOOL_INTENT_TERMS={"calculator","generator","template","checker","converter","tracker","dashboard","analyzer","builder","creator","planner","estimator","form","spreadsheet","invoice","policy","report","monitor","automation","integration","api","alternative"}
@@ -1132,22 +1132,7 @@ def score_candidate(keyword:str, source:str, evidence:dict|None=None, base:float
     Score is intentionally conservative: it ranks candidates for validation, it
     never marks a candidate as an opportunity directly.
     """
-    evidence=evidence or {}
-    kw=normalize_keyword(keyword)
-    if not kw: return 0.0
-    terms=kw.split()
-    score=max(base, 0.35)
-    score += EARLY_SOURCE_BONUS.get(source, 0.04)
-    if any(t in TOOL_INTENT_TERMS for t in terms): score += 0.16
-    if any(t in COMMERCIAL_TERMS for t in terms): score += 0.14
-    if 2 <= len(terms) <= 6: score += 0.06
-    if len(terms) > 8: score -= 0.12
-    if evidence.get('is_new_url'): score += 0.18
-    if evidence.get('variant') in {'allintitle_after','site_after'}: score += 0.10
-    if evidence.get('provider') in {'serpapi','zenserp','scaleserp'}: score += 0.04
-    if re.search(r"\b(best|top|free|202[0-9])\b", kw): score -= 0.08
-    if len(set(terms)) < len(terms): score -= 0.06
-    return round(max(0.0, min(1.0, score)), 3)
+    return candidate_scoring.score_candidate(keyword, source, evidence, base)
 
 def _collector_source_weights(db:Session)->dict:
     try:
@@ -1269,7 +1254,10 @@ def upsert_candidate(db:Session, keyword:str, source:str, source_url:str='', sou
             q.status='rejected'; q.evidence_json=json.dumps({**(json.loads(q.evidence_json or '{}') if q.evidence_json else {}), **ev}, ensure_ascii=False); db.merge(q); return None
         row=models.CandidateKeyword(keyword=kw, source=source, source_url=source_url, source_domain=source_domain or '', method=method, evidence_json=json.dumps(ev, ensure_ascii=False), score=0.0, status='rejected')
         db.add(row); return None
-    computed_score=round(max(0.0, min(1.0, score_candidate(kw, source, evidence, score) * collector_source_multiplier(db, source))), 3)
+    scoring_detail = candidate_scoring.score_candidate_detail(kw, source=source, evidence=evidence, base=score)
+    source_multiplier = collector_source_multiplier(db, source)
+    computed_score=round(max(0.0, min(1.0, scoring_detail["candidate_quality_score"] * source_multiplier)), 3)
+    evidence["scoring"] = {**scoring_detail, "source_multiplier": source_multiplier, "final_candidate_score": computed_score}
     with db.no_autoflush:
         q=db.query(models.CandidateKeyword).filter_by(keyword=kw, source=source, source_url=source_url).first()
     if q:
