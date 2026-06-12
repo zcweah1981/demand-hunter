@@ -4,3 +4,9 @@ export type ApiCard = {id:number; keyword_id:number; title:string; verdict:strin
 export type ApiRun = {id:number; kind:string; status:string; summary:any; started_at:string; finished_at?:string|null}
 export type DiscoveryJob<T=any> = {id?:string; job_id?:string; status:'pending'|'running'|'ok'|'failed'; poll?:string; result?:T; error?:string|null}
 export type DiscoveryLoopStatus = {funnel:Record<string,number>; expansion_status:Record<string,number>; competitor_keyword_status:Record<string,number>; card_verdicts:Record<string,number>; card_feedback:Record<string,number>; keyword_sources:Record<string,number>; seed_scores:any[]; top_competitor_domains:any[]}
+export type CandidateEntry = {id:number; entry_type:string; name:string; source:string; source_role:string; source_url:string; status:string; priority:number; trend_score:number; demand_score:number; quality_score:number; raw_context?:Record<string,unknown>; next_action?:string; next_due_at?:string|null; created_at:string; updated_at?:string}
+export type EvidenceItem = {id:number; source_type:string; source_name:string; url:string; title:string; summary:string; raw_excerpt:string; confidence:number; captured_at:string; created_at?:string}
+export type EvidenceLink = {id:number; evidence_id:number; target_type:string; target_id:string; relation_type:string; relation_reason:string; created_by:string; created_at:string}
+export type EvidenceTimelineItem = {evidence:EvidenceItem|null; link:EvidenceLink}
+export type AutomationDueAction = {kind:string; target_type:string; target_id:string|number; action:string; due_at?:string|null; reason?:string}
+export type ActionRequest = {id:number; action_type:string; target_type:string; target_id:string; requested_by:string; reason:string; status:string; confirm:boolean; result_json?:unknown; created_at:string; executed_at?:string|null}

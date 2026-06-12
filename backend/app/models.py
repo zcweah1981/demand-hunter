@@ -154,6 +154,163 @@ class CandidateKeyword(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
+class CandidateEntry(Base):
+    """Unified entry pool before keyword translation and evidence validation."""
+    __tablename__ = "candidate_entries"
+    __table_args__ = (
+        UniqueConstraint("entry_type", "name", "source", "source_url", name="uq_candidate_entry_source"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    entry_type: Mapped[str] = mapped_column(String(60), index=True)
+    name: Mapped[str] = mapped_column(String(300), index=True)
+    source: Mapped[str] = mapped_column(String(100), index=True, default="")
+    source_role: Mapped[str] = mapped_column(String(40), index=True, default="demand")
+    source_url: Mapped[str] = mapped_column(Text, default="")
+    raw_context_json: Mapped[str] = mapped_column(Text, default="{}")
+    trend_score: Mapped[float] = mapped_column(Float, default=0.0)
+    maturity_type: Mapped[str] = mapped_column(String(40), default="unknown")
+    status: Mapped[str] = mapped_column(String(40), index=True, default="new")
+    priority: Mapped[float] = mapped_column(Float, default=0.0)
+    next_due_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class EvidenceItem(Base):
+    """Objective evidence fact. Interpretation lives in links and events."""
+    __tablename__ = "evidence_items"
+    __table_args__ = (UniqueConstraint("content_hash", name="uq_evidence_content_hash"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_type: Mapped[str] = mapped_column(String(80), index=True)
+    source_name: Mapped[str] = mapped_column(String(120), index=True, default="")
+    url: Mapped[str] = mapped_column(Text, default="")
+    title: Mapped[str] = mapped_column(Text, default="")
+    summary: Mapped[str] = mapped_column(Text, default="")
+    raw_excerpt: Mapped[str] = mapped_column(Text, default="")
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    content_hash: Mapped[str] = mapped_column(String(120), index=True)
+    raw_json: Mapped[str] = mapped_column(Text, default="{}")
+    captured_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class EvidenceLink(Base):
+    """Service relation showing which object an objective evidence item serves."""
+    __tablename__ = "evidence_links"
+    __table_args__ = (
+        UniqueConstraint("evidence_id", "target_type", "target_id", "relation_type", name="uq_evidence_link_target"),
+    )
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    evidence_id: Mapped[int] = mapped_column(ForeignKey("evidence_items.id"), index=True)
+    target_type: Mapped[str] = mapped_column(String(60), index=True)
+    target_id: Mapped[str] = mapped_column(String(80), index=True)
+    relation_type: Mapped[str] = mapped_column(String(80), index=True)
+    relation_reason: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(60), default="system")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class SourceRun(Base):
+    """Unified source execution record for ROI and automation traceability."""
+    __tablename__ = "source_runs"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source: Mapped[str] = mapped_column(String(100), index=True)
+    source_role: Mapped[str] = mapped_column(String(40), index=True, default="demand")
+    run_mode: Mapped[str] = mapped_column(String(40), default="manual")
+    run_kind: Mapped[str] = mapped_column(String(80), index=True, default="manual")
+    target_type: Mapped[str] = mapped_column(String(60), default="")
+    target_id: Mapped[str] = mapped_column(String(80), default="")
+    status: Mapped[str] = mapped_column(String(40), index=True, default="ok")
+    inputs_json: Mapped[str] = mapped_column(Text, default="{}")
+    outputs_json: Mapped[str] = mapped_column(Text, default="{}")
+    candidates_created: Mapped[int] = mapped_column(Integer, default=0)
+    evidence_created: Mapped[int] = mapped_column(Integer, default=0)
+    keywords_promoted: Mapped[int] = mapped_column(Integer, default=0)
+    cards_generated: Mapped[int] = mapped_column(Integer, default=0)
+    actions_created: Mapped[int] = mapped_column(Integer, default=0)
+    rejects_created: Mapped[int] = mapped_column(Integer, default=0)
+    errors: Mapped[str] = mapped_column(Text, default="[]")
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class WatchTarget(Base):
+    """Object monitored by the evidence system through the unified cycle."""
+    __tablename__ = "watch_targets"
+    __table_args__ = (UniqueConstraint("target_type", "target_key", "source_url", name="uq_watch_target"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    target_type: Mapped[str] = mapped_column(String(60), index=True)
+    target_key: Mapped[str] = mapped_column(String(300), index=True)
+    source_url: Mapped[str] = mapped_column(Text, default="")
+    source_name: Mapped[str] = mapped_column(String(120), default="")
+    status: Mapped[str] = mapped_column(String(40), index=True, default="active")
+    priority: Mapped[float] = mapped_column(Float, default=0.0)
+    cadence_hint: Mapped[str] = mapped_column(String(40), default="cycle")
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    next_due_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    raw_context_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ActionRequest(Base):
+    """User or system requested action with risk-aware execution."""
+    __tablename__ = "action_requests"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    action_type: Mapped[str] = mapped_column(String(80), index=True)
+    target_type: Mapped[str] = mapped_column(String(60), index=True)
+    target_id: Mapped[str] = mapped_column(String(80), index=True)
+    risk_level: Mapped[str] = mapped_column(String(20), index=True, default="low")
+    status: Mapped[str] = mapped_column(String(40), index=True, default="pending")
+    requested_by: Mapped[str] = mapped_column(String(60), default="user")
+    reason: Mapped[str] = mapped_column(Text, default="")
+    result_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    executed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class ActionEvent(Base):
+    """Audit event emitted when an action request is executed or rejected."""
+    __tablename__ = "action_events"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    request_id: Mapped[int] = mapped_column(ForeignKey("action_requests.id"), index=True)
+    event_type: Mapped[str] = mapped_column(String(60), index=True)
+    target_type: Mapped[str] = mapped_column(String(60), index=True, default="")
+    target_id: Mapped[str] = mapped_column(String(80), index=True, default="")
+    summary: Mapped[str] = mapped_column(Text, default="")
+    payload_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class KeywordWeightEvent(Base):
+    """Keyword weight timeline derived from objective evidence and gates."""
+    __tablename__ = "keyword_weight_events"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    keyword_ref_type: Mapped[str] = mapped_column(String(40), index=True, default="candidate_keyword")
+    keyword_ref_id: Mapped[str] = mapped_column(String(80), index=True)
+    previous_weight: Mapped[float] = mapped_column(Float, default=0.0)
+    new_weight: Mapped[float] = mapped_column(Float, default=0.0)
+    reason: Mapped[str] = mapped_column(Text, default="")
+    evidence_link_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class OpportunityScoreEvent(Base):
+    """Opportunity score timeline; evidence remains objective and separate."""
+    __tablename__ = "opportunity_score_events"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    opportunity_card_id: Mapped[int] = mapped_column(Integer, index=True)
+    previous_score: Mapped[float] = mapped_column(Float, default=0.0)
+    new_score: Mapped[float] = mapped_column(Float, default=0.0)
+    previous_breakdown_json: Mapped[str] = mapped_column(Text, default="{}")
+    new_breakdown_json: Mapped[str] = mapped_column(Text, default="{}")
+    reason: Mapped[str] = mapped_column(Text, default="")
+    evidence_link_ids_json: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class CollectorTarget(Base):
     """Automatic collector target pool.
 

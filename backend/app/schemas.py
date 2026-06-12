@@ -148,3 +148,52 @@ class CollectorAdvancedSearchIn(BaseModel):
 class CollectorSourceRadarIn(BaseModel):
     seeds: list[str]
     limit_per_seed: int = 10
+
+
+class CandidateEntryIn(BaseModel):
+    entry_type: str
+    name: str
+    source: str = ""
+    source_role: str = ""
+    source_url: str = ""
+    raw_context: dict[str, Any] = {}
+    priority: float = 0.0
+
+
+class EvidenceItemIn(BaseModel):
+    source_type: str
+    source_name: str = ""
+    url: str = ""
+    title: str = ""
+    summary: str = ""
+    raw_excerpt: str = ""
+    raw_json: dict[str, Any] = {}
+    confidence: float = 0.0
+
+
+class EvidenceLinkIn(BaseModel):
+    target_type: str
+    target_id: str
+    relation_type: str
+    relation_reason: str = ""
+    created_by: str = "system"
+
+
+class EvidenceDerivedEntryIn(BaseModel):
+    entry_type: str
+    name: str
+    relation_reason: str = ""
+    source_role: str = "evidence"
+
+
+class ActionRequestIn(BaseModel):
+    action_type: str
+    target_type: str
+    target_id: str
+    requested_by: str = "user"
+    reason: str = ""
+    confirm: bool = False
+
+
+class ActionExecuteIn(BaseModel):
+    confirm: bool = False

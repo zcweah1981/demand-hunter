@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html>
+
+ <head>
+
+  <meta charset="utf-8"/>
+<title>Exported Data</title>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+
+  <link href="css/style.css" rel="stylesheet"/>
+
+  <script src="js/script.js" type="text/javascript">
+
+  </script>
+
+ </head>
+
+ <body onload="CheckLocation();">
+
+  <div class="page_wrap">
+
+   <div class="page_header">
+
+    <div class="content">
+
+     <div class="text bold">
+Nero 
+     </div>
+
+    </div>
+
+   </div>
+
+   <div class="page_body chat_page">
+
+    <div class="history">
+
+     <div class="message service" id="message-1">
+
+      <div class="body details">
+10 June 2026
+      </div>
+
+     </div>
+
+     <div class="message default clearfix" id="message41820">
+
+      <div class="pull_left userpic_wrap">
+
+       <div class="userpic userpic6" style="width: 42px; height: 42px">
+
+        <div class="initials" style="line-height: 42px">
+cz
+        </div>
+
+       </div>
+
+      </div>
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 21:00:35 UTC+08:00">
+21:00
+       </div>
+
+       <div class="from_name">
+cheng zhang
+       </div>
+
+       <div class="text">
+好的，我的理解四找就是采集器中的一个来源之一
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix joined" id="message41821">
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 21:00:44 UTC+08:00">
+21:00
+       </div>
+
+       <div class="text">
+只是我们先做了四找才做采集器
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix" id="message41822">
+
+      <div class="pull_left userpic_wrap">
+
+       <div class="userpic userpic1" style="width: 42px; height: 42px">
+
+        <div class="initials" style="line-height: 42px">
+N
+        </div>
+
+       </div>
+
+      </div>
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 21:00:46 UTC+08:00">
+21:00
+       </div>
+
+       <div class="from_name">
+Nero 
+       </div>
+
+       <div class="text">
+对，这个理解是对的，而且我建议就按这个方向重新定义产品结构：<br><br><pre>四找 = 采集器 / 机会发现系统里的一个来源<br></pre><br>不是单独的高级模块。<br><br>更准确地说：<br><br><pre>采集器不是一个单一工具，而是“发现来源调度器”<br>四找是其中一种发现来源<br></pre><br>───<br><br>正确关系应该是这样<br><br><pre>机会发现系统<br>  ├─ 搜索联想来源<br>  ├─ 短词重写来源<br>  ├─ Sitemap / 竞品页面来源<br>  ├─ 替代品 / 对比词来源<br>  ├─ 热点话题来源<br>  ├─ 四找来源<br>  └─ 词根组合来源<br></pre><br>这些来源的目标都一样：<br><br><pre>找到候选搜索入口 / 候选关键词<br></pre><br>然后统一进入：<br><br><pre>Candidate Keywords<br>  ↓<br>Keywords<br>  ↓<br>SERP<br>  ↓<br>Opportunity Cards<br></pre><br>───<br><br>那四找到底应该是什么位置？<br><br>现在放在：<br><br><pre>Advanced → Discovery<br></pre><br>这是错的。<br><br>更合理的位置应该是：<br><br><pre>机会发现 → 发现来源 → 四找<br></pre><br>或者：<br><br><pre>机会发现 → 来源管理 → 四找发现<br></pre><br>它应该和这些来源放在同一级：<br><br><pre>google_suggest<br>short_tail_rewrite<br>domain_web<br>advanced_search<br>alternatives<br>hot_topic<br>four_find<br>roots_combo<br></pre><br>───<br><br>四找和普通采集器来源的区别<br><br>普通采集器来源通常是：<br><br><pre>给一批搜索条件<br>  ↓<br>去外部渠道抓线索<br></pre><br>比如：<br><br><pre>google_suggest<br>advanced_search<br>alternatives<br>hot_topic<br></pre><br>四找稍微复杂一点，因为它有内部链路：<br><br><pre>词找词<br>词找站<br>站找词<br>站找站<br></pre><br>但从上层看，它仍然只是一个来源：<br><br><pre>输入 seed keyword / domain<br>  ↓<br>输出候选关键词 / 竞品站<br></pre><br>所以产品上不应该把它当独立大模块，而应该看成：<br><br><pre>一个更强的发现来源<br></pre><br>───<br><br>词根也是同理<br><br>词根现在也不应该单独孤立成高级菜单。<br><br>它也应该是来源之一：<br><br><pre>roots_combo<br></pre><br>流程是：<br><br><pre>词根组合<br>  ↓<br>候选关键词<br>  ↓<br>Keywords<br></pre><br>所以它和四找、采集器都应该统一到“发现来源”里面。<br><br>───<br><br>统一后的正确流程<br><br><pre>机会发现<br>  ↓<br>来源调度器<br>  ├─ google_suggest<br>  ├─ short_tail_rewrite<br>  ├─ domain_web<br>  ├─ alternatives<br>  ├─ hot_topic<br>  ├─ four_find<br>  └─ roots_combo<br><br>        ↓<br><br>候选关键词池 Candidate Keywords<br><br>        ↓<br><br>关键词库 Keywords<br><br>        ↓<br><br>SERP 搜索分析<br><br>        ↓<br><br>机会卡 Opportunity Cards<br><br>        ↓<br><br>机会猎手判断<br><br>        ↓<br><br>机会推进<br></pre><br>───<br><br>这会带来一个重要产品改法<br><br>现在菜单应该从：<br><br><pre>Advanced<br>  - discovery<br>  - runs<br>  - keywords<br>  - roots<br></pre><br>改成：<br><br><pre>机会发现<br>  - 总览<br>  - 搜索条件<br>  - 发现来源<br>  - 候选关键词<br>  - 关键词库<br><br>发现来源详情<br>  - 搜索联想<br>  - 短词重写<br>  - 四找<br>  - 词根组合<br>  - Sitemap/竞品页面<br>  - 替代品/对比词<br></pre><br>而不是把四找、词根、关键词都丢在 Advanced 里。<br><br>───<br><br>最终定义<br><br>我建议系统里统一定义为：<br><br><pre>Source = 任何能产出候选搜索入口的机制<br></pre><br>那么：<br><br><pre>Google Suggest 是 Source<br>Short-tail Rewrite 是 Source<br>四找是 Source<br>词根组合是 Source<br>竞品页面抓取是 Source<br>热点话题是 Source<br></pre><br>每个 Source 都应该有共同指标：<br><br><pre>发现候选数<br>导入关键词数<br>生成机会卡数<br>Action 数<br>Reject 数<br>转化率<br>噪音率<br>最近运行时间<br>是否启用<br>下一轮预算<br></pre><br>这样你就能回答：<br><br><blockquote>到底哪个来源真的能找出好机会？</blockquote><br><br>而不是现在这样：四找在 Advanced，采集器在 Collectors，词根在 Roots，关键词在 Keywords，用户会以为它们是不同系统。<br><br>───<br><br>所以你这句话可以作为产品重构原则<br><br><blockquote>四找就是采集器中的一个来源之一。</blockquote><br><br>我会进一步修正为：<br><br><blockquote>四找、词根组合、搜索联想、竞品页面抓取，都是“机会发现来源”；系统应该统一管理它们的产出、质量和回流。</blockquote>
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix joined" id="message41825">
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 21:01:42 UTC+08:00">
+21:01
+       </div>
+
+       <div class="text">
+对，这句话非常准确：<br><br><pre>四找就是采集器中的一个来源之一。<br></pre><br>只是历史顺序上，我们确实是：<br><br><pre>先做了四找<br>后做了采集器<br></pre><br>所以现在产品信息架构看起来反了：<br>四找还单独放在 <code>Advanced → Discovery</code>，而采集器后来变成了一个更大的模块。<br><br>但从现在系统应该怎么理解，应该统一成：<br><br><pre>采集器 / 机会发现系统<br>  ├─ Google Suggest 来源<br>  ├─ Short-tail Rewrite 来源<br>  ├─ Advanced Search 来源<br>  ├─ Alternatives 来源<br>  ├─ Hot Topic 来源<br>  ├─ Domain Web 来源<br>  ├─ 四找来源<br>  └─ 词根组合来源<br></pre><br>也就是说：<br><br><pre>四找不是独立模块<br>四找是发现来源之一<br></pre><br>───<br><br>为什么会变成现在这样？<br><br>因为开发顺序是：<br><br>第一阶段：先做四找<br><br>当时目标是验证方法论：<br><br><pre>词找词<br>词找站<br>站找词<br>站找站<br></pre><br>所以我们单独做了：<br><br><pre>Discovery 页面<br>discovery_expansions<br>competitor_keywords<br>similar_sites<br></pre><br>这时候它像一个独立工具。<br><br>───<br><br>第二阶段：后来做采集器<br><br>采集器是更上层的系统：<br><br><pre>多来源抓取<br>来源表现统计<br>搜索条件管理<br>候选线索池<br>反馈回流<br>预算分配<br></pre><br>它比四找更像总调度器。<br><br>所以现在从架构上看，应该是：<br><br><pre>采集器包含四找<br></pre><br>不是：<br><br><pre>四找和采集器并列成两个大模块<br></pre><br>───<br><br>正确产品定义<br><br>我建议以后统一叫：<br><br><pre>机会发现来源 Source<br></pre><br>凡是能产出候选关键词/候选入口的，都是 Source。<br><br>那么：<br><br><pre>Google Suggest = Source<br>Short-tail Rewrite = Source<br>Advanced Search = Source<br>Alternatives = Source<br>Hot Topic = Source<br>四找 = Source<br>词根组合 = Source<br></pre><br>每个 Source 都应该输出到同一个地方：<br><br><pre>Candidate Keywords<br></pre><br>然后统一走：<br><br><pre>Candidate Keywords<br>  ↓<br>Keywords<br>  ↓<br>SERP 分析<br>  ↓<br>机会卡<br>  ↓<br>机会猎手<br></pre><br>───<br><br>所以菜单也应该重构<br><br>现在：<br><br><pre>Advanced<br>  - Discovery<br>  - Keywords<br>  - Roots<br>  - Runs<br></pre><br>这个结构不对。<br><br>应该改成：<br><br><pre>机会发现<br>  - 总览<br>  - 搜索条件<br>  - 发现来源<br>  - 抓取记录<br>  - 四找来源<br>  - 词根来源<br>  - 候选关键词<br>  - 关键词库<br><br>机会猎手<br>  - 总览<br>  - 机会<br>  - 机会推进<br><br>系统<br>  - 运行历史<br>  - 设置<br></pre><br>其中：<br><br><pre>四找来源<br>词根来源<br></pre><br>不是高级工具，而是来源详情页。<br><br>───<br><br>流程应该统一成这样<br><br><pre>【来源层】<br>Google Suggest<br>Short-tail Rewrite<br>Advanced Search<br>Alternatives<br>Hot Topic<br>Domain Web<br>四找<br>词根组合<br><br>        ↓<br><br>【候选池】<br>Candidate Keywords<br><br>        ↓<br><br>【关键词库】<br>Keywords<br><br>        ↓<br><br>【验证层】<br>SERP Analysis<br><br>        ↓<br><br>【机会层】<br>Opportunity Cards<br><br>        ↓<br><br>【决策层】<br>机会猎手 → 机会<br><br>        ↓<br><br>【推进层】<br>机会猎手 → 机会推进<br></pre><br>───<br><br>最关键的一点<br><br>现在四找的问题不是“有没有用”，而是：<br><br><pre>它还没有被纳入采集器统一调度和统一评价。<br></pre><br>所以你才会看到：<br><br><pre>采集器在 Collectors<br>四找在 Advanced<br>词根在 Roots<br>关键词在 Keywords<br></pre><br>像四套东西。<br><br>实际上它们应该是一套链路。<br><br>───<br><br>我的建议<br><br>下一步不要先修小 UI，应该做一次信息架构调整：<br><br>1. <strong>取消 Advanced 作为主菜单</strong><br>2. 把 <code>Discovery</code> 改名为 <strong>四找来源</strong><br>3. 把 <code>Roots</code> 改名为 <strong>词根来源</strong><br>4. 把 <code>Keywords</code> 放到 <strong>机会发现</strong> 下面<br>5. <code>Runs</code> 放到 <strong>系统维护</strong><br>6. 在 <code>发现来源</code> 页面里，把四找、词根也列为来源之一，并显示：<br>  • 候选数<br>  • 导入数<br>  • 生成卡片数<br>  • Action 数<br>  • Reject 数<br>  • 转化率<br>  • 噪音率<br><br>这样整个系统才会变成一条清楚的线：<br><br><pre>发现来源 → 候选关键词 → 关键词库 → SERP → 机会卡 → 机会推进</pre>
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix" id="message41826">
+
+      <div class="pull_left userpic_wrap">
+
+       <div class="userpic userpic6" style="width: 42px; height: 42px">
+
+        <div class="initials" style="line-height: 42px">
+cz
+        </div>
+
+       </div>
+
+      </div>
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 21:01:54 UTC+08:00">
+21:01
+       </div>
+
+       <div class="from_name">
+cheng zhang
+       </div>
+
+       <div class="text">
+关键是四找是不是能完全自动化，还是有的功能没有办法自动化，包括采集器中，你要分析哪些是完全没有自动化的，必须人工干预
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix" id="message41827">
+
+      <div class="pull_left userpic_wrap">
+
+       <div class="userpic userpic1" style="width: 42px; height: 42px">
+
+        <div class="initials" style="line-height: 42px">
+N
+        </div>
+
+       </div>
+
+      </div>
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 21:02:02 UTC+08:00">
+21:02
+       </div>
+
+       <div class="from_name">
+Nero 
+       </div>
+
+       <div class="text">
+Need inspect settings flags.
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix joined" id="message41829">
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 21:02:50 UTC+08:00">
+21:02
+       </div>
+
+       <div class="text">
+关键点我先给结论：<br><br><pre>四找技术上可以做成自动化；<br>但产品上不应该完全无人工干预。<br></pre><br>更准确地说：<br><br><pre>四找 / 采集器都可以自动找词、自动导入、自动跑 SERP、自动生成机会卡；<br>但“哪些机会值得采纳、哪些方向要继续投钱验证、PRD 怎么改、商业判断是否成立”必须人工参与。<br></pre><br>───<br><br>一、四找现在能不能完全自动化？<br><br>当前状态<br><br>现在四找已经有自动能力。<br><br>线上设置里：<br><br><pre>FOUR_FIND_AUTO_ENABLED = true<br>FOUR_FIND_AUTO_SEEDS = invoice calculator, appointment template, compliance tracker<br>FOUR_FIND_IMPORT_LIMIT = 6<br></pre><br>代码里 daily run 会判断：<br><br><pre>FOUR_FIND_AUTO_ENABLED=true<br>  ↓<br>discover_keywords_four_find()<br>  ↓<br>run_four_find_and_import()<br>  ↓<br>导入 Keywords<br>  ↓<br>daily_run 继续跑 SERP / card<br></pre><br>所以从技术链路上，它可以自动跑：<br><br><pre>自动选 seeds<br>  ↓<br>四找扩展<br>  ↓<br>导入关键词<br>  ↓<br>SERP 分析<br>  ↓<br>生成机会卡<br></pre><br>───<br><br>但实际现在不是强自动主力<br><br>从线上数据看：<br><br><pre>discovery_expansions 30<br>competitor_keywords 0<br>competitor_sites 0<br>four_find 导入 Keywords 3 个<br></pre><br>说明它虽然能自动跑，但效果还不稳定，尤其：<br><br><pre>站找词<br>站找站<br></pre><br>现在产出很弱。<br><br>所以现在四找的真实状态是：<br><br><pre>能力上：可自动<br>实际效果上：半自动/辅助<br>产品定位上：应该作为采集器来源之一<br></pre><br>───<br><br>二、四找哪些能自动化？<br><br>1. 词找词：可以自动化<br><br>输入 seed：<br><br><pre>compliance tracker<br></pre><br>自动扩展：<br><br><pre>compliance tracker software<br>compliance tracker template<br>gdpr compliance tracker<br></pre><br>这个可以自动化。<br><br>风险是：扩出来的词可能泛、旧、噪音高，所以需要评分过滤。<br><br>自动化等级：<br><br><pre>高<br></pre><br>───<br><br>2. 词找站：可以自动化<br><br>输入关键词，搜索 SERP，找排名靠前的网站。<br><br><pre>keyword<br>  ↓<br>SERP<br>  ↓<br>competitor domains<br></pre><br>可以自动化。<br><br>风险是：SERP 可能返回内容站、目录站、论坛、无关站，需要分类过滤。<br><br>自动化等级：<br><br><pre>中高<br></pre><br>───<br><br>3. 站找词：可以部分自动化<br><br>输入竞品域名，反查它覆盖的关键词。<br><br><pre>competitor.com<br>  ↓<br>site keyword discovery<br>  ↓<br>candidate keywords<br></pre><br>这个技术上可以自动，但稳定性取决于搜索结果、页面结构、数据源质量。<br><br>目前线上这块产出是：<br><br><pre>competitor_keywords = 0<br></pre><br>说明当前实现还没成为可靠自动来源。<br><br>自动化等级：<br><br><pre>中<br></pre><br>需要优化后才能放心自动。<br><br>───<br><br>4. 站找站：可以部分自动化<br><br>输入一个站，找类似站。<br><br><pre>competitor.com<br>  ↓<br>similar domains<br></pre><br>技术上可以自动。<br><br>但风险更大：<br><br>• 很容易找出目录站<br>• 很容易找出大平台<br>• 相似站不一定是同类产品<br>• 需要强过滤<br><br>目前线上：<br><br><pre>competitor_sites = 0<br></pre><br>所以还不是可靠自动来源。<br><br>自动化等级：<br><br><pre>中低<br></pre><br>───<br><br>5. 四找结果导入 Keywords：可以自动化，但必须有质量门<br><br>现在已经有：<br><br><pre>run_four_find_and_import()<br></pre><br>可以自动导入。<br><br>但不能无脑导入。必须有：<br><br><pre>去重<br>商业意图判断<br>噪音过滤<br>分数门槛<br>来源冷却<br>SERP gate<br></pre><br>否则会污染关键词库。<br><br>自动化等级：<br><br><pre>中高，但必须带 gate<br></pre><br>───<br><br>三、四找哪些不能完全自动化？<br><br>严格说，不是“不能自动化”，而是<strong>不应该完全自动化</strong>。<br><br>1. 最初的战略方向 seed 不能完全自动<br><br>比如系统可以自动从反馈中学 seeds，但它不知道你下一阶段战略重点是不是：<br><br><pre>合规<br>Shopify<br>B2B calculator<br>QuickBooks<br>诊所预约<br></pre><br>这类方向选择需要人给约束。<br><br>可以自动推荐，但最终要人定。<br><br>人工必要性：<br><br><pre>高<br></pre><br>───<br><br>2. 是否采纳一个机会不能完全自动<br><br>系统可以打分：<br><br><pre>Action<br>Watch<br>Reject<br></pre><br>但是否真的进入：<br><br><pre>Adopted<br>机会推进<br>MVP<br>PRD<br></pre><br>必须人工判断。<br><br>因为这里涉及：<br><br>• 你是否愿意做这个行业<br>• 是否符合当前资源<br>• 是否有商业兴趣<br>• 是否能快速卖第一单<br>• 是否和现有产品线一致<br><br>人工必要性：<br><br><pre>必须人工<br></pre><br>───<br><br>3. PRD 和产品定位不能完全自动<br><br>系统可以帮你分析 PRD、改 PRD、找竞品，但不能替你决定：<br><br><pre>产品到底服务谁<br>第一版做什么<br>价格怎么定<br>先卖给谁<br>哪些功能砍掉<br></pre><br>人工必要性：<br><br><pre>必须人工<br></pre><br>───<br><br>4. 竞品商业判断不能完全自动<br><br>系统能抓竞品、分析模式，但最终判断：<br><br><pre>我们学什么<br>避开什么<br>切哪个入口<br>是否值得进入<br></pre><br>需要人工商业判断。<br><br>人工必要性：<br><br><pre>必须人工<br></pre><br>───<br><br>四、采集器里面哪些已经能自动化？<br><br>现在采集器自动化程度比四找更强。<br><br>线上设置：<br><br><pre>COLLECTOR_AUTO_ENABLED = true<br>AUTO_RUN_ENABLED = true<br>AUTO_RUN_INTERVAL_MINUTES = 360<br>COLLECTOR_AUTO_LIMIT = 24<br>COLLECTOR_AUTO_IMPORT_LIMIT = 12<br></pre><br>也就是每 6 小时自动跑一轮。<br><br>───<br><br>采集器现在能自动做的事<br><br>1. 自动从机会卡刷新搜索条件<br><br>``
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix joined" id="message41830">
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 21:03:48 UTC+08:00">
+21:03
+       </div>
+
+       <div class="text">
+`text<br>机会卡 / 反馈<br>↓<br>refresh_collector_targets_from_cards()<br>↓<br>生成下一轮搜索条件<br><br><pre><br>可以自动。<br><br>---<br><br>### 2. 自动选择下一轮投放条件<br><br>```text<br>select_budgeted_collector_targets()<br></pre><br>会根据来源权重、条件状态、反馈效果分配预算。<br><br>可以自动。<br><br>───<br><br>3. 自动跑来源<br><br>包括：<br><br><pre>google_suggest<br>sitemap<br>domain_web<br>alternatives<br>advanced_search<br>hot_topic<br>source_radar<br></pre><br>可以自动。<br><br>───<br><br>4. 自动清洗候选词<br><br><pre>candidate_keywords<br>  ↓<br>去重<br>噪音过滤<br>canonical keyword<br>质量评分<br></pre><br>可以自动。<br><br>───<br><br>5. 自动导入 Keywords<br><br><pre>import_candidates_to_keywords()<br></pre><br>可以自动。<br><br>───<br><br>6. 自动跑部分验证<br><br>代码里有：<br><br><pre>auto_verify_collector_keywords()<br></pre><br>它可以把高质量 collector keyword 自动转成机会卡。<br><br>可以自动，但需要保守门槛。<br><br>───<br><br>7. 自动回流反馈<br><br>当你对机会卡做：<br><br><pre>Adopted / Action / Watch / Reject / Block<br></pre><br>系统会回流：<br><br><pre>source weight<br>candidate status<br>collector target health<br>blocked terms<br></pre><br>这部分可以自动。<br><br>───<br><br>五、采集器中哪些必须人工干预？<br><br>1. 判断来源是不是“战略上值得继续投”<br><br>系统能算：<br><br><pre>哪个来源 Action 多<br>哪个来源 Reject 多<br>哪个来源噪音高<br></pre><br>但有时一个来源短期产出低，不代表该砍。<br><br>比如：<br><br><pre>source_radar<br></pre><br>可能短期少，但能发现早期趋势。<br><br>所以系统可以建议，最终最好人确认。<br><br>人工必要性：<br><br><pre>中<br></pre><br>───<br><br>2. 高风险清理不能完全自动<br><br>比如：<br><br><pre>cleanup_old_rejected<br>删除 rejected candidates<br></pre><br>这类不可逆或低可逆动作，不应该全自动。<br><br>可以系统推荐，但人确认。<br><br>人工必要性：<br><br><pre>高<br></pre><br>───<br><br>3. 机会状态标记必须人工<br><br><pre>Adopted<br>Block<br></pre><br>尤其必须人定。<br><br>因为它会影响后续学习：<br><br><pre>Adopted → 提升来源/搜索条件权重<br>Block → 降权/屏蔽方向<br></pre><br>如果让模型自己乱标，会污染整个系统。<br><br>人工必要性：<br><br><pre>必须人工<br></pre><br>───<br><br>4. 初始搜索方向/行业边界需要人工<br><br>系统可以自动找词，但它不知道：<br><br><pre>这个月我们要找什么方向<br>哪些行业不要碰<br>哪些国家/语言/平台优先<br>是否只要 B2B<br>是否只要可快速变现<br></pre><br>这些边界需要人设。<br><br>人工必要性：<br><br><pre>高<br></pre><br>───<br><br>六、现在所有来源的自动化等级<br><br>来源层<br><br><pre>| 来源                 | 当前自动化程度 | 是否需要人工 |<br>| ------------------ | ------- | ------ |<br>| Google Suggest     | 高       | 低      |<br>| Short-tail Rewrite | 高       | 低      |<br>| Advanced Search    | 中高      | 中      |<br>| Hot Topic          | 中       | 中      |<br>| Alternatives       | 中       | 中      |<br>| Domain Web         | 中       | 中      |<br>| Sitemap            | 中       | 中      |<br>| Source Radar       | 中低      | 中      |<br>| 四找：词找词             | 中高      | 中      |<br>| 四找：词找站             | 中高      | 中      |<br>| 四找：站找词             | 中       | 中高     |<br>| 四找：站找站             | 中低      | 高      |<br>| 词根组合               | 中       | 中      |<br></pre><br>───<br><br>流程层<br><br><pre>| 流程              | 能否自动 |<br>| --------------- | ---- |<br>| 找候选词            | 可以自动 |<br>| 候选词清洗           | 可以自动 |<br>| 导入 Keywords     | 可以自动 |<br>| SERP 分析         | 可以自动 |<br>| 生成机会卡           | 可以自动 |<br>| Action/Watch 初判 | 可以自动 |<br>| Adopted 决策      | 必须人工 |<br>| Block 决策        | 最好人工 |<br>| PRD 上传/定义       | 必须人工 |<br>| 产品定位            | 必须人工 |<br>| 竞品商业取舍          | 必须人工 |<br>| MVP 要不要做        | 必须人工 |<br>| 高风险清理/删除        | 必须人工 |<br></pre><br>───<br><br>七、最合理的自动化边界<br><br>我建议把系统定义成：<br><br><pre>自动化负责“发现、过滤、排序、初判”<br>人工负责“选择、采纳、投入、产品决策”<br></pre><br>也就是：<br><br>系统自动做<br><br><pre>发现候选入口<br>清洗噪音<br>导入关键词<br>跑 SERP<br>生成机会卡<br>初步打分<br>推荐下一步<br>学习来源权重<br></pre><br>人必须做<br><br><pre>决定哪个机会进入 Adopted<br>决定哪个方向投入 MVP<br>决定 PRD 怎么写<br>决定商业模式是否成立<br>决定是否屏蔽某类方向<br>确认高风险修复/删除<br></pre><br>───<br><br>八、四找未来要怎么变成真正自动来源？<br><br>如果我们要把四找从“半自动工具”变成“采集器中的正式自动来源”，需要做几件事：<br><br>1. 接入 collector source 统一模型<br><br>现在四找还是：<br><br><pre>four_find:xxx<br></pre><br>应该统一到：<br><br><pre>collector source = four_find<br></pre><br>或者至少在发现来源页面里统一展示。<br><br>───<br><br>2. 四找结果进入 candidate_keywords<br><br>现在四找更多是直接进：<br><br><pre>discovery_expansions<br>keywords<br></pre><br>更合理是：<br><br><pre>four_find output<br>  ↓<br>candidate_keywords<br>  ↓<br>统一清洗/评分/去重<br>  ↓<br>Keywords<br></pre><br>这样它才能和 google
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix joined" id="message41831">
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 21:03:49 UTC+08:00">
+21:03
+       </div>
+
+       <div class="text">
+_suggest、advanced_search 公平比较。<br><br>───<br><br>3. 四找也要有来源 ROI<br><br>要统计：<br><br><pre>四找发现多少<br>导入多少<br>生成卡片多少<br>Action 多少<br>Reject 多少<br>噪音率多少<br></pre><br>然后和其他来源一起分配预算。<br><br>───<br><br>4. 站找词 / 站找站要加强质量门<br><br>这两个不能无脑自动，否则容易抓偏。<br><br>需要：<br><br><pre>过滤目录站<br>过滤媒体站<br>过滤百科/文档站<br>过滤过大平台<br>限制同类产品域名<br>限制商业意图<br></pre><br>───<br><br>最终结论<br><br>你问：<br><br><blockquote>四找是不是能完全自动化，还是有的功能没有办法自动化，包括采集器中，哪些完全没有自动化，必须人工干预？</blockquote><br><br>答案是：<br><br><pre>四找可以做到流程自动化，但不能做到决策完全自动化。<br>采集器也一样。<br></pre><br>真正可以自动的是：<br><br><pre>找词 → 清洗 → 导入 → SERP → 生成机会卡 → 初步打分<br></pre><br>必须人工的是：<br><br><pre>采纳机会<br>决定投入<br>定义 PRD<br>判断商业模式<br>做 MVP 决策<br>确认高风险清理/屏蔽<br></pre><br>所以系统最终应该是：<br><br><pre>自动发现系统 + 人工决策工作台<br></pre><br>而不是：<br><br><pre>全自动创业机器<br></pre><br>这条边界很重要。
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix" id="message41832">
+
+      <div class="pull_left userpic_wrap">
+
+       <div class="userpic userpic6" style="width: 42px; height: 42px">
+
+        <div class="initials" style="line-height: 42px">
+cz
+        </div>
+
+       </div>
+
+      </div>
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 21:34:02 UTC+08:00">
+21:34
+       </div>
+
+       <div class="from_name">
+cheng zhang
+       </div>
+
+       <div class="text">
+1.词找词 → 词找站 → 站找词 → 站找站，我们对于找站有什么用，是为了从成熟的站找词吗，那站找站又有什么用，我们要理清楚四找的优势是哪些，是一些好的站我们看能否替代还是说看看有没有蓝海，我们要理解每一个来源的优势才能更好的挖掘<br>2.词找词 → 词找站 → 站找词 是不是一个扩展循环；<br>3.词找词 → 词找站 → 站找词 → 站找站是否可以利用到机会推进中？<br>4.不管哪个来源的词都要过评分体系和质量门，但是评分体系也要优化，而且也要分类，比如新词和老词应该不一样，比如已经是一些很强功能例如nano banana但是是不是没有机会呢，之前也有很多低配版的nano banana产生；<br>5.采集器中哪些目前扩词功能比较差；<br>6.Sitemap 站点监控、网页内容识别这些其实需要确认好哪些网站需要我们特别关注才能有用，替代品/对比挖掘也是要确定方向吧<br>7.你说到人工判断的我觉得判断来源是不是“战略上值得继续投”不需要人工，我们采集器现在并不多，而且作用不同，不需要倾向哪一个。<br>8.高风险清理要人工来做，系统只给意见，最后人工一键确认；<br>9.初始搜索方向/行业边界需要人工我们主要是工具类、saas、跨境电商、b2b等，这里可以有一个设置窗口，你先把你能列举的写出来；<br>10.目前Sitemap 站点监控、网页内容识别是和机会推进利用起来好还是和站找词、站找站结合好呢？<br>11.四找肯定要接入到采集器中，但是采集器的来源要重新排版规划，四找和其他来源用同一套candidate_keywords规范，四找也要有来源 ROI<br>我们先讨论你先回答我的问题，最后再形成重构方案
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix" id="message41833">
+
+      <div class="pull_left userpic_wrap">
+
+       <div class="userpic userpic1" style="width: 42px; height: 42px">
+
+        <div class="initials" style="line-height: 42px">
+N
+        </div>
+
+       </div>
+
+      </div>
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 21:34:22 UTC+08:00">
+21:34
+       </div>
+
+       <div class="from_name">
+Nero 
+       </div>
+
+       <div class="text">
+你提了 11 个问题，我一个一个回答清楚。<br><br>───<br><br>1. 找站有什么用？站找站有什么用？四找的优势到底是什么？<br><br>先说清楚：<strong>我们找站不是要看别人做得好不好，而是为了找到&quot;谁已经在赚这个钱&quot;。</strong><br><br>词找站的核心价值<br><br><pre>输入一个关键词<br>  ↓<br>看 Google 搜索结果里谁排在前面<br>  ↓<br>这些站 = 已经在这个方向上赚到钱/获得流量的玩家<br></pre><br>它的价值不是&quot;从成熟站找词&quot;，而是：<br><br><pre>确认这个关键词背后有没有真正的商业需求<br>如果排前面的都是强竞品 = 需求真实但竞争激烈<br>如果排前面的是内容站/目录站/论坛 = 需求存在但没人好好服务 = 蓝海信号<br></pre><br>所以词找站回答的是：<br><br><blockquote>这个方向是真的有人在做，还是没人碰过？</blockquote><br><br>───<br><br>站找站的核心价值<br><br>站找站回答的是完全不同的问题：<br><br><pre>输入一个竞品站<br>  ↓<br>找出类似站<br>  ↓<br>得到一整个竞品池<br></pre><br>它的价值有两个：<br><br>A. 发现竞品池<br><br>如果只有 1-2 个竞品，说明这个方向要么太新，要么太冷。<br><br>如果有一整个竞品池（5-20 个产品在做），说明：<br><br><pre>需求已被验证<br>有足够大的市场支撑多家产品<br>我们可以分析整个池子找最弱的那个下手<br></pre><br>B. 发现蓝海<br><br>如果站找站返回的大多是：<br><br><pre>内容站 / 博客 / 目录 / 论坛<br></pre><br>而很少是真正的产品/SaaS/工具，说明：<br><br><pre>用户在搜索这个需求<br>但没有好的产品满足他们<br>= 蓝海<br></pre><br>───<br><br>四找的真正优势<br><br>四找相比其他来源的优势不是&quot;找词快&quot;，而是<strong>结构化地判断一个方向的竞争格局</strong>。<br><br>具体说：<br><br><pre>| 四找步骤 | 回答的问题         | 独特优势        |<br>| ---- | ------------- | ----------- |<br>| 词找词  | 这个方向还有哪些相关搜索？ | 发现长尾变体和相邻需求 |<br>| 词找站  | 这个方向谁在做？竞争多强？ | 判断红海还是蓝海    |<br>| 站找词  | 竞品在吃哪些搜索入口？   | 从对手的流量来源偷词  |<br>| 站找站  | 这个赛道有多少玩家？    | 判断市场规模和竞争密度 |<br></pre><br>其他来源（google_suggest、advanced_search）只能回答&quot;有什么词&quot;，四找能回答&quot;这个方向的竞争格局是什么样的&quot;。<br><br>所以四找的优势是：<br><br><pre>竞争格局分析能力<br>而不只是找词能力<br></pre><br>───<br><br>2. 词找词 → 词找站 → 站找词是不是一个扩展循环？<br><br><strong>是的，而且这恰恰是四找最有价值的设计。</strong><br><br><pre>词找词：发现更多相关词<br>  ↓<br>词找站：拿这些词去搜，看谁排在前面<br>  ↓<br>站找词：从这些站反查它们覆盖的词<br>  ↓<br>这些新词又可以回到词找词继续扩展<br></pre><br>所以它是一个螺旋扩展：<br><br><pre>词 → 站 → 词 → 站 → ...<br></pre><br>每一轮都在扩大覆盖面：<br><br><pre>第 1 轮：知道 3 个词，发现 5 个站<br>第 2 轮：从 5 个站发现 15 个词<br>第 3 轮：用 15 个词发现 30 个站<br>...<br></pre><br>这个循环的意义是：<br><br><pre>一开始你可能只知道 &quot;invoice calculator&quot;<br>跑几轮后，你发现了整个赛道：<br>  - invoice generator<br>  - invoice template<br>  - recurring invoice<br>  - invoice automation<br>  - quickbooks invoice<br>  - xero invoice<br>  - freshbooks invoice<br>  - zoho invoice<br>  ...<br><br>以及整个竞品池：<br>  - freshbooks.com<br>  - zoho.com/invoice<br>  - waveapps.com<br>  - invoicely.com<br>  ...<br></pre><br>所以这个循环的价值是：<br><br><pre>从一个小入口，扩展出整个赛道的全貌<br></pre><br>───<br><br>3. 四找能不能利用到机会推进中？<br><br><strong>能，而且非常应该。</strong><br><br>现在机会推进里的竞品分析是这样的：<br><br><pre>PRD 产品形态<br>  ↓<br>生成搜索词（deterministic 规则）<br>  ↓<br>SERP 搜索<br>  ↓<br>找到竞品<br>  ↓<br>分析商业模式<br></pre><br>但这个流程只找到了&quot;当前搜索结果里的竞品&quot;，它没有做：<br><br><pre>这些竞品还有哪些相似产品？<br>整个竞品池有多大？<br>有没有更弱的竞品可以切入？<br></pre><br>而四找恰好能回答这些。<br><br>具体怎么结合<br><br>A. 站找站 → 竞品池分析<br><br><pre>机会推进中已经发现了 3 个竞品<br>  ↓<br>用站找站扩展<br>  ↓<br>发现整个竞品池（可能 10-20 个）<br>  ↓<br>分析整个池子的定价/功能/弱点<br>  ↓<br>找到最弱的那几个<br>  ↓<br>这就是我们的切入点<br></pre><br>B. 站找词 → 竞品流量入口<br><br><pre>已知竞品 drata.com<br>  ↓<br>站找词<br>  ↓<br>发现 drata 在吃 &quot;soc 2 compliance software&quot;、&quot;security compliance platform&quot; 等入口<br>  ↓<br>这些入口 drata 已经在吃了<br>  ↓<br>但可能有些入口 drata 没覆盖<br>  ↓<br>那些没覆盖的就是我们的蓝海入口<br></pre><br>C. 词找站 → 验证 PRD 方向的竞争强度<br><br><pre>PRD 里写了 &quot;embedded compliance calculator&quot;<br>  ↓<br>词找站<br>  ↓<br>看搜索结果里有没有人做<br>  ↓<br>如果没人做 = 蓝海验证<br>如果有人做但做得差 = 切入点<br>如果很多人做得好 = 要重新考虑方向<br></pre><br>所以四找在机会推进里可以提供：<br><br><pre>竞品池扩展<br>竞品流量入口发现<br>PRD 方向竞争验证<br>蓝海/红海判断<br></pre><br>───<br><br>4. 评分体系要优化，新词老词不一样，强功能产品也可能有机会<br><br>你说得对，现在的评分体系太简单了。<br><br>当前问题<br><br>现在评分基本是：<br><br><pre>SERP 结果里有没有工具/产品<br>关键词里有没有商业意图词<br>搜索量信号<br></pre><br>但它不会区分：<br><br><pre>新词 vs 老词<br>强竞品 vs 弱竞品<br>大品类 vs 细分品类<br>已验证市场 vs 未验证市场<br></pre><br>评分体系应该怎么改<br><br>A. 新词 vs 老词应该用不同的评价标准<br><br><strong>新词（刚进入候选池，还没跑过 SERP）：</strong><br><br>评价重点：<br><br><pre>这个关键词背后有没有真实需求信号？<br>搜索联想里有没有出现？<br>论坛/社媒有没有讨论？<br>SERP 里有没有广告？<br></pre><br>新词不应该用&quot;竞品强不强&quot;来打分，因为它还没验证。<br><br>新词评分应该更看重：<br><br><pre>需求信号强度<br>商业意图明确度<br>搜索联想出现率<br>社媒讨论热度<br></pre><br>───<br><br><strong>老词（已经跑过 SERP，有历史数据）：</strong><br><br>评价重点：<br><br><pre>SERP 竞争格局怎么样？<br>前排是强产品还是弱内容？<br>有没有明确的付费竞品？<br>广告密度高不高？<br></pre><br>老词评分应该更看重：<br><br><pre>SERP 竞争质量<br>竞品弱点数量<br>缺口大小<br>变现信号<br></pre><br>───<br><br>B. 强功能产品 ≠ 没有机会<br><br>你举的例子很好：
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix joined" id="message41844">
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 21:47:13 UTC+08:00">
+21:47
+       </div>
+
+       <div class="text">
+现在有数据了。我来回答你的每个问题。<br><br>───<br><br>5. 采集器中哪些目前扩词功能比较差？<br><br>从线上最近一轮 collector_autopilot 的实际结果看：<br><br><pre>suggest         saved=34   seen=36   errors=0    ✅ 有效<br>advanced_search  saved=0    seen=-    errors=10   ❌ 全失败<br>hot_topic       saved=0    seen=-    errors=0    ❌ 零产出<br>source_radar    saved=0    seen=-    errors=5    ❌ 全失败<br></pre><br>而且 sitemap、domain_web、alternatives 这三个在这一轮<strong>根本没跑</strong>（没有出现在 source_results 里）。<br><br><strong>四找</strong>也没出现在 collector_autopilot 里，因为现在四找是独立跑的，不在采集器统一调度中。<br><br>结论<br><br><pre>| 来源                 | 当前状态                | 原因          |<br>| ------------------ | ------------------- | ----------- |<br>| suggest            | ✅ 唯一主力，产出 34 个候选词   | 稳定，错误少      |<br>| short_tail_rewrite | ✅ 有效，产出 8 个候选词      | 辅助，词少但质量还行  |<br>| advanced_search    | ❌ 10 个错误全部失败        | 搜索接口可能挂了或超时 |<br>| hot_topic          | ❌ 0 产出              | 搜索条件可能不匹配热点 |<br>| source_radar       | ❌ 5 个错误全部失败         | 数据源问题       |<br>| sitemap            | ⚠️ 本轮没跑             | 可能没有配置目标站   |<br>| domain_web         | ⚠️ 本轮没跑             | 可能没有分配预算    |<br>| alternatives       | ⚠️ 本轮没跑             | 可能没有目标站     |<br>| 四找                 | ⚠️ 不在 collector 调度里 | 独立运行        |<br></pre><br>最差的三个<br><br><pre>1. advanced_search：10 错误，0 产出<br>2. source_radar：5 错误，0 产出<br>3. hot_topic：0 错误但 0 产出<br></pre><br>这三个要么接口有问题，要么搜索条件不对，要么数据源不稳定。<br><br>───<br><br>6. Sitemap / 网页内容 / 替代品需要确定关注方向<br><br>对，这三个来源不能无脑跑，必须先确定&quot;关注谁&quot;。<br><br>Sitemap 站点监控<br><br>现在问题是：<strong>监控谁？</strong><br><br>如果随便抓 sitemap，会抓到大量内容站噪音。<br><br>应该监控的站是：<br><br><pre>1. 已确认的竞品站（从 SERP / 机会推进中发现的）<br>2. 行业头部工具站（你知道在赚这个钱的）<br>3. 甲方参考站（你潜在客户在用的产品）<br></pre><br>所以 Sitemap 不应该是&quot;开放抓取&quot;，而应该是&quot;定向监控&quot;。<br><br>配置方式：<br><br><pre>从机会卡 / 机会推进中自动提取竞品域名<br>  ↓<br>加入 Sitemap 监控列表<br>  ↓<br>定期抓取变化<br>  ↓<br>新页面 / 新功能 / 新关键词 → 候选词<br></pre><br>───<br><br>网页内容识别（Domain Web）<br><br>同理，不能随便抓。<br><br>应该优先抓：<br><br><pre>1. SERP 前排竞品的页面标题和功能描述<br>2. 四找发现的竞品站的页面<br>3. 机会推进中竞品的页面<br></pre><br>───<br><br>替代品 / 对比挖掘<br><br>你说得对，也要确定方向。<br><br>现在 alternatives 搜索的逻辑是：<br><br><pre>输入一个竞品域名<br>  ↓<br>搜 &quot;xxx alternative&quot; / &quot;xxx vs&quot;<br>  ↓<br>找到替代品/对比页面<br>  ↓<br>从中提取候选工具名和关键词<br></pre><br>问题在于：如果输入的域名不对，出来的结果就偏了。<br><br>所以 alternatives 应该：<br><br><pre>从已确认的方向出发<br>  ↓<br>用 Adopted / Action 的机会卡关联的竞品<br>  ↓<br>搜替代品<br>  ↓<br>找到更多同类工具和关键词<br></pre><br>不是随便搜。<br><br>───<br><br>7. 来源是否值得继续投——不需要人工判断<br><br>你说得对。<br><br><pre>现在采集器来源并不多，作用不同，不需要倾向哪一个。<br></pre><br>这个我之前分析有误。<br><br>正确的做法应该是：<br><br><pre>所有来源都应该保持运行<br>系统自动统计每个来源的 ROI<br>当某个来源连续多轮 0 产出或全错误时，自动降权/暂停<br>当某个来源效果好时，自动提权<br>人工只需要看结果，不需要主动选择&quot;投哪个来源&quot;<br></pre><br>所以这不是人工决策点，而是系统自动调节。<br><br>───<br><br>8. 高风险清理——系统只给意见，人工一键确认<br><br>同意。<br><br><pre>系统负责：<br>  - 检测哪些候选词应该清理<br>  - 给出理由和风险等级<br>  - 展示清理预览<br><br>人工负责：<br>  - 看一眼建议<br>  - 一键确认或取消<br></pre><br>不应该让系统自己删。<br><br>───<br><br>9. 初始搜索方向 / 行业边界设置<br><br>你说主要是：<br><br><pre>工具类、SaaS、跨境电商、B2B<br></pre><br>我列举一下可以支持的行业/方向维度：<br><br>行业/领域<br><br><pre>- 电商 / Shopify / WooCommerce / Amazon<br>- 财务 / 会计 / 记账 / 报税<br>- 合规 / SOC2 / GDPR / HIPAA<br>- HR / 招聘 / 考勤 / 薪酬<br>- 医疗 / 诊所 / 预约 / 患者<br>- 教育 / 培训 / 课程<br>- 物流 / 仓储 / 配送<br>- 房地产 / 物业 / 租赁<br>- 餐饮 / 外卖 / 预订<br>- 法律 / 合同 / 文档<br>- 营销 / 广告 / SEO / 社媒<br>- 客服 / 工单 / 支持<br>- 建筑 / 工程 / 项目<br>- 制造 / 生产 / 供应链<br>- 保险 / 理赔<br>- 旅游 / 酒店 / 航空<br></pre><br>产品形态<br><br><pre>- Calculator（计算器）<br>- Template（模板）<br>- Tracker（追踪器）<br>- Automation（自动化工具）<br>- Dashboard（仪表盘）<br>- Report（报告生成）<br>- Notification / Reminder（通知/提醒）<br>- Integration / Connector（集成/连接器）<br>- Invoice / Billing（发票/账单）<br>- Compliance（合规工具）<br>- CRM / Lead（客户管理/线索）<br>- Booking / Scheduling（预约/排期）<br>- Inventory（库存管理）<br>- Document / PDF（文档处理）<br>- Form / Survey（表单/调查）<br></pre><br>平台生态<br><br><pre>- Shopify<br>- WooCommerce<br>- QuickBooks<br>- Xero<br>- Stripe<br>- PayPal<br>- HubSpot<br>- Salesforce<br>- WordPress<br>- Notion<br>- Slack<br>- Google Workspace<br>- Microsoft 365<br></pre><br>客户类型<br><br><pre>- SMB（中小企业）<br>- Enterprise（大企业）<br>- Freelancer（自由职业者）<br>- Startup（创业公司）<br>- Agency（代理商）<br>- Creator（创作者）<br></pre><br>变现模式<br><br><pre>- Subscription（订阅制）</pre>
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix joined" id="message41845">
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 21:47:14 UTC+08:00">
+21:47
+       </div>
+
+       <div class="text">
+<pre>- One-time purchase（一次性购买）<br>- Freemium（免费增值）<br>- Usage-based（按用量付费）<br>- Marketplace（交易抽成）<br>- Lead generation（线索生成）<br>- Affiliate（推荐分成）<br></pre><br>地域/语言<br><br><pre>- 英语市场（US/UK/AU/CA）<br>- 中文市场<br>- 欧洲市场<br>- 东南亚市场<br>- 跨境（中国卖家出海）<br></pre><br>───<br><br>10. Sitemap / 网页内容是和机会推进结合好，还是和站找词/站找站结合好？<br><br><strong>都应该结合，但用途不同。</strong><br><br>和机会推进结合<br><br><pre>机会推进中发现了竞品<br>  ↓<br>把竞品域名加入 Sitemap 监控<br>  ↓<br>持续监控竞品新功能/新页面/新方向<br>  ↓<br>竞品有新动作 = 市场信号<br>  ↓<br>更新 PRD / 调整策略<br></pre><br>这个用途是：<strong>竞品动态监控</strong>。<br><br>重点在&quot;持续&quot;——不是发现一次就结束，而是长期跟踪。<br><br>───<br><br>和站找词/站找站结合<br><br><pre>四找发现了新的竞品站<br>  ↓<br>用 domain_web 抓这个站的页面标题/功能描述<br>  ↓<br>提取关键词<br>  ↓<br>用站找词继续扩展<br>  ↓<br>用站找站找类似站<br>  ↓<br>继续抓<br></pre><br>这个用途是：<strong>扩展阶段的深挖</strong>。<br><br>重点在&quot;深度&quot;——从一个站挖出更多词和更多站。<br><br>───<br><br>所以答案是：<br><br><pre>| 阶段     | 结合方式                         | 用途           |<br>| ------ | ---------------------------- | ------------ |<br>| 机会发现阶段 | Sitemap/Domain Web + 站找词/站找站 | 深挖竞品池，发现更多入口 |<br>| 机会推进阶段 | Sitemap/Domain Web + 竞品监控    | 跟踪已确认竞品的动态   |</pre>
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix joined" id="message41846">
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 21:47:15 UTC+08:00">
+21:47
+       </div>
+
+       <div class="text">
+两个阶段都应该用，只是目的不同。<br><br>───<br><br>11. 四找接入采集器，统一 candidate_keywords，统一 ROI<br><br>同意，这是必须做的。<br><br>接入方式<br><br><pre>四找不再是独立 Discovery<br>四找变成 collector source 之一<br>四找结果进入 candidate_keywords<br>四找和其他来源用同一套评分/去重/质量门<br>四找也有 ROI 统计<br></pre><br>来源重新排版<br><br>现在的来源需要重新归类和定义：<br><br><pre>搜索类来源<br>  - Google Suggest（搜索联想）<br>  - Short-tail Rewrite（短词重写）<br>  - Advanced Search（高级搜索）<br><br>站点类来源<br>  - Sitemap Monitor（站点监控）<br>  - Domain Web（网页内容）<br>  - Alternatives（替代品/对比）<br><br>趋势类来源<br>  - Hot Topic（热点话题）<br>  - Source Radar（早期信号）<br><br>四找类来源<br>  - 词找词（keyword expansion）<br>  - 词找站（keyword → SERP domains）<br>  - 站找词（domain → keywords）<br>  - 站找站（domain → similar domains）<br><br>底层来源<br>  - Roots Combo（词根组合）<br></pre><br>每个 source 统一字段<br><br><pre>source_name<br>source_type（搜索/站点/趋势/四找/底层）<br>total_candidates<br>imported_count<br>card_count<br>action_count<br>reject_count<br>avg_score<br>noise_rate<br>last_run_at<br>status（active/paused/error）<br></pre><br>这样所有来源可以在同一个页面里对比。<br><br>───<br><br>总结你的 11 个问题<br><br><pre>| #  | 问题                | 我的回答                                               |<br>| --- | ----------------- | -------------------------------------------------- |<br>| 1  | 找站/站找站有什么用        | 找站 = 确认竞争格局；站找站 = 发现竞品池，判断蓝海/红海                    |<br>| 2  | 词找词→词找站→站找词是不是循环  | 是，是螺旋扩展循环，每轮扩大覆盖面                                  |<br>| 3  | 四找能否利用到机会推进       | 能，竞品池扩展 + 流量入口发现 + PRD 方向验证                        |<br>| 4  | 评分体系要优化           | 新词看需求信号，老词看竞争缝隙，强竞品不等于没机会                          |<br>| 5  | 哪些来源扩词差           | advanced_search 全错误，source_radar 全失败，hot_topic 零产出 |<br>| 6  | Sitemap/替代品需要确定方向 | 对，必须定向：从竞品/机会卡出发，不能无脑抓                             |<br>| 7  | 来源投不投不需要人工        | 同意，系统自动调权，不需要人工选来源                                 |<br>| 8  | 高风险清理             | 系统给意见，人工一键确认                                       |<br>| 9  | 行业边界设置            | 列举了行业、产品形态、平台、客户类型、变现模式、地域                         |<br>| 10 | Sitemap 和谁结合      | 发现阶段结合站找词/站找站，推进阶段结合竞品监控                           |<br>| 11 | 四找接入采集器           | 统一 candidate_keywords、统一 ROI、来源重新排版                |<br></pre><br>你说的&quot;先讨论再形成重构方案&quot;，我们现在讨论清楚了。你确认没问题后，我就开始整理成正式重构方案。
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix" id="message41855">
+
+      <div class="pull_left userpic_wrap">
+
+       <div class="userpic userpic6" style="width: 42px; height: 42px">
+
+        <div class="initials" style="line-height: 42px">
+cz
+        </div>
+
+       </div>
+
+      </div>
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 22:25:18 UTC+08:00">
+22:25
+       </div>
+
+       <div class="from_name">
+cheng zhang
+       </div>
+
+       <div class="text">
+通过你的回答，我觉得我们目前反而要再理清逻辑再重构，现在逻辑还是有问题。<br>我从你的回答，我们的采集器其实应该分为两种不同的类型或者就是两个场景，第一类是找词的源，第二类是论证源（论证源也能产生好词但是是辅助功能），suggest、short_tail、hot_topic应该都是找词源，四找、domain_web等是论证源，那我们应该是找词源要独立运行，找到新词后用论证源去看词是否有用，同时可以补充新词，最后通过评分体系进入keyword库，keyword库再用serp分析产出机会，产出就会有需要用论证源去找证据，监控竞品、四找等最后评分，对于进入机会推进又可以用论证源去对prd中的需求找证据，这是一整个链条，所以四找应该在采集器中有一个新的分类，论证源要相互配合才能有用<br>至于你说的初始方向/行业边际的设置我看了太复杂，是不是可以设置简单点呢，这里面证据源又是证据收集又是找词双功能，我们应该对进入机会的所有词都不断用论证源去清洗，或者监控他们的竞品才能让机会词不断的重新评分分组，这是我的看法，我们讨论看看是否正确
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix" id="message41856">
+
+      <div class="pull_left userpic_wrap">
+
+       <div class="userpic userpic1" style="width: 42px; height: 42px">
+
+        <div class="initials" style="line-height: 42px">
+N
+        </div>
+
+       </div>
+
+      </div>
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 22:25:54 UTC+08:00">
+22:25
+       </div>
+
+       <div class="from_name">
+Nero 
+       </div>
+
+       <div class="text">
+你的判断是对的，而且比我前面说的更准确。<br><br>我们现在真正要理清的不是“哪个功能放在哪个菜单”，而是：<br><br><pre>来源到底在系统里承担什么角色？<br></pre><br>我重新归纳一下：<br><strong>采集器不应该只是“找词工具集合”，而应该拆成两个场景 / 两类来源：</strong><br><br><pre>1. 找词源：负责发现新入口<br>2. 论证源：负责验证、补证、监控、重新评分<br></pre><br>而且你说得很关键：<br><br><pre>论证源也能产生好词，但那是副产物，不是主目标。<br></pre><br>这句话应该成为重构原则。<br><br>───<br><br>一、现在更合理的底层逻辑<br><br>应该是：<br><br><pre>找词源<br>  ↓<br>候选词池 candidate_keywords<br>  ↓<br>论证源验证 / 补证 / 清洗<br>  ↓<br>评分体系<br>  ↓<br>关键词库 keywords<br>  ↓<br>SERP 分析<br>  ↓<br>机会卡<br>  ↓<br>论证源继续补证 / 竞品监控 / 四找扩展<br>  ↓<br>机会重新评分 / 分组 / 状态更新<br>  ↓<br>机会推进<br>  ↓<br>PRD-first 论证源验证<br></pre><br>所以不是一条简单直线，而是一个循环：<br><br><pre>找词 → 论证 → 入库 → 分析 → 机会 → 再论证 → 重评分 → 推进<br></pre><br>───<br><br>二、两类来源应该怎么分<br><br>第一类：找词源<br><br>目标是：<br><br><pre>发现新的搜索入口<br></pre><br>它们负责回答：<br><br><blockquote>有哪些新词、新需求、新搜索表达值得进入候选池？</blockquote><br><br>典型来源：<br><br><pre>Google Suggest<br>Short-tail Rewrite<br>Hot Topic<br>Source Radar<br>Roots Combo<br>趋势词<br>社媒热词<br>搜索联想<br></pre><br>这些来源的主要输出应该是：<br><br><pre>candidate_keywords<br></pre><br>它们不一定能证明这个词有机会，只是负责“发现”。<br><br>───<br><br>第二类：论证源<br><br>目标不是先找词，而是：<br><br><pre>验证一个词/机会/PRD 是否真的有用<br></pre><br>它们负责回答：<br><br><blockquote>这个词背后有没有真实需求？<br>有哪些竞品？<br>竞品强不强？<br>有没有蓝海？<br>有没有替代/对比需求？<br>这个机会是否还值得继续？<br>PRD 中的假设有没有证据支持？</blockquote><br><br>典型来源：<br><br><pre>四找<br>Domain Web<br>Sitemap Monitor<br>Alternatives / Compare<br>Competitor pages<br>SERP evidence<br>Social/forum evidence<br>Review evidence<br>Pricing pages<br>Changelog / release pages<br></pre><br>这些来源的主要输出不是直接入库，而是：<br><br><pre>evidence<br>competitor_signals<br>support / weaken / neutral<br>new candidate keywords as byproduct<br>re-score signals<br></pre><br>───<br><br>三、四找应该怎么定位？<br><br>你说“四找应该在采集器中有一个新的分类，论证源要相互配合才能有用”，我同意。<br><br>四找不应该简单归类为找词源。它更准确是：<br><br><pre>论证源 + 扩展源<br></pre><br>也就是 hybrid，但主角色偏论证。<br><br>───<br><br>四找在不同阶段的角色<br><br>阶段 1：候选词验证<br><br><pre>候选词<br>  ↓<br>词找站<br>  ↓<br>看 SERP / 竞品 / 内容站 / 工具站<br>  ↓<br>判断这个词是否值得继续<br></pre><br>这时四找是论证源。<br><br>───<br><br>阶段 2：补充新词<br><br><pre>词找站<br>  ↓<br>找到成熟站<br>  ↓<br>站找词<br>  ↓<br>反挖竞品覆盖的词<br>  ↓<br>补充 candidate_keywords<br></pre><br>这时四找产生新词，但这是验证过程的副产物。<br><br>───<br><br>阶段 3：机会卡补证<br><br><pre>机会卡<br>  ↓<br>四找<br>  ↓<br>找竞品池 / 相邻站 / 对比词 / 替代词<br>  ↓<br>更新机会评分<br></pre><br>这时四找是机会论证源。<br><br>───<br><br>阶段 4：机会推进 / PRD 验证<br><br><pre>PRD<br>  ↓<br>提取产品关键词 / ICP / 功能假设<br>  ↓<br>四找<br>  ↓<br>找竞品、找相邻站、找竞品关键词<br>  ↓<br>判断 PRD 是否遗漏场景<br></pre><br>这时四找是 PRD 论证源。<br><br>───<br><br>所以四找不该叫“Discovery”这么泛。更准确叫：<br><br><pre>四找论证源<br></pre><br>或者：<br><br><pre>竞品/市场论证源<br></pre><br>───<br><br>四、Domain Web / Sitemap / Alternatives 也是论证源<br><br>你说得对：<br><br><pre>Sitemap 站点监控、网页内容识别、替代品/对比挖掘，必须和具体词、具体机会、具体竞品绑定才有用。<br></pre><br>它们不是独立找词工具。<br><br>───<br><br>Domain Web<br><br>适合：<br><br><pre>已知一个竞品站<br>  ↓<br>扫它页面标题、H1、meta、功能页<br>  ↓<br>提取它正在服务的需求<br></pre><br>主作用：<br><br><pre>验证竞品覆盖什么<br>发现竞品功能结构<br>补充新候选词<br></pre><br>───<br><br>Sitemap Monitor<br><br>适合：<br><br><pre>已确认关注的竞品站<br>  ↓<br>持续监控新增页面<br>  ↓<br>发现新功能 / 新 use case / 新集成 / 新模板<br></pre><br>主作用：<br><br><pre>持续论证<br>竞品动态监控<br>机会重新评分<br>PRD 更新信号<br></pre><br>───<br><br>Alternatives / Compare<br><br>适合：<br><br><pre>已知竞品或已知方向<br>  ↓<br>找 alternative / vs / compare<br>  ↓<br>看用户迁移意图和竞品缺口<br></pre><br>主作用：<br><br><pre>证明用户对现有方案不满<br>发现替代切入口<br>补充竞品池<br></pre><br>───<br><br>五、所以完整链条应该是这样<br><br>我按你刚刚的思路重新画一版。<br><br><pre>【A. 找词源独立运行】<br>Google Suggest<br>Short-tail Rewrite<br>Hot Topic<br>Source Radar<br>Roots Combo<br>        ↓<br>产生 candidate_keywords<br><br>        ↓<br><br>【B. 论证源清洗候选词】<br>四找<br>Domain Web<br>Sitemap<br>Alternatives<br>SERP<br>Social / Forum / Review<br>        ↓<br>给每个候选词补充证据：<br>- support<br>- weaken<br>- neutral<br>- competitor_count<br>- competitor_strength<br>- blue_ocean_gap<br>- alternative_demand<br>- pricing_signal<br>- tool_gap<br>- ICP clarity<br><br>        ↓<br><br>【C. 评分体系】<br>分类评分：<br>- 新词<br>- 老词<br>- 趋势词<br>- 竞品反查词<br>- 替代/对比词<br>- 工具/模板/计算器词<br>        ↓<br>达到门槛才进入 keywords<br><br>        ↓<br><br>【D. Keywords 入库】<br>关键词库不是所有候选词垃圾桶<br>而是通过质量门后的“可分析搜索入口”</pre>
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix joined" id="message41857">
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 22:26:54 UTC+08:00">
+22:26
+       </div>
+
+       <div class="text">
+↓<br><br>【E. SERP 分析】<br>关键词跑 SERP<br>分析竞品 / 缺口 / 商业意图<br><br><pre>    ↓<br></pre><br>【F. 机会卡】<br>生成机会<br>Action / Watch / Reject / Adopted<br><br><pre>    ↓<br></pre><br>【G. 机会继续论证】<br>对进入机会池的词持续跑论证源：<br><br>• 四找扩展竞品池<br><br>• Domain Web 扫竞品页面<br><br>• Sitemap 监控竞品变化<br><br>• Alternatives 找替代需求<br><br>• Social/Review 找用户不满<br>↓<br>重新评分 / 重新分组 / 更新状态<br><br><pre>  ↓<br></pre><br>【H. 机会推进】<br>PRD-first<br>↓<br>论证源继续围绕 PRD 假设找证据<br>↓<br>PRD 改进 / MVP 决策<br><br><pre><br>这才是闭环。<br><br>---<br><br># 六、关键纠正：Keywords 之前应该先有论证源<br><br>之前我说：<br><br>```text<br>来源 → candidate_keywords → keywords → SERP → opportunity<br></pre><br>这太粗了。<br><br>现在应该改成：<br><br><pre>来源 → candidate_keywords → 论证源清洗 → keywords → SERP → opportunity<br></pre><br>也就是说：<br><br><pre>candidate_keywords 不应该直接进 keywords<br></pre><br>中间要有：<br><br><pre>质量门<br>分类评分<br>证据补充<br></pre><br>否则 Keywords 会变成垃圾池。<br><br>───<br><br>七、进入机会后的词也要持续被论证源重新清洗<br><br>你这个点也很重要：<br><br><blockquote>对进入机会的所有词都不断用论证源去清洗，或者监控它们的竞品，才能让机会词不断重新评分分组。</blockquote><br><br>我同意。<br><br>机会不是生成一次就结束。<br><br>应该有：<br><br><pre>Opportunity Evidence Loop<br></pre><br>也就是：<br><br><pre>机会卡<br>  ↓<br>定期证据轮<br>  ↓<br>四找 / Sitemap / Alternatives / Reviews / SERP refresh<br>  ↓<br>新增证据<br>  ↓<br>support / weaken / neutral<br>  ↓<br>机会重新评分<br>  ↓<br>状态变化<br></pre><br>例如：<br><br><pre>Watch → Action<br>Action → Adopted<br>Action → Reject<br>Adopted → Need PRD change<br></pre><br>这比一次性生成机会卡更可靠。<br><br>───<br><br>八、论证源应该互相配合，不是单独跑<br><br>你说“论证源要相互配合才能有用”，对。<br><br>比如：<br><br>一个候选词进来<br><br><pre>shopify sales tax calculator<br></pre><br>应该这样跑：<br><br><pre>1. 词找站<br>   ↓<br>   找到相关站 / SERP 玩家<br><br>2. Domain Web<br>   ↓<br>   扫这些站页面，看他们怎么描述产品<br><br>3. Alternatives<br>   ↓<br>   看有没有 alternative / vs 需求<br><br>4. Sitemap<br>   ↓<br>   如果某个站很重要，加入监控<br><br>5. 站找词<br>   ↓<br>   反查竞品覆盖的其他词<br><br>6. 评分体系<br>   ↓<br>   判断这个词是工具机会、内容机会、还是没机会<br></pre><br>单独一个来源很容易误判。组合起来才有意义。<br><br>───<br><br>九、初始方向设置应该简单<br><br>你说之前我列得太复杂，这个反馈对。<br><br>不应该一开始做一堆复杂设置。<br>应该先做一个简单的“发现边界设置”。<br><br>建议第一版只要 4 组：<br><br>───<br><br>1. 我们主要找什么<br><br>默认勾选：<br><br><pre>工具类<br>SaaS<br>B2B<br>跨境电商<br>自动化<br>模板 / 计算器<br>集成 / 插件<br></pre><br>───<br><br>2. 优先平台<br><br>可选：<br><br><pre>Shopify<br>WooCommerce<br>Amazon<br>QuickBooks<br>Stripe<br>PayPal<br>Google Sheets<br>Notion<br>Slack<br>HubSpot<br>WordPress<br></pre><br>───<br><br>3. 排除方向<br><br>默认排除：<br><br><pre>纯内容站<br>新闻<br>社区泛讨论<br>违法灰产<br>成人 / 赌博<br>重硬件<br>强监管医疗诊断<br>投资建议<br>纯 AI 聊天壳<br></pre><br>───<br><br>4. 机会偏好<br><br>默认：<br><br><pre>可快速 MVP<br>有明确付费触发<br>可 SEO 获客<br>可做轻量工具<br>适合小团队<br></pre><br>───<br><br>这就够了。<br><br>不要一开始做复杂 taxonomy。<br>先让它影响：<br><br><pre>候选词质量门<br>SERP gate<br>四找 seed/domain 筛选<br>机会卡评分<br></pre><br>───<br><br>十、最终我认为你的看法是正确的，但需要补一个定义<br><br>你的看法：<br><br><pre>找词源独立运行<br>论证源验证词是否有用<br>论证源也能补充新词<br>评分后进入 keyword 库<br>keyword 再跑 SERP 产出机会<br>机会产出后继续用论证源找证据、监控竞品、重新评分<br>机会推进中继续用论证源验证 PRD<br></pre><br>我认为这是正确的。<br><br>我只补一个定义：<br><br><pre>找词源 = Discovery Source<br>论证源 = Evidence Source<br></pre><br>但有些来源是 hybrid：<br><br><pre>四找 = Evidence Source + Expansion Source<br>Domain Web = Evidence Source + Keyword Extraction<br>Alternatives = Evidence Source + Competitor Expansion<br>Sitemap = Evidence Source + Monitoring Source<br></pre><br>所以 UI 上不要硬分死，而是给每个来源打角色标签：<br><br><pre>找词<br>论证<br>监控<br>扩展<br>竞品<br></pre><br>比如：<br><br><pre>Google Suggest：找词<br>Short-tail Rewrite：找词<br>Hot Topic：找词 / 趋势<br>四找：论证 / 扩展 / 竞品<br>Domain Web：论证 / 提词 / 竞品<br>Sitemap：监控 / 论证<br>Alternatives：论证 / 替代 / 竞品<br>SERP：论证 / 评分<br></pre><br>───<br><br>十一、后面重构方案应该围绕这套模型<br><br>不是简单把 Advanced 移到 Collectors，而是要按这个新逻辑改：<br><br><pre>机会发现<br>  - 总览<br>  - 找词源<br>  - 论证源<br>  - 候选词池<br>  - 关键词库<br>  - 来源表现<br><br>机会猎手<br>  - 机会总览<br>  - 机会列表<br>  - 机会推进<br><br>系统<br>  - 运行历史<br>  - 设置<br></pre><br>其中：<br><br>找词源页面<br><br>显示：<br><br><pre>每个找词源产出多少 candidate<br>哪些进入论证<br>哪些被拒<br></pre><br>论证源页面<br><br>显示：<br><br><pre>每个论证源验证了多少 candidate / opportunity / PRD<br>support/weaken/neutral 证据数量<br>补充了多少新词<br>监控了多少竞品<br></pre><br>候选词池页面<br><br>显示：<br><br><pre>待论证<br>论证中<br>已入库<br>已拒绝<br>需要人工确认<br></pre><br>关键词库页面<br><br>显示：<br><br><pre>通过质量门、可以正式跑 SERP 的关键词<br></pre><br>来源表现页面
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix joined" id="message41858">
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 22:26:55 UTC+08:00">
+22:26
+       </div>
+
+       <div class="text">
+来源表现页面<br><br>不要简单比谁产出多，而是按角色看：<br><br><pre>找词源看 candidate 质量<br>论证源看证据质量和重评分贡献<br>监控源看变化捕捉能力<br></pre><br>───<br><br>最终结论<br><br>你的理解是正确的，而且应该成为下一版重构的核心：<br><br><pre>采集器不是一堆找词工具。<br>它应该是“发现与论证系统”。<br><br>其中：<br>找词源负责发现新候选词；<br>论证源负责验证候选词、补证机会、监控竞品、重评分；<br>四找不是单独模块，而是论证源/扩展源；<br>Domain Web / Sitemap / Alternatives 也不是普通找词源，而是论证源；<br>所有词进入 Keywords 前都要先经过论证源和分类评分；<br>进入机会后还要持续用论证源重评；<br>进入机会推进后，论证源继续围绕 PRD 找证据。<br></pre><br>这套逻辑比之前清晰很多。下一步如果要形成重构方案，我建议就围绕：<br><br><pre>找词源 / 论证源 / 候选词池 / 关键词库 / 机会重评<br></pre><br>这五个核心对象来设计。
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix" id="message41862">
+
+      <div class="pull_left userpic_wrap">
+
+       <div class="userpic userpic6" style="width: 42px; height: 42px">
+
+        <div class="initials" style="line-height: 42px">
+cz
+        </div>
+
+       </div>
+
+      </div>
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 22:40:43 UTC+08:00">
+22:40
+       </div>
+
+       <div class="from_name">
+cheng zhang
+       </div>
+
+       <div class="text">
+我还要补充几点：1.初始化方向设置我们不要设置找什么，我们应该设置哪些不能碰，同时设置机会偏好，这样的边界最好；2.论证源其实也是很好的独立找词器，他找的不是saas词而是工具类词，这个方向很重要，比如：opnclaw刚火起来的时候他在github上就是一个工具，那么其实他带来了巨大的商机，这时候可以快速用论证源中的几个源配合可以找到商机比如openclaw skills等，再比如当nano banana刚火起来的时候，也是用论证源中的可以快速的找到nano banana中转方向的商机，我的意思是论证源对于工具或者新趋势词更好的挖掘商机，这块我们怎么融合
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix" id="message41863">
+
+      <div class="pull_left userpic_wrap">
+
+       <div class="userpic userpic1" style="width: 42px; height: 42px">
+
+        <div class="initials" style="line-height: 42px">
+N
+        </div>
+
+       </div>
+
+      </div>
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 22:41:04 UTC+08:00">
+22:41
+       </div>
+
+       <div class="from_name">
+Nero 
+       </div>
+
+       <div class="text">
+对，你这个补充非常关键。<br>我觉得我们现在应该再修正一次模型：<br><br>之前我们说：<br><br><pre>找词源 = 发现新词<br>论证源 = 验证/补证/监控<br></pre><br>这个还不够准确。<br><br>更准确应该是：<br><br><pre>来源不是固定角色，而是根据场景承担不同任务。<br></pre><br>特别是你说的第二点：<br><br><blockquote>论证源其实也是很好的独立找词器，他找的不是 SaaS 词，而是工具类词、新趋势词、生态机会词。</blockquote><br><br>这个判断是对的。<br><br>所以最终模型应该不是简单二分：<br><br><pre>找词源 vs 论证源<br></pre><br>而是：<br><br><pre>同一批来源，在不同模式下承担不同角色。<br></pre><br>───<br><br>1. 初始化方向设置：不设置“找什么”，而是设置“不能碰什么”和“偏好什么”<br><br>你这个纠正也是对的。<br><br>如果我们一开始让用户设置：<br><br><pre>我要找 SaaS<br>我要找跨境电商<br>我要找 B2B<br></pre><br>会限制系统探索能力。<br><br>更好的方式是：<br><br><pre>不要定义正向赛道太死<br>只定义边界和偏好<br></pre><br>也就是：<br><br>不碰什么<br><br>例如：<br><br><pre>不要碰：<br>- 成人<br>- 赌博<br>- 灰产<br>- 加密投机<br>- 医疗诊断<br>- 金融投资建议<br>- 重硬件<br>- 纯内容站<br>- 新闻资讯站<br>- 泛社区<br>- 需要重线下销售的大企业软件<br>- 纯 AI 聊天壳<br></pre><br>───<br><br>偏好什么<br><br>例如：<br><br><pre>偏好：<br>- 工具类<br>- 小团队可做<br>- 可快速 MVP<br>- 有明确使用场景<br>- 有明确付费触发<br>- 可 SEO / 社区 / 开源生态获客<br>- 可做模板 / 计算器 / 插件 / 自动化 / 集成<br>- B2B / SMB / 跨境电商优先<br></pre><br>这样系统不是被强行限定在某几个行业，而是：<br><br><pre>自由探索，但越界会被质量门过滤。<br></pre><br>这更适合机会发现。<br><br>所以初始化设置应该叫：<br><br><pre>发现边界与机会偏好<br></pre><br>而不是：<br><br><pre>行业方向设置<br></pre><br>───<br><br>2. 论证源确实可以独立找词，但找的是另一类机会<br><br>这是核心。<br><br>传统找词源找的是：<br><br><pre>用户已经在搜索的需求词<br></pre><br>比如：<br><br><pre>shopify tax calculator<br>invoice automation<br>quickbooks reconciliation<br></pre><br>但论证源独立找出来的，往往不是这种成熟搜索词，而是：<br><br><pre>新工具<br>新项目<br>新功能<br>新生态<br>新平台<br>新趋势<br>新技术能力<br></pre><br>比如你举的：<br><br><pre>OpenClaw<br>nano banana<br></pre><br>这些刚火时，可能还没有成熟搜索需求词。<br><br>如果只靠 Google Suggest，可能抓不到。<br><br>但论证源可以抓到：<br><br><pre>GitHub star 增长<br>HN / X / Reddit 讨论<br>Product Hunt / Hacker News 热度<br>文档页面快速增长<br>插件生态出现<br>教程/模板需求出现<br>用户问“怎么用它做 X”<br>用户问“有没有 xxx for OpenClaw / nano banana”<br></pre><br>所以论证源的独立价值是：<br><br><pre>发现新趋势 / 新工具带来的衍生机会。<br></pre><br>它不是找成熟 SaaS 词，而是找：<br><br><pre>工具生态机会词<br>新趋势中转机会词<br>低配/垂直/集成/模板/自动化机会词<br></pre><br>───<br><br>3. 所以我们需要第三种模式：趋势/工具机会挖掘模式<br><br>现在模型应该变成三种场景：<br><br><pre>A. 常规找词模式<br>B. 论证验证模式<br>C. 趋势/工具机会挖掘模式<br></pre><br>───<br><br>A. 常规找词模式<br><br>入口是找词源：<br><br><pre>Google Suggest<br>Short-tail Rewrite<br>Hot Topic<br>Roots Combo<br></pre><br>流程：<br><br><pre>找词源<br>  ↓<br>candidate_keywords<br>  ↓<br>论证源验证<br>  ↓<br>评分<br>  ↓<br>keywords<br>  ↓<br>SERP<br>  ↓<br>机会卡<br></pre><br>适合成熟需求。<br><br>───<br><br>B. 论证验证模式<br><br>入口是已有词 / 机会 / PRD。<br><br>流程：<br><br><pre>candidate keyword / opportunity / PRD<br>  ↓<br>四找 / Domain Web / Sitemap / Alternatives / Social / Review<br>  ↓<br>收集 support / weaken / neutral 证据<br>  ↓<br>重新评分<br>  ↓<br>更新机会状态 / PRD 建议<br></pre><br>适合清洗、补证、监控、机会推进。<br><br>───<br><br>C. 趋势/工具机会挖掘模式<br><br>入口不是关键词，而是：<br><br><pre>新工具<br>新项目<br>新平台<br>新功能<br>新模型<br>新开源 repo<br>新 API<br>新生态<br></pre><br>例如：<br><br><pre>OpenClaw<br>nano banana<br>某个 GitHub 工具<br>某个新 AI 模型<br>某个 Shopify 新 API<br>某个开源自动化框架<br></pre><br>流程应该是：<br><br><pre>趋势实体 / 工具实体<br>  ↓<br>论证源组合挖掘<br>  ↓<br>识别生态需求 / 用户问题 / 工作流缺口<br>  ↓<br>生成衍生候选词<br>  ↓<br>评分<br>  ↓<br>keywords / opportunity cards<br></pre><br>这里论证源就是主角。<br><br>───<br><br>4. OpenClaw / nano banana 这种机会应该怎么挖？<br><br>这类机会不是直接做：<br><br><pre>OpenClaw clone<br>nano banana clone<br></pre><br>而是找它们带来的衍生需求。<br><br>───<br><br>以 OpenClaw 为例<br><br>当 OpenClaw 刚火时，直接词可能是：<br><br><pre>openclaw<br>openclaw github<br>openclaw docs<br></pre><br>这些不是机会。<br><br>真正机会可能是：<br><br><pre>openclaw skills marketplace<br>openclaw workflow templates<br>openclaw agent monitoring<br>openclaw deploy hosting<br>openclaw plugin examples<br>openclaw for customer support<br>openclaw for ecommerce ops<br>openclaw memory management<br>openclaw team collaboration<br>openclaw audit logs<br></pre><br>这些才是工具类机会。<br><br>流程应该是：<br><br><pre>发现 OpenClaw 趋势<br>  ↓<br>抓 GitHub / docs / issues / discussions<br>  ↓<br>看用户卡在哪里<br>  ↓<br>看生态缺什么<br>  ↓<br>四找：OpenClaw 相关词 / 站 / 项目 / 替代品<br>  ↓<br>生成衍生关键词<br>  ↓<br>评分<br></pre><br>这里论证源就是独立找词器。<br><br>───
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix" id="message41864">
+
+      <div class="pull_left userpic_wrap">
+
+       <div class="userpic userpic6" style="width: 42px; height: 42px">
+
+        <div class="initials" style="line-height: 42px">
+cz
+        </div>
+
+       </div>
+
+      </div>
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 22:41:50 UTC+08:00">
+22:41
+       </div>
+
+       <div class="from_name">
+cheng zhang
+       </div>
+
+       <div class="text">
+再就是一些游戏平台的新游戏可以用论证源去挖掘装备站或者攻略站等商机
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix" id="message41865">
+
+      <div class="pull_left userpic_wrap">
+
+       <div class="userpic userpic1" style="width: 42px; height: 42px">
+
+        <div class="initials" style="line-height: 42px">
+N
+        </div>
+
+       </div>
+
+      </div>
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 22:42:08 UTC+08:00">
+22:42
+       </div>
+
+       <div class="from_name">
+Nero 
+       </div>
+
+       <div class="text">
+以 nano banana 为例<br><br>如果 nano banana 是一个强功能/强模型，直接做低配版可能没机会。<br><br>但它会产生衍生需求：<br><br><pre>nano banana prompt templates<br>nano banana for product photos<br>nano banana batch editing<br>nano banana API wrapper<br>nano banana for Shopify sellers<br>nano banana before after generator<br>nano banana compliance-safe workflow<br>nano banana image audit tool<br>nano banana automation for agencies<br>nano banana cheaper alternative<br></pre><br>这些不是传统 suggest 一开始就能发现的。<br><br>需要论证源组合：<br><br><pre>社媒讨论<br>GitHub demos<br>Product Hunt clones<br>教程页面<br>用户问题<br>竞品页面<br>替代品搜索<br></pre><br>然后把“趋势实体”翻译成“任务词 / 工具词 / 平台词”。<br><br>───<br><br>5. 所以“论证源”要有双功能<br><br>你说得对：<br><br><pre>论证源既是证据收集器，也是工具/趋势机会挖掘器。<br></pre><br>但要区分两种输出：<br><br>输出 1：证据<br><br>用于验证已有词/机会：<br><br><pre>support evidence<br>weaken evidence<br>neutral evidence<br>competitor evidence<br>pricing evidence<br>market evidence<br></pre><br>───<br><br>输出 2：衍生候选词<br><br>用于发现新机会：<br><br><pre>derived candidate keywords<br>derived use cases<br>derived competitor domains<br>derived platform opportunities<br>derived integration ideas<br></pre><br>所以同一个论证源输出不能只进 evidence 表，也要能进入：<br><br><pre>candidate_keywords<br></pre><br>但必须标注：<br><br><pre>origin = evidence_source_derivative<br>source_role = trend_mining / opportunity_validation / prd_validation<br></pre><br>───<br><br>6. 我们应该把“词”扩展成“入口对象”<br><br>这里还有一个底层问题：<br>现在系统太依赖 <code>keyword</code> 这个概念。<br><br>但趋势挖掘时，入口不一定是关键词。<br><br>它可能是：<br><br><pre>一个 GitHub repo<br>一个产品名<br>一个 API<br>一个模型名<br>一个工具站<br>一个文档页面<br>一个开源项目<br>一个新功能<br>一个社区帖子<br></pre><br>所以 candidate 不应该只有：<br><br><pre>candidate_keyword<br></pre><br>还应该有更泛的：<br><br><pre>candidate_entry<br></pre><br>或者至少在 candidate_keywords 里加类型：<br><br><pre>candidate_type:<br>- search_keyword<br>- trend_entity<br>- tool_name<br>- repo<br>- domain<br>- product_name<br>- feature<br>- platform<br>- integration<br></pre><br>例如：<br><br><pre>OpenClaw<br></pre><br>它不是 keyword，而是：<br><br><pre>trend_entity / repo / tool_name<br></pre><br>然后系统再把它转译成：<br><br><pre>OpenClaw skills<br>OpenClaw templates<br>OpenClaw hosting<br>OpenClaw plugins<br></pre><br>这些才是搜索关键词。<br><br>───<br><br>7. 论证源之间要编排，不是单独跑<br><br>你说“论证源要相互配合才能有用”，这个非常关键。<br><br>对于趋势/工具词，应该是一个 evidence orchestration：<br><br><pre>输入：OpenClaw<br></pre><br>然后：<br><br><pre>1. GitHub / repo source<br>   看 star 增长、issue、README、生态<br><br>2. Docs / domain_web<br>   看官方文档、功能结构、插件/skill 机制<br><br>3. Social / forum<br>   看用户讨论、卡点、需求<br><br>4. SERP<br>   看有没有教程、替代品、集成、模板页<br><br>5. 四找<br>   词找词：OpenClaw skills / templates / hosting<br>   词找站：谁在写 OpenClaw 页面<br>   站找词：这些站还覆盖什么 agent/tool 词<br>   站找站：类似 agent framework / orchestration 工具<br><br>6. Alternatives<br>   看 OpenClaw alternative / vs / comparison<br></pre><br>最后输出：<br><br><pre>- 证据包<br>- 衍生词<br>- 竞品池<br>- 机会假设<br></pre><br>这才是真正的趋势机会挖掘。<br><br>───<br><br>8. 评分体系也要区分“成熟需求词”和“趋势实体”<br><br>不能把 <code>OpenClaw</code> 和 <code>invoice calculator</code> 用同一套分数。<br><br>───<br><br>成熟需求词评分<br><br>看：<br><br><pre>搜索需求<br>商业意图<br>SERP 缺口<br>竞品弱点<br>变现路径<br>MVP 可行性<br></pre><br>───<br><br>趋势实体评分<br><br>看：<br><br><pre>增长速度<br>讨论密度<br>生态空白<br>用户卡点<br>可衍生工具数量<br>是否能转成明确任务词<br>是否有平台/插件/模板/自动化机会<br></pre><br>───<br><br>衍生工具词评分<br><br>比如：<br><br><pre>OpenClaw skills marketplace<br>nano banana batch editor<br></pre><br>看：<br><br><pre>是否明确 ICP<br>是否明确任务<br>是否有付费触发<br>是否能快速 MVP<br>是否依赖趋势热度<br>是否有持续需求<br></pre><br>这样才能避免：<br><br><pre>追热点但没商业机会<br></pre><br>也避免：<br><br><pre>因为趋势太新没有搜索量而错过机会<br></pre><br>───<br><br>9. 简化后的系统模型<br><br>我建议最终模型改成这样：<br><br><pre>【边界设置】<br>不能碰什么 + 机会偏好<br><br>        ↓<br><br>【入口发现】<br>1. 找词源<br>   - suggest<br>   - short_tail<br>   - hot_topic<br>   - roots<br><br>2. 趋势/工具源<br>   - GitHub<br>   - Product Hunt<br>   - HN / Reddit / X<br>   - Docs / changelog<br>   - 新模型 / 新 API / 新平台<br><br>        ↓<br><br>【候选入口池】<br>candidate_entries<br>- keyword<br>- tool<br>- repo<br>- domain<br>- trend<br>- product<br>- feature<br><br>        ↓<br><br>【论证源编排】<br>- 四找<br>- domain_web</pre>
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix joined" id="message41866">
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 22:42:09 UTC+08:00">
+22:42
+       </div>
+
+       <div class="text">
+b<br><br>• sitemap<br><br>• alternatives<br><br>• SERP<br><br>• social/review<br><br>• pricing/changelog<br><br><pre>  ↓<br></pre><br>【转译和评分】<br><br>• 转成 candidate_keywords<br><br>• 分类评分<br><br>• 质量门<br><br><pre>  ↓<br></pre><br>【Keywords】<br>正式可分析关键词<br><br><pre>    ↓<br></pre><br>【SERP / Opportunity Card】<br><br><pre>    ↓<br></pre><br>【机会证据循环】<br>继续用论证源补证、监控、重评<br><br><pre>    ↓<br></pre><br>【机会推进】<br>围绕 PRD 继续论证<br><br><pre><br>---<br><br># 10. 这样怎么融合你的观点？<br><br>你的观点可以变成系统原则：<br><br>## 原则 1：不设置“要找什么”，设置“不能碰什么”<br><br>```text<br>边界 &gt; 方向<br></pre><br>系统自由探索，边界负责过滤。<br><br>───<br><br>原则 2：论证源不只是验证，也能发现趋势机会<br><br><pre>Evidence Source = Validation + Trend Mining + Derivative Keyword Discovery<br></pre><br>───<br><br>原则 3：趋势不是机会，趋势要转译成任务词<br><br><pre>OpenClaw ≠ 机会<br>OpenClaw skills marketplace / templates / hosting / plugins = 可能的机会<br></pre><br>───<br><br>原则 4：候选池不只是关键词，而是入口对象<br><br><pre>keyword / repo / tool / domain / feature / trend<br></pre><br>───<br><br>原则 5：所有入口最终都要转成可验证关键词或机会假设<br><br><pre>entry → derived keyword / use case → scoring → keyword → SERP → card<br></pre><br>───<br><br>原则 6：机会生成后继续被论证源重评<br><br><pre>机会不是一次性结果，而是持续证据循环。<br></pre><br>───<br><br>11. 菜单 / 产品上应该怎么体现<br><br>不是做复杂设置，而是这样：<br><br>机会发现<br><br><pre>总览<br>找词源<br>趋势/工具源<br>论证源<br>候选入口池<br>关键词库<br>来源表现<br></pre><br>───<br><br>候选入口池里要显示类型<br><br>比如：<br><br><pre>keyword<br>trend<br>repo<br>domain<br>tool<br>feature<br></pre><br>每个候选入口都能看到：<br><br><pre>来源<br>当前阶段<br>论证状态<br>衍生关键词<br>证据数量<br>是否进入关键词库<br></pre><br>───<br><br>论证源页面不只是“来源表现”<br><br>要显示：<br><br><pre>验证了多少候选<br>补充了多少证据<br>衍生了多少关键词<br>发现了多少竞品<br>监控了多少站点<br>推动了多少机会重评分<br></pre><br>───<br><br>最终结论<br><br>你这次补充是对的，而且是关键升级。<br><br>最终不是：<br><br><pre>找词源 + 论证源<br></pre><br>这么简单。<br><br>应该是：<br><br><pre>边界设置<br>  ↓<br>找词源 / 趋势工具源<br>  ↓<br>候选入口池<br>  ↓<br>论证源编排<br>  ↓<br>转译成关键词和机会假设<br>  ↓<br>评分体系<br>  ↓<br>关键词库<br>  ↓<br>机会卡<br>  ↓<br>持续论证和重评分<br>  ↓<br>机会推进<br></pre><br>其中：<br><br><pre>论证源既能验证，也能发现趋势衍生机会。<br></pre><br>所以四找、domain_web、sitemap、alternatives 不是简单“辅助验证工具”，而是：<br><br><pre>证据 + 竞品 + 趋势转译 + 衍生机会发现<br></pre><br>这套逻辑比前面的“来源分类”更完整，也更适合我们要做的机会猎手系统。
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix joined" id="message41868">
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 22:42:21 UTC+08:00">
+22:42
+       </div>
+
+       <div class="text">
+对，你这个补充把系统又往前推进了一层：<br><strong>“论证源”不能只理解成验证已有词，它还应该承担“趋势实体 → 商机转译”的能力。</strong><br><br>尤其是你举的：<br><br><pre>OpenClaw 刚火<br>nano banana 刚火<br>游戏平台新游戏刚火<br></pre><br>这些一开始不是传统 SaaS 搜索词，但它们会迅速产生一批“衍生工具/内容/交易/服务机会”。如果系统只靠 suggest / short_tail，往往会慢半拍。<br><br>───<br><br>一、我们要把“找词”拆成两种<br><br>现在应该明确分成两种发现模式：<br><br>1. 常规需求找词<br><br>找的是已经有人在搜索的需求词。<br><br>比如：<br><br><pre>shopify sales tax calculator<br>quickbooks paypal reconciliation<br>invoice automation software<br>clinic no show reminder<br></pre><br>主要来源：<br><br><pre>suggest<br>short_tail<br>hot_topic<br>roots_combo<br>advanced_search<br></pre><br>目标是：<br><br><pre>找到成熟或半成熟的搜索需求<br></pre><br>───<br><br>2. 趋势实体转译<br><br>找的不是传统关键词，而是“新东西带来的衍生机会”。<br><br>入口可能是：<br><br><pre>新工具<br>新开源项目<br>新 AI 模型<br>新平台 API<br>新游戏<br>新应用<br>新协议<br>新硬件<br>新社区<br></pre><br>比如：<br><br><pre>OpenClaw<br>nano banana<br>某个新游戏<br>某个 GitHub repo<br>某个爆火 Chrome 插件<br>某个 Shopify 新 API<br></pre><br>这些本身不是机会，真正机会是它们带来的：<br><br><pre>模板<br>插件<br>攻略<br>装备站<br>数据库<br>市场/目录<br>监控<br>自动化<br>转换器<br>批处理工具<br>API wrapper<br>托管服务<br>课程/教程<br>生成器<br>对比/替代<br></pre><br>这就是“论证源作为独立找词器”的核心价值。<br><br>───<br><br>二、所以“论证源”应该有第二身份：趋势商机挖掘器<br><br>我建议把来源角色重新定义成：<br><br><pre>Discovery Source：常规找词源<br>Evidence Source：论证/补证源<br>Trend Mining Source：趋势商机挖掘源<br>Monitoring Source：监控源<br></pre><br>其中很多来源会有多重身份。<br><br>比如：<br><br><pre>| 来源                 | 常规找词 | 论证 | 趋势挖掘 | 监控 |<br>| ------------------ | ---- | --- | ---- | --- |<br>| Google Suggest     | ✅    | 弱  | 中    | ❌  |<br>| Short-tail Rewrite | ✅    | ❌  | 弱    | ❌  |<br>| Hot Topic          | ✅    | 中  | ✅    | ❌  |<br>| GitHub / Repo      | 弱    | ✅  | ✅    | ✅  |<br>| Domain Web         | 弱    | ✅  | ✅    | ✅  |<br>| Sitemap            | ❌    | ✅  | 中    | ✅  |<br>| Alternatives       | 中    | ✅  | ✅    | 弱  |<br>| 四找                 | 中    | ✅  | ✅    | 中  |<br>| SERP               | 中    | ✅  | ✅    | 弱  |<br>| Social / Forum     | 中    | ✅  | ✅    | 中  |<br></pre><br>这样就不会把四找简单塞进“论证源”里，也不会把论证源限制成只做验证。<br><br>───<br><br>三、OpenClaw 这种机会怎么挖<br><br>当一个工具刚火，比如：<br><br><pre>OpenClaw<br></pre><br>系统不应该直接问：<br><br><pre>OpenClaw 有没有机会？<br></pre><br>而应该做“商机转译”。<br><br>第一步：识别它是什么<br><br><pre>entity_type = open_source_tool / agent framework / automation platform<br></pre><br>───<br><br>第二步：用论证源抓证据<br><br><pre>GitHub：<br>- star 增长<br>- issues<br>- discussions<br>- README<br>- examples<br><br>Docs / Domain Web：<br>- docs 中有哪些模块<br>- 有无 plugin / skill / workflow / memory / deploy / integrations<br><br>Social / Forum：<br>- 用户在问什么<br>- 卡在哪里<br>- 想拿它做什么<br><br>SERP：<br>- 有无 tutorial / alternative / hosting / template / example<br><br>四找：<br>- OpenClaw skills<br>- OpenClaw workflow templates<br>- OpenClaw hosting<br>- OpenClaw plugins<br>- OpenClaw vs xxx<br></pre><br>───<br><br>第三步：转译成衍生机会词<br><br>比如：<br><br><pre>OpenClaw skills marketplace<br>OpenClaw workflow templates<br>OpenClaw plugin directory<br>OpenClaw hosting<br>OpenClaw monitoring dashboard<br>OpenClaw team workspace<br>OpenClaw customer support agent templates<br>OpenClaw ecommerce ops workflows<br>OpenClaw audit logs<br>OpenClaw deployment guide generator<br></pre><br>这些才是应该进入候选池的词。<br><br>───<br><br>第四步：评分<br><br>不是按传统搜索量评分，而是按：<br><br><pre>生态热度<br>用户卡点<br>是否能工具化<br>是否有明确交付物<br>是否能快速 MVP<br>是否能 SEO / GitHub / 社区获客<br>是否会被官方快速覆盖<br>是否能做垂直场景<br></pre><br>───<br><br>四、nano banana 这种强功能热点怎么挖<br><br>对于强功能/强模型类趋势，不能做“低配版”。<br><br>系统应该问：<br><br><pre>它带来了哪些新工作流？<br>哪些人想用它但不会用？<br>哪些批量/垂直/平台场景没被服务？<br>哪些中转工具可以做？<br></pre><br>比如：<br><br><pre>nano banana product photo generator for Shopify<br>nano banana prompt templates<br>nano banana batch editor<br>nano banana API wrapper<br>nano banana before-after generator<br>nano banana for real estate listings<br>nano banana for Amazon sellers<br>nano banana brand-safe image workflow<br>nano banana cheaper alternative<br>nano banana automation for agencies<br></pre><br>这类不是传统 SaaS 词，而是：<br><br><pre>热点实体 + 场景 + 工具化形态<br></pre><br>───<br><br>五、新游戏为什么也适合论证源挖商机<br><br>你补的游戏平台新游戏例子也非常对。<br><br>一个新游戏刚火时，机会通常不是做游戏本身，而是围绕它做：<br><br><pre>攻略站<br>装备数据库<br>Build 模拟器<br>地图工具<br>任务追踪器<br>交易价格监控</pre>
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix joined" id="message41869">
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 22:43:09 UTC+08:00">
+22:43
+       </div>
+
+       <div class="text">
+掉落概率计算器<br>角色养成计算器<br>队伍搭配生成器<br>MOD 管理器<br>服务器状态监控<br>插件/宏/脚本工具<br>wiki / database<br>市场交易工具<br><br><pre><br>比如流程应该是：<br><br>```text<br>新游戏实体<br>  ↓<br>论证源抓讨论 / wiki / reddit / steam / discord / youtube<br>  ↓<br>提取玩家高频问题<br>  ↓<br>识别可工具化需求<br>  ↓<br>生成候选机会词<br></pre><br>典型词：<br><br><pre>[game] build calculator<br>[game] item database<br>[game] interactive map<br>[game] gear planner<br>[game] market tracker<br>[game] quest tracker<br>[game] drop calculator<br>[game] mod manager<br>[game] server status<br>[game] wiki<br></pre><br>这类机会非常典型，尤其适合：<br><br><pre>工具站<br>SEO<br>广告 / affiliate<br>订阅高级功能<br>社区流量<br></pre><br>───<br><br>六、所以初始化设置确实应该更简单<br><br>你说不要设置“找什么”，而是设置：<br><br><pre>不能碰什么<br>机会偏好<br></pre><br>我同意。<br><br>初始化设置 V1 应该只有两块<br><br>1. 禁止范围<br><br>默认：<br><br><pre>成人<br>赌博<br>灰产<br>违法<br>金融投资建议<br>医疗诊断<br>加密投机<br>政治操纵<br>重硬件<br>重线下交付<br>纯内容搬运<br>纯新闻资讯<br>低质量 AI 壳<br></pre><br>───<br><br>2. 机会偏好<br><br>默认：<br><br><pre>工具类<br>可快速 MVP<br>小团队可做<br>有明确使用场景<br>有明确付费/流量变现路径<br>可 SEO / 社区获客<br>能做模板 / 计算器 / 插件 / 自动化 / 数据库 / 监控 / 目录<br>B2B / 跨境 / 工具生态 / 新趋势衍生机会优先<br></pre><br>注意：这里不是限制系统只找这些，而是加权偏好。<br><br>───<br><br>七、融合后的新链路<br><br>现在链路应该升级为：<br><br><pre>【边界与偏好】<br>不能碰什么 + 机会偏好<br><br>        ↓<br><br>【入口发现】<br>A. 常规找词源<br>   suggest / short_tail / hot_topic / roots<br><br>B. 趋势实体源<br>   GitHub / Product Hunt / HN / Reddit / X / 游戏平台 / 新 API / 新模型<br><br>        ↓<br><br>【候选入口池】<br>不只是 keyword，而是：<br>- search_keyword<br>- trend_entity<br>- tool_name<br>- repo<br>- game<br>- domain<br>- feature<br>- product<br>- platform<br><br>        ↓<br><br>【论证源编排】<br>四找 / SERP / domain_web / sitemap / alternatives / social / reviews / docs / changelog<br><br>        ↓<br><br>【商机转译】<br>把趋势实体转成：<br>- 工具词<br>- 模板词<br>- 计算器词<br>- 数据库词<br>- 监控词<br>- 替代词<br>- 集成词<br>- 攻略/装备/地图/Build 类词<br><br>        ↓<br><br>【评分与质量门】<br>按类型评分：<br>- 成熟需求词<br>- 新趋势实体<br>- 工具生态词<br>- 游戏生态词<br>- 竞品反查词<br>- 替代对比词<br><br>        ↓<br><br>【Keywords】<br>正式搜索词库<br><br>        ↓<br><br>【SERP / 机会卡】<br><br>        ↓<br><br>【机会循环】<br>论证源继续补证 / 监控 / 重评分<br><br>        ↓<br><br>【机会推进】<br>围绕 PRD 再论证<br></pre><br>───<br><br>八、关键融合点：论证源的三种任务<br><br>以后不要叫它单纯“论证源”，可以叫：<br><br><pre>证据与趋势源<br></pre><br>它有三种任务：<br><br>1. 验证<br><br><pre>已有候选词 / 机会 / PRD<br>  ↓<br>找证据<br>  ↓<br>support / weaken / neutral<br></pre><br>───<br><br>2. 转译<br><br><pre>OpenClaw / nano banana / 新游戏<br>  ↓<br>转成可商业化的工具词 / 机会假设<br></pre><br>───<br><br>3. 监控<br><br><pre>已进入机会的竞品 / 趋势实体<br>  ↓<br>持续监控变化<br>  ↓<br>重新评分<br></pre><br>这三种任务要统一设计。<br><br>───<br><br>九、我们要避免的误区<br><br>误区 1：趋势实体本身就是机会<br><br>错。<br><br><pre>OpenClaw 本身不是机会<br>OpenClaw skills marketplace / hosting / templates 才可能是机会<br></pre><br>───<br><br>误区 2：强功能出现就做低配版<br><br>错。<br><br><pre>nano banana clone<br></pre><br>大概率没机会。<br><br>应该找：<br><br><pre>nano banana + 场景 + 工作流 + 变现入口<br></pre><br>───<br><br>误区 3：游戏机会都是内容站<br><br>也不一定。<br><br>游戏生态可以有：<br><br><pre>数据库<br>Build planner<br>价格监控<br>地图工具<br>队伍搭配<br>掉落计算器<br>交易工具<br>服务端监控<br>插件管理<br></pre><br>这些是工具机会，不只是攻略内容。<br><br>───<br><br>十、最终判断<br><br>你这次补充是正确的，我们应该这样融合：<br><br><pre>找词源负责成熟搜索需求；<br>趋势实体源负责发现新工具/新游戏/新技术；<br>论证源不只是验证，还负责把趋势实体转译成工具化商机；<br>所有输出进入候选入口池；<br>再由评分体系决定哪些进入 Keywords；<br>进入机会后，论证源继续监控和重评。<br></pre><br>这会让系统不只是找：<br><br><pre>传统 SaaS 关键词<br></pre><br>而是能捕捉：<br><br><pre>新工具生态机会<br>新 AI 功能中转机会<br>新游戏周边工具机会<br>新平台 API 衍生机会<br></pre><br>这才符合“机会猎手”的定位。
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix" id="message41870">
+
+      <div class="pull_left userpic_wrap">
+
+       <div class="userpic userpic6" style="width: 42px; height: 42px">
+
+        <div class="initials" style="line-height: 42px">
+cz
+        </div>
+
+       </div>
+
+      </div>
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 22:48:20 UTC+08:00">
+22:48
+       </div>
+
+       <div class="from_name">
+cheng zhang
+       </div>
+
+       <div class="text">
+很好，我们又进一步明确了方向，我还有两个问题：1.评分体系前期不要做太多模型，分两类，成熟词和趋势实体，后期再自我优化和迭代；2.趋势实体从哪里来抓去
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix" id="message41871">
+
+      <div class="pull_left userpic_wrap">
+
+       <div class="userpic userpic1" style="width: 42px; height: 42px">
+
+        <div class="initials" style="line-height: 42px">
+N
+        </div>
+
+       </div>
+
+      </div>
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 22:48:30 UTC+08:00">
+22:48
+       </div>
+
+       <div class="from_name">
+Nero 
+       </div>
+
+       <div class="text">
+对，这两个问题非常关键，而且我同意你说的：<strong>评分体系前期不能做太复杂</strong>。<br>如果一开始就搞 8 类、20 个指标，系统会变成“看起来很智能，但不好调、不好验证”。<br><br>我们先做最小可用、能闭环的版本。<br><br>───<br><br>1. 评分体系前期只分两类：成熟词、趋势实体<br><br>我同意。<br><br>第一版就分：<br><br><pre>A. 成熟词 Mature Keyword<br>B. 趋势实体 Trend Entity<br></pre><br>然后后面系统根据结果自我迭代，再拆更多类型。<br><br>───<br><br>A. 成熟词 Mature Keyword<br><br>成熟词是已经接近搜索需求的词。<br><br>例如：<br><br><pre>shopify sales tax calculator<br>quickbooks paypal reconciliation<br>invoice automation tool<br>clinic no show reminder software<br></pre><br>它的特点是：<br><br><pre>用户已经知道自己要找什么<br>搜索词本身就接近产品/工具需求<br></pre><br>成熟词评分重点应该是：<br><br><pre>有没有真实搜索需求<br>有没有明确商业意图<br>SERP 上有没有工具/竞品<br>竞品是不是强<br>有没有弱供给/内容页占位<br>能不能做轻量 MVP<br>有没有明确付费触发<br></pre><br>成熟词第一版评分<br><br>可以先用 5 个维度：<br><br><pre>1. 需求明确度<br>2. 商业意图<br>3. SERP 缺口<br>4. MVP 可执行性<br>5. 变现路径<br></pre><br>每项 0-20 分，总分 100。<br><br>───<br><br>B. 趋势实体 Trend Entity<br><br>趋势实体不是完整搜索需求，而是一个新出现/正在变热的对象。<br><br>例如：<br><br><pre>OpenClaw<br>nano banana<br>某个新 AI 模型<br>某个新 GitHub repo<br>某个新游戏<br>某个 Shopify 新 API<br>某个爆火插件<br></pre><br>它本身不一定是机会。<br><br>真正机会来自它的衍生方向：<br><br><pre>OpenClaw skills marketplace<br>OpenClaw workflow templates<br>nano banana for Shopify product photos<br>某新游戏 item database<br>某新游戏 build planner<br></pre><br>趋势实体评分重点不是传统 SERP，而是：<br><br><pre>它热不热<br>有没有增长<br>有没有生态<br>有没有用户卡点<br>能不能转译出工具词<br>衍生词能不能商业化<br></pre><br>趋势实体第一版评分<br><br>也用 5 个维度：<br><br><pre>1. 热度/增长<br>2. 用户问题密度<br>3. 生态空白<br>4. 可工具化程度<br>5. 衍生关键词质量<br></pre><br>每项 0-20 分，总分 100。<br><br>───<br><br>最小流程<br><br>第一版就这样：<br><br><pre>候选入口<br>  ↓<br>判断类型：成熟词 / 趋势实体<br>  ↓<br>用对应评分体系<br>  ↓<br>趋势实体先转译成衍生关键词<br>  ↓<br>衍生关键词再按成熟词评分<br>  ↓<br>高分进入 Keywords<br></pre><br>也就是说：<br><br><pre>趋势实体不是直接进 Keywords<br>趋势实体先变成工具词 / 任务词 / 商机词<br></pre><br>例如：<br><br><pre>OpenClaw<br>  ↓<br>OpenClaw skills marketplace<br>OpenClaw workflow templates<br>OpenClaw hosting<br>OpenClaw plugin directory<br></pre><br>这些衍生词再进入成熟词评分。<br><br>───<br><br>2. 趋势实体从哪里抓？<br><br>趋势实体来源应该和普通关键词来源分开。<br>普通关键词来源抓的是：<br><br><pre>search keyword<br></pre><br>趋势实体来源抓的是：<br><br><pre>新工具 / 新项目 / 新游戏 / 新模型 / 新平台 / 新功能<br></pre><br>第一版可以先抓 6 类来源。<br><br>───<br><br>A. GitHub Trending / GitHub 新项目<br><br>这是最重要的趋势实体来源之一。<br><br>适合发现：<br><br><pre>新开源工具<br>开发者工具<br>AI Agent 框架<br>自动化工具<br>数据工具<br>爬虫/监控工具<br>新模型 wrapper<br></pre><br>抓取对象：<br><br><pre>repo name<br>description<br>stars<br>star growth<br>topics<br>README<br>issues/discussions<br>recent commits<br></pre><br>例子：<br><br><pre>openclaw<br>browser-use<br>open-webui<br>comfyui<br>langgraph<br></pre><br>能转译成：<br><br><pre>xxx templates<br>xxx plugins<br>xxx hosting<br>xxx monitoring<br>xxx examples<br>xxx marketplace<br>xxx alternative<br></pre><br>第一版可以抓：<br><br><pre>GitHub Trending daily/weekly<br>GitHub search: stars pushed recently<br>特定 topic: ai-agent, automation, ecommerce, shopify, image-generation, devtools<br></pre><br>───<br><br>B. Product Hunt / 新产品发布<br><br>适合发现：<br><br><pre>新 SaaS<br>新工具站<br>新 AI 工具<br>新 productivity 工具<br>新设计/营销工具<br></pre><br>抓取对象：<br><br><pre>产品名<br>tagline<br>分类<br>upvotes<br>评论<br>竞品定位<br></pre><br>它适合产生：<br><br><pre>alternative<br>template<br>cheaper version<br>vertical version<br>integration<br></pre><br>───<br><br>C. Hacker News / Reddit / X 热点讨论<br><br>适合发现：<br><br><pre>技术新趋势<br>用户抱怨<br>新工具讨论<br>开发者需求<br>早期生态缺口<br></pre><br>比如：<br><br><pre>Show HN<br>Ask HN<br>r/SaaS<br>r/SideProject<br>r/Entrepreneur<br>r/shopify<br>r/gamedev<br>r/selfhosted<br>r/LocalLLaMA<br></pre><br>抓取对象：<br><br><pre>帖子标题<br>评论高频问题<br>工具名<br>抱怨点<br>替代需求<br></pre><br>这类来源特别适合识别：<br><br><pre>用户卡点<br>生态空白<br>替代需求<br></pre><br>───<br><br>D. AI / 模型 / API 发布源<br><br>适合发现：<br><br><pre>新模型<br>新 API<br>新功能能力<br>新图像/视频/语音能力<br></pre><br>比如：<br><br><pre>OpenAI / Anthropic / Google / xAI / ByteDance / Runway / Midjourney<br>Hugging Face trending<br>Replicate trending<br>Papers with Code<br></pre><br>抓取对象：
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix joined" id="message41872">
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 22:49:14 UTC+08:00">
+22:49
+       </div>
+
+       <div class="text">
+t<br>模型名<br>能力描述<br>demo<br>用户讨论<br>下游使用场景<br><br><pre><br>比如：<br><br>```text<br>nano banana<br></pre><br>系统应该转译成：<br><br><pre>nano banana prompt templates<br>nano banana batch editor<br>nano banana for Shopify product photos<br>nano banana API wrapper<br>nano banana workflow automation<br></pre><br>───<br><br>E. 游戏平台新游戏 / 游戏趋势<br><br>你刚补的这个很重要。<br><br>适合发现：<br><br><pre>新游戏<br>爆火游戏<br>新赛季<br>新资料片<br>新装备系统<br>新交易系统<br></pre><br>来源可以是：<br><br><pre>Steam 新品/热榜<br>SteamDB trending<br>Twitch 热播游戏<br>YouTube Gaming 热度<br>Reddit 游戏社区<br>Discord/社区热度<br>Epic / PlayStation / Xbox 新游榜<br></pre><br>抓取对象：<br><br><pre>游戏名<br>热度增长<br>玩家问题<br>装备/Build/地图/任务/交易系统<br>攻略需求<br></pre><br>能转译成：<br><br><pre>[game] item database<br>[game] build planner<br>[game] gear calculator<br>[game] interactive map<br>[game] quest tracker<br>[game] market tracker<br>[game] drop rate calculator<br>[game] wiki<br>[game] server status<br></pre><br>这类机会很适合：<br><br><pre>SEO<br>广告<br>affiliate<br>社区工具<br>高级订阅<br>数据库站<br></pre><br>───<br><br>F. 平台生态变化源<br><br>适合发现平台带来的新机会。<br><br>比如：<br><br><pre>Shopify 新 API<br>WooCommerce 插件变化<br>Stripe 新功能<br>QuickBooks 新集成<br>Notion / Slack / HubSpot / Salesforce 新能力<br>Chrome extension policy changes<br></pre><br>抓取对象：<br><br><pre>changelog<br>developer docs<br>API release notes<br>community discussion<br>插件生态变化<br></pre><br>能转译成：<br><br><pre>new API wrapper<br>migration tool<br>integration template<br>compliance checker<br>automation workflow<br>reporting dashboard<br></pre><br>───<br><br>第一版趋势实体来源优先级<br><br>不要一开始全做。<br>我建议第一版先做 4 个：<br><br><pre>1. GitHub Trending / GitHub Search<br>2. Product Hunt<br>3. HN / Reddit 热点<br>4. Steam / 游戏趋势<br></pre><br>第二阶段再加：<br><br><pre>5. Hugging Face / AI 模型趋势<br>6. 平台 changelog / developer docs<br></pre><br>原因：<br><br>• GitHub：最适合工具生态机会<br>• Product Hunt：最适合新工具/新 SaaS<br>• HN/Reddit：最适合用户卡点<br>• Steam/游戏：最适合你刚说的装备站/攻略站/工具站机会<br><br>───<br><br>趋势实体抓到后怎么处理？<br><br>不是直接进 Keywords，而是进入：<br><br><pre>candidate_entries<br></pre><br>字段大概是：<br><br><pre>entity_name<br>entity_type<br>source<br>source_url<br>trend_score<br>raw_context<br>detected_at<br>status<br></pre><br>例如：<br><br><pre>entity_name: OpenClaw<br>entity_type: github_repo<br>source: github_trending<br>trend_score: 86<br></pre><br>然后进入转译流程：<br><br><pre>趋势实体<br>  ↓<br>论证源编排<br>  ↓<br>生成衍生候选词<br>  ↓<br>candidate_keywords<br></pre><br>───<br><br>趋势实体转译模板<br><br>不同实体类型要有不同模板。<br><br>GitHub 工具<br><br><pre>{tool} templates<br>{tool} plugins<br>{tool} examples<br>{tool} hosting<br>{tool} dashboard<br>{tool} monitoring<br>{tool} marketplace<br>{tool} alternative<br>{tool} integration<br>{tool} for ecommerce<br>{tool} for customer support<br></pre><br>AI 模型 / 新功能<br><br><pre>{model} prompt templates<br>{model} batch editor<br>{model} API wrapper<br>{model} for Shopify<br>{model} for Amazon sellers<br>{model} automation<br>{model} workflow<br>{model} cheaper alternative<br></pre><br>新游戏<br><br><pre>{game} item database<br>{game} build planner<br>{game} gear calculator<br>{game} interactive map<br>{game} quest tracker<br>{game} market tracker<br>{game} drop rate calculator<br>{game} wiki<br></pre><br>平台新 API<br><br><pre>{platform} {feature} integration<br>{platform} {feature} template<br>{platform} {feature} automation<br>{platform} {feature} migration tool<br>{platform} {feature} dashboard<br></pre><br>───<br><br>最终回答<br><br>你的两个判断我都同意：<br><br>1. 评分体系第一版只分两类<br><br><pre>成熟词<br>趋势实体<br></pre><br>成熟词看：<br><br><pre>需求 / 商业意图 / SERP 缺口 / MVP / 变现<br></pre><br>趋势实体看：<br><br><pre>热度 / 用户问题 / 生态空白 / 可工具化 / 衍生词质量<br></pre><br>后面再靠反馈自我迭代，不要一开始复杂化。<br><br>───<br><br>2. 趋势实体来源第一版从这些地方抓<br><br>优先：<br><br><pre>GitHub Trending / GitHub Search<br>Product Hunt<br>HN / Reddit<br>Steam / 游戏趋势<br></pre><br>后续：<br><br><pre>Hugging Face / AI 模型趋势<br>平台 changelog / developer docs<br>Twitch / YouTube Gaming<br>X / Discord<br></pre><br>流程是：<br><br><pre>趋势</pre>
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix joined" id="message41873">
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 22:49:15 UTC+08:00">
+22:49
+       </div>
+
+       <div class="text">
+实体<br>↓<br>candidate_entries<br>↓<br>论证源编排<br>↓<br>转译成工具词 / 商机词<br>↓<br>candidate_keywords<br>↓<br>成熟词评分<br>↓<br>Keywords<br>↓<br>SERP / 机会卡<br><br><pre><br>这样系统才能既抓成熟需求，也抓早期趋势机会。</pre>
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix" id="message41874">
+
+      <div class="pull_left userpic_wrap">
+
+       <div class="userpic userpic6" style="width: 42px; height: 42px">
+
+        <div class="initials" style="line-height: 42px">
+cz
+        </div>
+
+       </div>
+
+      </div>
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 22:50:12 UTC+08:00">
+22:50
+       </div>
+
+       <div class="from_name">
+cheng zhang
+       </div>
+
+       <div class="text">
+很好，我们把整个重构方案再完整的整理出来
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix" id="message41876">
+
+      <div class="pull_left userpic_wrap">
+
+       <div class="userpic userpic1" style="width: 42px; height: 42px">
+
+        <div class="initials" style="line-height: 42px">
+N
+        </div>
+
+       </div>
+
+      </div>
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 22:53:47 UTC+08:00">
+22:53
+       </div>
+
+       <div class="from_name">
+Nero 
+       </div>
+
+       <div class="text">
+好，我们现在先不写代码，把重构方案完整整理成一个清晰版本。<br>这次的核心变化是：<strong>不要再把系统理解成“采集器找词 → 关键词 → 机会卡”这么单线条，而是要升级成“候选入口发现 + 趋势转译 + 证据论证 + 持续重评”的机会系统。</strong><br><br>───<br><br>Demand Hunter 发现系统重构方案 V1<br><br>一句话定位<br><br><pre>Demand Hunter 不是简单的关键词采集器，<br>而是一个从成熟搜索词、趋势实体、工具生态、竞品证据中持续发现、论证、评分和推进机会的系统。<br></pre><br>───<br><br>1. 新的核心流程<br><br>未来主流程应该是：<br><br><pre>边界与机会偏好<br>        ↓<br>候选入口发现<br>        ↓<br>候选入口池 candidate_entries<br>        ↓<br>论证源编排 / 趋势转译<br>        ↓<br>候选关键词池 candidate_keywords<br>        ↓<br>成熟词 / 趋势实体双评分体系<br>        ↓<br>关键词库 keywords<br>        ↓<br>SERP 分析<br>        ↓<br>机会卡 opportunity_cards<br>        ↓<br>机会证据循环 / 竞品监控 / 重评分<br>        ↓<br>机会推进 / PRD-first 论证<br></pre><br>这个流程里有两个关键对象：<br><br><pre>candidate_entries：所有可能产生机会的入口<br>candidate_keywords：已经被转译成搜索词的候选关键词<br></pre><br>───<br><br>2. 边界与机会偏好<br><br>原则<br><br>初始化设置不要问：<br><br><pre>你要找什么行业？<br></pre><br>因为这样会限制系统探索。<br><br>应该问：<br><br><pre>哪些不能碰？<br>我们偏好什么样的机会？<br></pre><br>───<br><br>2.1 禁止范围<br><br>默认禁止：<br><br><pre>成人<br>赌博<br>灰产<br>违法<br>金融投资建议<br>医疗诊断<br>加密投机<br>政治操纵<br>重硬件<br>重线下交付<br>纯内容搬运<br>纯新闻资讯<br>低质量 AI 聊天壳<br></pre><br>作用：<br><br><pre>作为质量门和评分系统的硬过滤条件。<br></pre><br>───<br><br>2.2 机会偏好<br><br>默认偏好：<br><br><pre>工具类<br>小团队可做<br>可快速 MVP<br>有明确使用场景<br>有明确变现路径<br>可 SEO / 社区 / 开源生态获客<br>可做模板 / 计算器 / 插件 / 自动化 / 数据库 / 监控 / 目录<br>B2B / 跨境电商 / SaaS / 工具生态 / 新趋势衍生机会优先<br></pre><br>注意：<br>这不是硬限制，而是加权偏好。<br><br>───<br><br>3. 候选入口池 candidate_entries<br><br>这是新系统最重要的对象。<br><br>以前系统太依赖 <code>keyword</code>，但趋势机会一开始不一定是搜索词。<br><br>比如：<br><br><pre>OpenClaw<br>nano banana<br>某个 GitHub repo<br>某个新游戏<br>某个 Shopify 新 API<br>某个爆火插件<br>某个竞品域名<br></pre><br>这些不是关键词，但它们可以产生机会。<br><br>所以要引入：<br><br><pre>candidate_entries<br></pre><br>───<br><br>3.1 candidate_entries 类型<br><br>第一版支持：<br><br><pre>search_keyword       搜索词<br>trend_entity         趋势实体<br>github_repo          GitHub 项目<br>tool_name            工具名<br>game                 游戏<br>domain               网站 / 竞品域名<br>product_name         产品名<br>feature              新功能<br>platform_update      平台/API 更新<br></pre><br>───<br><br>3.2 candidate_entries 字段<br><br><pre>id<br>entry_type<br>name<br>source<br>source_url<br>raw_context<br>trend_score<br>created_at<br>status<br>evidence_summary<br>derived_keywords_count<br></pre><br>状态：<br><br><pre>new<br>needs_evidence<br>evidence_ready<br>translated<br>rejected<br>promoted<br></pre><br>───<br><br>4. 来源体系重新定义<br><br>来源不再只是“采集器来源”，而是按照角色分为四类：<br><br><pre>1. 常规找词源<br>2. 趋势实体源<br>3. 论证源<br>4. 监控源<br></pre><br>同一个来源可以有多个角色。<br><br>───<br><br>5. 常规找词源<br><br>目标：<br><br><pre>发现已经接近搜索需求的成熟词。<br></pre><br>主要输出：<br><br><pre>candidate_entries(entry_type=search_keyword)<br>candidate_keywords<br></pre><br>───<br><br>5.1 第一版常规找词源<br><br><pre>Google Suggest<br>Short-tail Rewrite<br>Hot Topic<br>Roots Combo<br>Advanced Search<br></pre><br>───<br><br>5.2 适合发现什么<br><br><pre>shopify sales tax calculator<br>quickbooks paypal reconciliation<br>clinic no show reminder<br>invoice automation tool<br>compliance checklist template<br></pre><br>这些是用户已经知道自己要找什么的词。<br><br>───<br><br>6. 趋势实体源<br><br>目标：<br><br><pre>发现新工具、新项目、新游戏、新模型、新平台功能带来的早期机会入口。<br></pre><br>输出：<br><br><pre>candidate_entries(entry_type=trend_entity / github_repo / game / tool_name / platform_update)<br></pre><br>注意：<br>趋势实体不直接进入 keywords。<br>它要先经过论证源转译成工具词 / 商机词。<br><br>───<br><br>6.1 第一版趋势实体源<br><br>优先做：<br><br><pre>GitHub Trending / GitHub Search<br>Product Hunt<br>Hacker News / Reddit<br>Steam / SteamDB / 游戏趋势<br></pre><br>后续再加：<br><br><pre>Hugging Face / Replicate / AI 模型趋势<br>平台 Changelog / Developer Docs<br>Twitch / YouTube Gaming<br>X / Discord<br></pre><br>───<br><br>6.2 示例<br><br>OpenClaw<br><br>入口：<br><br><pre>OpenClaw<br></pre><br>它不是机会。<br><br>转译后可能是：<br><br><pre>OpenClaw skills marketplace<br>OpenClaw workflow templates<br>OpenClaw plugin directory<br>OpenClaw hosting<br>OpenClaw monitoring dashboard<br>OpenClaw ecommerce ops workflows<br></pre><br>───<br><br>nano banana<br><br>入口：
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix joined" id="message41877">
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 22:55:16 UTC+08:00">
+22:55
+       </div>
+
+       <div class="text">
+text<br>nano banana<br><br><pre><br>转译后：<br><br>```text<br>nano banana prompt templates<br>nano banana batch editor<br>nano banana API wrapper<br>nano banana for Shopify product photos<br>nano banana workflow automation<br>nano banana cheaper alternative<br></pre><br>───<br><br>新游戏<br><br>入口：<br><br><pre>某个新游戏<br></pre><br>转译后：<br><br><pre>[game] item database<br>[game] build planner<br>[game] gear calculator<br>[game] interactive map<br>[game] quest tracker<br>[game] market tracker<br>[game] drop rate calculator<br>[game] wiki<br>[game] server status<br></pre><br>───<br><br>7. 论证源<br><br>目标：<br><br><pre>验证候选入口是否有价值；<br>把趋势实体转译成商机词；<br>给机会卡补证；<br>给机会推进中的 PRD 找证据。<br></pre><br>论证源不是单纯辅助，它有三种任务：<br><br><pre>验证<br>转译<br>监控<br></pre><br>───<br><br>7.1 第一版论证源<br><br><pre>四找<br>SERP<br>Domain Web<br>Sitemap<br>Alternatives / Compare<br>Social / Forum / Review<br>Docs / Changelog<br>Pricing Pages<br></pre><br>───<br><br>7.2 四找的定位<br><br>四找不是独立模块，也不只是找词工具。<br>它是：<br><br><pre>论证源 + 扩展源 + 趋势转译源<br></pre><br>四找四个动作：<br><br><pre>词找词：扩展需求表达<br>词找站：找承接该需求的网站 / 竞品 / 内容占位<br>站找词：从成熟站反查关键词<br>站找站：扩展竞品池 / 相邻赛道<br></pre><br>───<br><br>7.3 四找的主要用途<br><br>用于候选词验证<br><br><pre>candidate keyword<br>  ↓<br>词找站<br>  ↓<br>判断 SERP 里是强竞品、弱内容、工具空白，还是无需求<br></pre><br>───<br><br>用于趋势实体转译<br><br><pre>OpenClaw<br>  ↓<br>词找词 / 词找站 / 站找词<br>  ↓<br>OpenClaw skills / templates / hosting / plugin directory<br></pre><br>───<br><br>用于机会卡补证<br><br><pre>opportunity card<br>  ↓<br>四找<br>  ↓<br>找相邻竞品、替代方案、蓝海切口<br></pre><br>───<br><br>用于机会推进<br><br><pre>PRD<br>  ↓<br>提取产品关键词 / 竞品域名<br>  ↓<br>四找<br>  ↓<br>验证 PRD 假设、找竞品词、找未覆盖场景<br></pre><br>───<br><br>8. 监控源<br><br>监控源是论证源的一种特殊形态。<br><br>目标：<br><br><pre>对已进入机会池或机会推进的竞品、工具、趋势实体做持续监控。<br></pre><br>───<br><br>8.1 监控对象<br><br><pre>已采纳机会的竞品站<br>Action / Watch 机会的核心 SERP 站点<br>趋势实体的 GitHub repo<br>新游戏的社区 / wiki / Steam 页面<br>平台 changelog<br>产品 pricing / changelog / docs 页面<br></pre><br>───<br><br>8.2 监控结果<br><br><pre>新页面<br>新功能<br>新定价<br>新集成<br>新用户问题<br>新教程/模板<br>新替代品<br>新讨论热度<br></pre><br>这些会触发：<br><br><pre>机会重新评分<br>PRD 改进建议<br>新候选关键词<br>竞品商业模式更新<br></pre><br>───<br><br>9. candidate_keywords<br><br>candidate_keywords 不是最终关键词库，而是：<br><br><pre>候选搜索词池。<br></pre><br>来源包括：<br><br><pre>常规找词源直接生成<br>趋势实体转译生成<br>论证源副产物生成<br>竞品站反查生成<br>机会推进中 PRD 分析生成<br></pre><br>───<br><br>9.1 candidate_keywords 状态<br><br><pre>new<br>needs_evidence<br>evidence_pending<br>scored<br>promoted_to_keywords<br>rejected<br>watch<br></pre><br>───<br><br>9.2 进入 keywords 前必须经过<br><br><pre>去重<br>禁区过滤<br>成熟词 / 趋势实体分类<br>论证源证据补充<br>评分体系<br>质量门<br></pre><br>───<br><br>10. 评分体系 V1<br><br>前期不要复杂化。<br>只分两类：<br><br><pre>1. 成熟词 Mature Keyword<br>2. 趋势实体 Trend Entity<br></pre><br>后续再根据反馈自我优化。<br><br>───<br><br>10.1 成熟词评分<br><br>适用对象：<br><br><pre>已经接近搜索需求的词<br></pre><br>例如：<br><br><pre>shopify tax calculator<br>invoice automation tool<br>quickbooks reconciliation<br></pre><br>评分维度：<br><br><pre>需求明确度<br>商业意图<br>SERP 缺口<br>MVP 可执行性<br>变现路径<br></pre><br>每项 0-20，总分 100。<br><br>───<br><br>10.2 趋势实体评分<br><br>适用对象：<br><br><pre>新工具 / 新项目 / 新游戏 / 新模型 / 新功能 / 新平台<br></pre><br>评分维度：<br><br><pre>热度/增长<br>用户问题密度<br>生态空白<br>可工具化程度<br>衍生关键词质量<br></pre><br>每项 0-20，总分 100。<br><br>───<br><br>10.3 关键规则<br><br><pre>趋势实体不能直接进 keywords。<br>趋势实体必须先转译成衍生关键词。<br>衍生关键词再按成熟词评分。<br></pre><br>例如：<br><br><pre>OpenClaw<br>  ↓<br>OpenClaw skills marketplace<br>  ↓<br>成熟词评分<br>  ↓<br>keywords<br></pre><br>───<br><br>11. Keywords 关键词库<br><br>关键词库只存：<br><br><pre>已经通过质量门、值得正式跑 SERP 的搜索词。<br></pre><br>它不是垃圾池，不应该直接接收所有候选词。<br><br>───<br><br>11.1 Keywords 进入后做什么<br><br><pre>SERP 分析<br>竞品弱点分析<br>生成机会卡<br></pre><br>───<br><br>12. Opportunity Cards 机会卡<br><br>机会卡来自：<br><br><pre>keywords + SERP + 论证证据<br></pre><br>机会卡应该不只是一次性生成，而是持续更新。<br><br>状态：<br><br><pre>Action<br>Watch<br>Reject<br>Adopted<br>Block<br></pre><br>───<br><br>13. 机会证据循环<br><br>机会卡生成后，不结束。<br><br>进入：<br><br>``
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix joined" id="message41878">
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 22:55:17 UTC+08:00">
+22:55
+       </div>
+
+       <div class="text">
+`text<br>Opportunity Evidence Loop<br><br><pre><br>流程：<br><br>```text<br>机会卡<br>  ↓<br>定期调用论证源<br>  ↓<br>四找 / SERP refresh / Domain Web / Sitemap / Alternatives / Social / Review<br>  ↓<br>生成 support / weaken / neutral 证据<br>  ↓<br>重新评分<br>  ↓<br>更新状态 / 分组 / PRD 建议<br></pre><br>───<br><br>13.1 触发条件<br><br><pre>新机会卡生成<br>机会进入 Action / Watch<br>机会被 Adopted<br>竞品有变化<br>趋势实体热度变化<br>PRD 上传或修改<br>定期验证周期到期<br></pre><br>───<br><br>14. 机会推进中的论证源<br><br>机会推进以 PRD 为主事实源。<br><br>流程：<br><br><pre>PRD<br>  ↓<br>提取核心需求 / ICP / 功能假设 / 竞品<br>  ↓<br>论证源编排<br>  ↓<br>找证据<br>  ↓<br>support / weaken / neutral<br>  ↓<br>PRD 改进建议<br>  ↓<br>商业模式判断<br>  ↓<br>MVP 决策<br></pre><br>这里论证源用于：<br><br><pre>验证 PRD 需求是否真实<br>验证竞品是否已经覆盖<br>发现 PRD 漏掉的场景<br>监控竞品变化<br>提出可执行 PRD 改进<br></pre><br>───<br><br>15. 来源 ROI<br><br>所有来源都要统一记录 ROI，但不能简单比“产出数量”。<br><br>要按角色看。<br><br>───<br><br>15.1 常规找词源 ROI<br><br>看：<br><br><pre>产生候选词数<br>进入 keywords 数<br>生成机会卡数<br>Action 数<br>Reject 数<br>噪音率<br></pre><br>───<br><br>15.2 趋势实体源 ROI<br><br>看：<br><br><pre>发现趋势实体数<br>成功转译出关键词数<br>衍生关键词进入 keywords 数<br>生成机会卡数<br>趋势实体后续热度<br></pre><br>───<br><br>15.3 论证源 ROI<br><br>看：<br><br><pre>验证候选数<br>support / weaken / neutral 证据数<br>推动重评分次数<br>发现新竞品数<br>补充衍生词数<br>推动机会状态变化次数<br></pre><br>───<br><br>15.4 监控源 ROI<br><br>看：<br><br><pre>监控对象数<br>发现变化数<br>变化有效率<br>触发 PRD 改进数<br>触发机会重评分数<br></pre><br>───<br><br>16. 自动化边界<br><br>系统自动做<br><br><pre>抓趋势实体<br>抓成熟词<br>生成 candidate_entries<br>生成 candidate_keywords<br>论证源补证<br>转译趋势实体<br>评分<br>入库 keywords<br>SERP 分析<br>生成机会卡<br>定期重评分<br>来源 ROI 统计<br>低风险修复<br></pre><br>───<br><br>人必须做<br><br><pre>设置不能碰的边界<br>设置机会偏好<br>确认高风险清理<br>决定 Adopted<br>决定是否进入产品推进<br>确认 PRD 方向<br>确认 MVP 投入<br></pre><br>───<br><br>高风险动作<br><br>这些只给建议，不自动执行：<br><br><pre>删除数据<br>批量 Block<br>永久屏蔽词/域名/来源<br>大规模降权<br>清空 rejected<br>修改已采纳机会状态<br>覆盖有效 PRD/评分<br></pre><br>───<br><br>17. UI / 菜单重构<br><br>当前 <code>Advanced</code> 应该取消或弱化。<br><br>建议新结构：<br><br><pre>机会发现<br>  - 总览<br>  - 候选入口池<br>  - 找词源<br>  - 趋势实体源<br>  - 论证源<br>  - 关键词库<br>  - 来源表现<br><br>机会猎手<br>  - 总览<br>  - 机会<br>  - 机会推进<br><br>系统维护<br>  - 运行历史<br>  - 边界与偏好设置<br>  - 高风险清理建议<br></pre><br>───<br><br>18. 页面职责<br><br>18.1 机会发现总览<br><br>显示：<br><br><pre>今天发现多少 candidate_entries<br>多少成熟词<br>多少趋势实体<br>多少通过质量门<br>多少进入 keywords<br>多少生成机会卡<br>哪些来源异常<br>哪些趋势值得关注<br></pre><br>───<br><br>18.2 候选入口池<br><br>显示所有入口：<br><br><pre>keyword<br>trend_entity<br>github_repo<br>game<br>domain<br>feature<br>platform_update<br></pre><br>每个入口显示：<br><br><pre>来源<br>类型<br>趋势分<br>论证状态<br>衍生关键词数<br>证据数<br>当前状态<br>下一步动作<br></pre><br>───<br><br>18.3 找词源<br><br>显示：<br><br><pre>Google Suggest<br>Short-tail Rewrite<br>Hot Topic<br>Roots Combo<br>Advanced Search<br></pre><br>重点看：<br><br><pre>产出词数<br>入库率<br>机会转化率<br>噪音率<br>错误率<br></pre><br>───<br><br>18.4 趋势实体源<br><br>显示：<br><br><pre>GitHub<br>Product Hunt<br>HN / Reddit<br>Steam / 游戏趋势<br>AI 模型趋势<br>平台 changelog<br></pre><br>重点看：<br><br><pre>发现实体数<br>转译成功率<br>衍生关键词数<br>机会转化率<br></pre><br>───<br><br>18.5 论证源<br><br>显示：<br><br><pre>四找<br>SERP<br>Domain Web<br>Sitemap<br>Alternatives<br>Social / Review<br>Docs / Changelog<br>Pricing<br></pre><br>重点看：<br><br><pre>验证了多少入口<br>补充了多少证据<br>发现了多少竞品<br>补充了多少新词<br>推动了多少重评分<br></pre><br>───<br><br>18.6 关键词库<br><br>只显示：<br><br><pre>通过质量门、准备正式 SERP 分析的关键词。<br></pre><br>不显示原始 JSON，不显示内部 key。<br><br>───<br><br>19. 数据模型建议<br><br>第一阶段轻量 SQLite 迁移，不大改架构。<br><br>新增或扩展：<br><br>19.1 candidate_entries<br><br><pre>id<br>entry_type<br>name<br>source<br>source_role<br>source_url<br>raw_context_json<br>trend_score<br>maturity_type<br>status<br>created_at<br>updated_at<br></pre><br>───<br><br>19.2 evidence_items<br><br>可以复用已有证据表，但需要统一字段：<br><br><pre>target_type<br>target_id<br>evidence_source<br>evidence_role<br>classification: support / weaken / neutral<br>summary<br>url<br>captured_at<br></pre><br>───<br><br>19.3 candidate_keywords 扩展<br><br>新增：<br><br><pre>entry_id<br>maturity_type: mature_keyword / trend_derivative<br>evidence_status<br>score_breakdown_json<br>quality_gate_status<br>source_role<br></pre><br>───<br><br>19.4 source_runs / source_roi<br><br>记录：<br><br><pre>source<br>source_role<br>run_kind<br>inputs_json<br>outputs_json<br>candidates_created<br>evidence_created<br>keywords_promoted<br>cards_generated</pre>
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix joined" id="message41879">
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 22:55:18 UTC+08:00">
+22:55
+       </div>
+
+       <div class="text">
+actions_created<br>rejects_created<br>errors<br>duration_ms<br><br><pre><br>---<br><br># 20. 实施阶段<br><br>不要一次大爆炸。建议分 4 步。<br><br>---<br><br>## Phase 1：信息架构与数据口径<br><br>目标：<br><br>```text<br>先不大改算法，把当前 Advanced / Collectors 重新解释清楚。<br></pre><br>做：<br><br><pre>增加发现系统说明<br>重排菜单<br>把四找标注为论证/扩展源<br>把 keywords 解释为通过质量门后的词库<br>新增边界与偏好设置 UI 占位<br></pre><br>───<br><br>Phase 2：candidate_entries + 趋势实体源<br><br>目标：<br><br><pre>引入趋势实体，不再只看 keywords。<br></pre><br>做：<br><br><pre>新增 candidate_entries<br>接入 GitHub Trending / Product Hunt / HN/Reddit / Steam 第一版<br>把趋势实体转译成 candidate_keywords<br></pre><br>───<br><br>Phase 3：论证源编排<br><br>目标：<br><br><pre>让四找 / domain_web / alternatives / sitemap 统一服务候选词、机会卡、PRD。<br></pre><br>做：<br><br><pre>四找结果进入 candidate_keywords<br>四找也写 source_roi<br>Domain Web/Sitemap/Alternatives 输出 evidence_items<br>Opportunity Evidence Loop 初版<br></pre><br>───<br><br>Phase 4：评分与自学习<br><br>目标：<br><br><pre>成熟词 / 趋势实体双评分体系上线，并根据结果自我迭代。<br></pre><br>做：<br><br><pre>成熟词评分<br>趋势实体评分<br>质量门<br>来源 ROI<br>反馈回流<br>自动调权<br>高风险清理建议<br></pre><br>───<br><br>21. 第一版最小可执行 MVP<br><br>为了避免过重，我建议第一版只做：<br><br><pre>1. 边界与偏好设置<br>2. candidate_entries 表<br>3. GitHub Trending + Steam 趋势实体源<br>4. 趋势实体 → 衍生关键词模板<br>5. 四找接入 candidate_keywords<br>6. 成熟词 / 趋势实体双评分<br>7. 来源表现按角色展示<br></pre><br>暂时不做：<br><br><pre>复杂机器学习模型<br>复杂行业 taxonomy<br>全量社媒抓取<br>大规模自动清理<br>多层 PRD 自动改写<br></pre><br>───<br><br>22. 最终重构目标<br><br>重构后的系统应该能回答这些问题：<br><br><pre>今天系统发现了哪些新入口？<br>哪些是成熟搜索词？<br>哪些是趋势实体？<br>哪些趋势实体被转译成了可做的工具机会？<br>哪些候选词通过了质量门？<br>哪个来源贡献了真正的机会？<br>哪个论证源提供了关键证据？<br>哪些机会因为新证据需要重评分？<br>哪些竞品值得持续监控？<br>哪个 PRD 假设被支持或削弱？<br></pre><br>───<br><br>23. 最终产品逻辑<br><br>最终不是：<br><br><pre>采集器 → 关键词 → 机会卡<br></pre><br>而是：<br><br><pre>边界与偏好<br>  ↓<br>成熟词发现 + 趋势实体发现<br>  ↓<br>候选入口池<br>  ↓<br>论证源转译 / 验证 / 监控<br>  ↓<br>候选关键词池<br>  ↓<br>双评分体系<br>  ↓<br>关键词库<br>  ↓<br>SERP 分析<br>  ↓<br>机会卡<br>  ↓<br>证据循环与重评分<br>  ↓<br>机会推进<br></pre><br>这才是完整的机会猎手系统。
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix" id="message41883">
+
+      <div class="pull_left userpic_wrap">
+
+       <div class="userpic userpic6" style="width: 42px; height: 42px">
+
+        <div class="initials" style="line-height: 42px">
+cz
+        </div>
+
+       </div>
+
+      </div>
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 22:58:56 UTC+08:00">
+22:58
+       </div>
+
+       <div class="from_name">
+cheng zhang
+       </div>
+
+       <div class="text">
+<pre>1. 常规找词源<br>2. 趋势实体源<br>3. 论证源<br>4. 监控源</pre><br>这几个名称可以改一下，太抽象
+       </div>
+
+      </div>
+
+     </div>
+
+     <div class="message default clearfix" id="message41884">
+
+      <div class="pull_left userpic_wrap">
+
+       <div class="userpic userpic1" style="width: 42px; height: 42px">
+
+        <div class="initials" style="line-height: 42px">
+N
+        </div>
+
+       </div>
+
+      </div>
+
+      <div class="body">
+
+       <div class="pull_right date details" title="10.06.2026 22:59:10 UTC+08:00">
+22:59
+       </div>
+
+       <div class="from_name">
+Nero 
+       </div>
+
+       <div class="text">
+对，这几个名字太工程化、太抽象，用户看不出“我要点这里干什么”。<br>我们应该把它们改成更像业务动作的名字。<br><br>原来是：<br><br><pre>1. 常规找词源<br>2. 趋势实体源<br>3. 论证源<br>4. 监控源<br></pre><br>我建议改成这一组：<br><br><pre>1. 搜索需求发现<br>2. 新趋势捕捉<br>3. 机会验证<br>4. 竞品/趋势监控<br></pre><br>这四个更直观。<br><br>───<br><br>推荐命名<br><br>1. 常规找词源 → 搜索需求发现<br><br>原名问题：<br><br><pre>常规找词源<br></pre><br>太像内部模块名。<br><br>改成：<br><br><pre>搜索需求发现<br></pre><br>用户一看就知道：<br><br><blockquote>这里是在找用户已经开始搜索的需求。</blockquote><br><br>包含：<br><br><pre>Google Suggest<br>Short-tail Rewrite<br>Hot Topic<br>Roots Combo<br>Advanced Search<br></pre><br>作用：<br><br><pre>从搜索联想、短词扩展、热点搜索里发现成熟需求词。<br></pre><br>───<br><br>2. 趋势实体源 → 新趋势捕捉<br><br>原名问题：<br><br><pre>趋势实体源<br></pre><br>“实体”这个词太技术。<br><br>改成：<br><br><pre>新趋势捕捉<br></pre><br>用户一看就知道：<br><br><blockquote>这里是在抓刚火起来的新工具、新游戏、新项目、新模型。</blockquote><br><br>包含：<br><br><pre>GitHub Trending<br>Product Hunt<br>HN / Reddit<br>Steam / 游戏趋势<br>AI 模型趋势<br>平台 Changelog<br></pre><br>作用：<br><br><pre>发现还没变成成熟搜索词的新机会入口。<br></pre><br>───<br><br>3. 论证源 → 机会验证<br><br>原名问题：<br><br><pre>论证源<br></pre><br>虽然准确，但太学术。<br><br>改成：<br><br><pre>机会验证<br></pre><br>用户一看就知道：<br><br><blockquote>这里是在判断这个词/趋势/机会到底有没有价值。</blockquote><br><br>包含：<br><br><pre>四找<br>SERP<br>Domain Web<br>Alternatives<br>Social / Review<br>Docs / Pricing<br></pre><br>作用：<br><br><pre>找证据、找竞品、找弱点、把趋势转译成可做的工具机会。<br></pre><br>───<br><br>4. 监控源 → 竞品/趋势监控<br><br>原名问题：<br><br><pre>监控源<br></pre><br>太泛，不知道监控什么。<br><br>改成：<br><br><pre>竞品/趋势监控<br></pre><br>用户一看就知道：<br><br><blockquote>这里是在持续看竞品和趋势有没有新变化。</blockquote><br><br>包含：<br><br><pre>Sitemap Monitor<br>Changelog Monitor<br>GitHub Repo Watch<br>Pricing Page Watch<br>Competitor Page Watch<br>Game Community Watch<br></pre><br>作用：<br><br><pre>持续发现新页面、新功能、新价格、新讨论，触发机会重评分。<br></pre><br>───<br><br>更完整的一组菜单名<br><br>我建议未来菜单这样写：<br><br><pre>机会发现<br>  - 总览<br>  - 搜索需求发现<br>  - 新趋势捕捉<br>  - 机会验证<br>  - 竞品/趋势监控<br>  - 候选入口池<br>  - 关键词库<br>  - 来源表现<br></pre><br>这比：<br><br><pre>常规找词源<br>趋势实体源<br>论证源<br>监控源<br></pre><br>清楚很多。<br><br>───<br><br>每个名字对应用户理解<br><br><pre>| 原名    | 新名      | 用户理解              |<br>| ----- | ------- | ----------------- |<br>| 常规找词源 | 搜索需求发现  | 找用户已经在搜什么         |<br>| 趋势实体源 | 新趋势捕捉   | 找刚火的新工具/游戏/API/模型 |<br>| 论证源   | 机会验证    | 判断这个词/趋势是不是真有机会   |<br>| 监控源   | 竞品/趋势监控 | 持续看竞品和趋势变化        |<br></pre><br>───<br><br>如果想再产品化一点<br><br>还可以更口语化：<br><br><pre>1. 找搜索需求<br>2. 抓新趋势<br>3. 验证机会<br>4. 监控变化<br></pre><br>菜单可以用短名：<br><br><pre>机会发现<br>  - 找搜索需求<br>  - 抓新趋势<br>  - 验证机会<br>  - 监控变化<br></pre><br>页面标题再用完整解释：<br><br><pre>找搜索需求<br>从搜索联想、短词扩展和热点搜索中发现用户已经在寻找的需求。<br><br>抓新趋势<br>从 GitHub、Product Hunt、游戏榜单、AI 模型和社区讨论中捕捉新工具、新游戏、新功能带来的机会入口。<br><br>验证机会<br>用四找、SERP、竞品网页、替代品和评论证据判断候选词或趋势是否值得继续推进。<br><br>监控变化<br>持续监控竞品、趋势实体、定价页、changelog 和社区讨论，触发机会重评分。<br></pre><br>───<br><br>我的推荐最终命名<br><br>我建议用这组，兼顾清楚和专业：<br><br><pre>搜索需求发现<br>新趋势捕捉<br>机会验证<br>竞品/趋势监控<br></pre><br>短一点的导航可以是：<br><br><pre>搜索需求<br>新趋势<br>机会验证<br>变化监控<br></pre><br>最终结构：<br><br><pre>机会发现<br>  - 总览<br>  - 搜索需求<br>  - 新趋势<br>  - 机会验证<br>  - 变化监控<br>  - 候选入口<br>  - 关键词库<br>  - 来源表现<br></pre><br>这样用户能看懂：<br><br><pre>先找搜索需求 / 新趋势<br>再验证机会<br>再持续监控变化<br>最后进入关键词和机会卡</pre>
+       </div>
+
+      </div>
+
+     </div>
+
+    </div>
+
+   </div>
+
+  </div>
+
+ </body>
+
+</html>

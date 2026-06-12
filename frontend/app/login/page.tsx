@@ -2,6 +2,7 @@
 
 import {useState} from 'react'
 import {useLang} from '../../lib/i18n'
+import {api} from '../../lib/api'
 
 export default function Login() {
   const {lang, setLang, t} = useLang()
@@ -13,20 +14,19 @@ export default function Login() {
     e.preventDefault()
     setLoading(true)
     setErr('')
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({password}),
-    })
-    if (!res.ok) {
+    try {
+      const data = await api<{token:string}>('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({password}),
+      })
+      localStorage.setItem('dh_token', data.token)
+      document.cookie = `dh_token=${data.token}; path=/; max-age=2592000; samesite=lax`
+      location.href = '/overview'
+    } catch {
       setErr('Login failed')
       setLoading(false)
       return
     }
-    const data = await res.json()
-    localStorage.setItem('dh_token', data.token)
-    document.cookie = `dh_token=${data.token}; path=/; max-age=2592000; samesite=lax`
-    location.href = '/overview'
   }
 
   return (

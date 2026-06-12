@@ -1,7 +1,7 @@
 from __future__ import annotations
 import threading
 import time
-from app import services
+from app import automation_cycle, services
 from app.api.run_control import RUN_LOCK
 
 
@@ -15,12 +15,12 @@ def run_daily_background(force: bool = False):
             due = services.auto_due(db)
             if force or due:
                 try:
-                    limit = int(services.setting(db, "AUTO_RUN_LIMIT") or "24")
+                    max_seconds = int(services.setting(db, "AUTOMATION_CYCLE_MAX_SECONDS") or "300")
                 except Exception:
-                    limit = 24
-                run = services.daily_run(db, limit=limit, trigger="manual_force" if force else "auto_scheduled")
+                    max_seconds = 300
+                result = automation_cycle.run_automation_cycle(db, max_seconds=max_seconds)
                 services.export_latest_markdown(db)
-                return {"started": True, "run_id": run.id, "status": run.status}
+                return {"started": True, "status": "ok" if result.get("ok") else "error", "summary": result}
             return {"started": False, "reason": "not_due"}
         finally:
             db.close()
@@ -39,11 +39,6 @@ def auto_loop():
     while True:
         try:
             start_run_thread(force=False)
-            from app.database import SessionLocal
-            from app import mvp_progress
-            db=SessionLocal()
-            try: mvp_progress.run_due_auto_validations(db)
-            finally: db.close()
         except Exception:
             pass
         time.sleep(60)
