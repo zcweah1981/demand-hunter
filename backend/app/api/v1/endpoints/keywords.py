@@ -2,7 +2,7 @@ from __future__ import annotations
 import json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app import models, schemas, services
+from app import action_requests, models, schemas, services
 from app.api.deps import obj
 from app.core.security import require_auth
 from app.database import get_db
@@ -11,9 +11,34 @@ router = APIRouter(prefix="/api/keywords", tags=["keywords"])
 
 @router.post("/discover")
 def discover(payload: schemas.DailyRunIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
-    if payload.use_four_find:
-        return [obj(k) for k in services.discover_keywords_four_find(db, payload.limit, payload.seeds)]
-    return [obj(k) for k in services.discover_keywords(db, payload.limit, payload.roots)]
+    before = db.query(models.Keyword.id).order_by(models.Keyword.id.desc()).first()
+    before_id = int(before[0]) if before else 0
+    model = "four_find" if payload.use_four_find else "root_combo"
+    request = action_requests.create_action_request(
+        db,
+        "clue_model.run",
+        "clue_model",
+        model,
+        requested_by="api",
+        reason="旧关键词发现接口兼容统一执行器",
+        payload={
+            "model": model,
+            "limit": payload.limit,
+            "seeds": payload.seeds or [],
+            "roots": payload.roots or [],
+        },
+    )
+    execution = action_requests.execute_action_request(db, request.id)
+    if not execution.get("ok"):
+        raise HTTPException(500, execution.get("error") or "keyword discovery failed")
+    rows = (
+        db.query(models.Keyword)
+        .filter(models.Keyword.id > before_id)
+        .order_by(models.Keyword.created_at.desc())
+        .limit(max(1, min(200, payload.limit or 24)))
+        .all()
+    )
+    return [obj(k) for k in rows]
 
 @router.get("")
 def keywords(_: bool = Depends(require_auth), db: Session = Depends(get_db)):
@@ -96,7 +121,24 @@ def run_serp(keyword_id: int, _: bool = Depends(require_auth), db: Session = Dep
     kw = db.get(models.Keyword, keyword_id)
     if not kw:
         raise HTTPException(404, "keyword not found")
-    return [obj(x) for x in services.run_serp(db, kw)]
+    request = action_requests.create_action_request(
+        db,
+        "keyword.serp_analysis",
+        "keyword",
+        keyword_id,
+        requested_by="api",
+        reason="关键词搜索分析",
+        payload={"keyword": kw.query},
+    )
+    execution = action_requests.execute_action_request(db, request.id)
+    return {
+        "ok": bool(execution.get("ok")),
+        "request_id": request.id,
+        "run_id": execution.get("run_id"),
+        "status_url": f"/api/actions/{request.id}",
+        "execution": execution,
+        "serp": [obj(x) for x in db.query(models.SerpResult).filter_by(keyword_id=keyword_id).order_by(models.SerpResult.rank).all()],
+    }
 
 @router.get("/{keyword_id}/serp")
 def get_serp(keyword_id: int, _: bool = Depends(require_auth), db: Session = Depends(get_db)):

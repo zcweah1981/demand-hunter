@@ -2,8 +2,7 @@
 
 import {useState, useTransition} from 'react'
 import {useRouter} from 'next/navigation'
-import {api} from '../lib/api'
-import {pollJob} from '../lib/jobPoll'
+import {automationCycleApi, submitAction} from '../lib/api'
 
 export function DiscoveryRecoverButton(){
   const router = useRouter()
@@ -15,12 +14,13 @@ export function DiscoveryRecoverButton(){
       setMsg(''); setErr('')
       startTransition(async()=>{
         try{
-          const r = await pollJob<any>(api, '/api/discovery/recover-serp-rejects', {limit:4}, {maxWait:180000, interval:3000})
-          setMsg(`Recovered cards=${r.cards}, rewrites=${r.created_rewrites?.length||0}, rejected=${r.rejected?.length||0}`)
+          await submitAction({action_type:'four_find.run', target_type:'four_find', target_id:'recover_serp_rejects', reason:'手动恢复 SERP 拒绝项', payload:{operation:'recover_serp_rejects', limit:4}}, false)
+          const r:any = await automationCycleApi.run({include_default_actions:false, background:false})
+          setMsg(`已提交恢复动作：成功 ${r.succeeded ?? 0}，失败 ${r.failed ?? 0}`)
           router.refresh()
         }catch(e:any){ setErr(e.message || 'Recovery failed') }
       })
-    }}>{pending?'Recovering...':'Recover SERP rejects'}</button>
+    }}>{pending?'提交中...':'恢复 SERP 拒绝项'}</button>
     {msg&&<span className="text-xs text-emerald-300">{msg}</span>}
     {err&&<span className="text-xs text-rose-300">{err}</span>}
   </div>

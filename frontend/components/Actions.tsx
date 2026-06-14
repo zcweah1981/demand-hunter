@@ -1,11 +1,109 @@
 'use client'
-import {useState} from 'react'; import {api, authToken} from '../lib/api'; import {useLang} from '../lib/i18n'
-function useRun(){const[loading,setLoading]=useState(false); const[err,setErr]=useState(''); return {loading,setLoading,err,setErr}}
-export function RunDailyButton(){const s=useRun(); const {lang}=useLang(); return <span>{s.err&&<span className="mr-2 text-sm text-red-400">{s.err}</span>}<button className="btn" disabled={s.loading} onClick={async()=>{s.setLoading(true);s.setErr('');try{await api('/api/runs/daily',{method:'POST',body:JSON.stringify({limit:24,use_four_find:true})}); location.reload()}catch(e:any){s.setErr(e.message);s.setLoading(false)}}}>{s.loading?(lang==='en'?'Running API pipeline...':'API 流水线运行中...'):(lang==='en'?'Run Daily API Pipeline':'运行每日 API 流水线')}</button></span>}
-export function AutoTickButton(){const s=useRun(); const {lang}=useLang(); return <span>{s.err&&<span className="mr-2 text-sm text-red-400">{s.err}</span>}<button className="btn" disabled={s.loading} onClick={async()=>{s.setLoading(true);s.setErr('');try{await api('/api/auto/tick',{method:'POST',body:JSON.stringify({force:true})}); location.reload()}catch(e:any){s.setErr(e.message);s.setLoading(false)}}}>{s.loading?(lang==='en'?'Auto running...':'自动运行中...'):(lang==='en'?'Force Auto Tick':'强制自动运行')}</button></span>}
-export function DiscoverButton(){const s=useRun(); const {lang}=useLang(); return <button className="btn" disabled={s.loading} onClick={async()=>{s.setLoading(true);try{await api('/api/keywords/discover',{method:'POST',body:JSON.stringify({limit:48})}); location.reload()}catch(e:any){alert(e.message);s.setLoading(false)}}}>{lang==='en'?'Discover Keywords':'发现关键词'}</button>}
-export function SerpButton({id}:{id:number}){const s=useRun(); const {lang}=useLang(); return <button className="btn" disabled={s.loading} onClick={async()=>{s.setLoading(true);try{await api(`/api/keywords/${id}/serp/run`,{method:'POST'}); location.reload()}catch(e:any){alert(e.message);s.setLoading(false)}}}>{lang==='en'?'Run SERP':'运行 SERP'}</button>}
-export function CardButton({id}:{id:number}){const s=useRun(); const {lang}=useLang(); return <button className="btn" disabled={s.loading} onClick={async()=>{s.setLoading(true);try{await api(`/api/cards/generate/${id}`,{method:'POST'}); location.reload()}catch(e:any){alert(e.message);s.setLoading(false)}}}>{lang==='en'?'Generate Card':'生成卡片'}</button>}
+import {useState} from 'react'
+import {api, authToken, automationCycleApi, submitAction} from '../lib/api'
+import {useLang} from '../lib/i18n'
+
+function useRun(){
+  const[loading,setLoading]=useState(false)
+  const[err,setErr]=useState('')
+  const[msg,setMsg]=useState('')
+  return {loading,setLoading,err,setErr,msg,setMsg}
+}
+
+function InlineStatus({s}:{s:ReturnType<typeof useRun>}){
+  return <>{s.err&&<span className="mr-2 text-sm text-red-400">{s.err}</span>}{s.msg&&<span className="mr-2 text-sm text-slate-400">{s.msg}</span>}</>
+}
+
+export function RunDailyButton(){
+  const s=useRun()
+  const {lang}=useLang()
+  return <span><InlineStatus s={s}/><button className="btn" disabled={s.loading} onClick={async()=>{
+    s.setLoading(true)
+    s.setErr('')
+    s.setMsg(lang==='en'?'Automation cycle is starting; see the top status bar.':'自动化周期正在启动，请查看顶部状态栏。')
+    try{
+      await automationCycleApi.run({limit:24})
+      s.setMsg(lang==='en'?'Automation cycle started. The top status bar will continue tracking progress.':'自动化周期已启动，顶部状态栏会继续显示进度。')
+      setTimeout(()=>location.reload(),800)
+    }catch(e:any){
+      s.setErr(e.message)
+      s.setLoading(false)
+    }
+  }}>{s.loading?(lang==='en'?'Starting...':'启动中...'):(lang==='en'?'Run Automation Cycle':'运行自动化周期')}</button></span>
+}
+
+export function AutoTickButton(){
+  const s=useRun()
+  const {lang}=useLang()
+  return <span><InlineStatus s={s}/><button className="btn" disabled={s.loading} onClick={async()=>{
+    s.setLoading(true)
+    s.setErr('')
+    s.setMsg(lang==='en'?'Automation cycle is starting; see the top status bar.':'自动化周期正在启动，请查看顶部状态栏。')
+    try{
+      await automationCycleApi.run({force:true})
+      s.setMsg(lang==='en'?'Automation cycle started. The top status bar will continue tracking progress.':'自动化周期已启动，顶部状态栏会继续显示进度。')
+      setTimeout(()=>location.reload(),800)
+    }catch(e:any){
+      s.setErr(e.message)
+      s.setLoading(false)
+    }
+  }}>{s.loading?(lang==='en'?'Starting...':'启动中...'):(lang==='en'?'Run Now':'现在跑一轮')}</button></span>
+}
+
+export function DiscoverButton(){
+  const s=useRun()
+  const {lang}=useLang()
+  return <span><InlineStatus s={s}/><button className="btn" disabled={s.loading} onClick={async()=>{
+    s.setLoading(true)
+    s.setErr('')
+    s.setMsg(lang==='en'?'Clue model action submitted.':'线索模型动作已提交，顶部状态栏会显示进度。')
+    try{
+      await submitAction({action_type:'clue_model.run',target_type:'clue_model',target_id:'all',reason:'手动发现线索',payload:{model:'all',limit:48}},false)
+      await automationCycleApi.run({include_default_actions:false, background:false})
+      s.setMsg(lang==='en'?'Discovery action finished.':'发现动作已完成。')
+      setTimeout(()=>location.reload(),800)
+    }catch(e:any){
+      s.setErr(e.message)
+      s.setLoading(false)
+    }
+  }}>{s.loading?(lang==='en'?'Submitting...':'提交中...'):(lang==='en'?'Run Clue Models':'运行线索模型')}</button></span>
+}
+
+export function SerpButton({id}:{id:number}){
+  const s=useRun()
+  const {lang}=useLang()
+  return <span><InlineStatus s={s}/><button className="btn" disabled={s.loading} onClick={async()=>{
+    s.setLoading(true)
+    s.setErr('')
+    s.setMsg(lang==='en'?'SERP action submitted.':'SERP 分析动作已提交。')
+    try{
+      await submitAction({action_type:'keyword.serp_analysis',target_type:'keyword',target_id:id,reason:'手动触发关键词搜索分析'})
+      s.setMsg(lang==='en'?'SERP action finished.':'SERP 分析已完成。')
+      setTimeout(()=>location.reload(),800)
+    }catch(e:any){
+      s.setErr(e.message)
+      s.setLoading(false)
+    }
+  }}>{s.loading?(lang==='en'?'Running...':'运行中...'):(lang==='en'?'Run SERP':'运行 SERP')}</button></span>
+}
+
+export function CardButton({id}:{id:number}){
+  const s=useRun()
+  const {lang}=useLang()
+  return <span><InlineStatus s={s}/><button className="btn" disabled={s.loading} onClick={async()=>{
+    s.setLoading(true)
+    s.setErr('')
+    s.setMsg(lang==='en'?'Opportunity generation action submitted.':'机会生成动作已提交。')
+    try{
+      await submitAction({action_type:'opportunity.generate',target_type:'keyword',target_id:id,reason:'手动生成机会'})
+      s.setMsg(lang==='en'?'Opportunity action finished.':'机会生成已完成。')
+      setTimeout(()=>location.reload(),800)
+    }catch(e:any){
+      s.setErr(e.message)
+      s.setLoading(false)
+    }
+  }}>{s.loading?(lang==='en'?'Generating...':'生成中...'):(lang==='en'?'Generate Opportunity':'生成机会')}</button></span>
+}
 function fbClass(x:string){const m:any={Watch:'border-blue-500/40 bg-blue-500/10 text-blue-200 hover:bg-blue-500/20',Action:'border-emerald-500/40 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20',Adopted:'border-purple-500/40 bg-purple-500/10 text-purple-200 hover:bg-purple-500/20',Reject:'border-amber-500/40 bg-amber-500/10 text-amber-200 hover:bg-amber-500/20',Block:'border-rose-500/40 bg-rose-500/10 text-rose-200 hover:bg-rose-500/20'}; return `rounded border px-2 py-1 text-xs ${m[x]}`}
 export function Feedback({id}:{id:number}){const labels:any={Adopted:'采纳',Action:'行动',Watch:'观察',Reject:'拒绝',Block:'屏蔽'}; return <div className="flex flex-wrap gap-2">{['Adopted','Action','Watch','Reject','Block'].map(x=><button key={x} title={x} className={fbClass(x)} onClick={async()=>{await api(`/api/cards/${id}/feedback`,{method:'POST',body:JSON.stringify({label:x})}); location.reload()}}>{labels[x]} <span className="opacity-60">{x}</span></button>)}</div>}
 export function ExportReportButton(){const[loading,setLoading]=useState(false); const {lang}=useLang(); return <button className="btn" disabled={loading} onClick={async()=>{setLoading(true); try{const token=authToken(); const res=await fetch('/api/reports/download/latest',{headers:token?{Authorization:`Bearer ${token}`}:{}}); if(!res.ok) throw new Error(`${res.status} ${await res.text()}`); const blob=await res.blob(); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='demand_cards_latest.md'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url)}catch(e:any){alert(e.message)} finally{setLoading(false)}}}>{loading?(lang==='en'?'Downloading...':'下载中...'):(lang==='en'?'Download Daily Digest':'下载日报')}</button>}

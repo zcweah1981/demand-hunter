@@ -3,7 +3,7 @@ import json
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from app import models, schemas, services
+from app import action_requests, models, schemas, services
 from app.api.deps import obj
 from app.core.security import require_auth
 from app.database import get_db
@@ -26,7 +26,30 @@ def generate_card(keyword_id: int, _: bool = Depends(require_auth), db: Session 
     kw = db.get(models.Keyword, keyword_id)
     if not kw:
         raise HTTPException(404, "keyword not found")
-    return obj(services.make_card(db, kw))
+    request = action_requests.create_action_request(
+        db,
+        "opportunity.generate",
+        "keyword",
+        keyword_id,
+        requested_by="api",
+        reason="关键词生成机会",
+        payload={"keyword": kw.query},
+    )
+    execution = action_requests.execute_action_request(db, request.id)
+    card = (
+        db.query(models.OpportunityCard)
+        .filter_by(keyword_id=keyword_id)
+        .order_by(models.OpportunityCard.created_at.desc())
+        .first()
+    )
+    return {
+        "ok": bool(execution.get("ok")),
+        "request_id": request.id,
+        "run_id": execution.get("run_id"),
+        "status_url": f"/api/actions/{request.id}",
+        "execution": execution,
+        "card": _card_obj(db, card) if card else None,
+    }
 
 @router.get("")
 def cards(include_duplicates: bool = Query(False), _: bool = Depends(require_auth), db: Session = Depends(get_db)):

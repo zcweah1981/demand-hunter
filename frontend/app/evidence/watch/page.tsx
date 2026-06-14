@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic'
 
 export default async function Page() {
   const due = await automationCycleApi.due().catch(() => [])
-  const watchItems = due.filter(item => item.target_type.includes('watch') || item.kind.includes('watch'))
+  const watchItems = due.filter(item => item.target_type.includes('watch') || (item.kind || '').includes('watch'))
 
   return (
     <div className="space-y-6">

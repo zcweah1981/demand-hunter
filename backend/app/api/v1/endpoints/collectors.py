@@ -3,7 +3,7 @@ import json
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app import collectors, models, schemas
+from app import action_requests, collectors, models, schemas
 from app.api.deps import obj
 from app.core.security import require_auth
 from app.database import get_db
@@ -209,6 +209,48 @@ def _record_manual_collector_run(db: Session, source: str, inputs: dict, runner)
     result = runner()
     result.setdefault("candidates", _new_candidates(db, marker, inputs))
     return _record_source_run(db, result.get("source") or source, "manual", inputs, result)
+
+
+def _execute_simple_action(
+    db: Session,
+    action_type: str,
+    target_type: str,
+    target_id: str | int,
+    reason: str,
+    payload: dict | None = None,
+) -> dict:
+    request = action_requests.create_action_request(
+        db,
+        action_type,
+        target_type,
+        str(target_id),
+        requested_by="api",
+        reason=reason,
+        payload=payload or {},
+    )
+    execution = action_requests.execute_action_request(db, request.id)
+    action_result = execution.get("result") if isinstance(execution.get("result"), dict) else {}
+    raw_result = action_result.get("raw_result") if isinstance(action_result.get("raw_result"), dict) else {}
+    return {
+        **raw_result,
+        "ok": bool(execution.get("ok")),
+        "request_id": request.id,
+        "run_id": execution.get("run_id"),
+        "status_url": f"/api/actions/{request.id}",
+        "execution": execution,
+        "result": action_result,
+    }
+
+
+def _execute_collector_model_action(db: Session, model: str, reason: str, payload: dict) -> dict:
+    return _execute_simple_action(
+        db,
+        "clue_model.run",
+        "clue_model",
+        model,
+        reason,
+        {"model": model, **payload},
+    )
 
 
 def _source_run_obj(row: models.SourceRun) -> dict:
@@ -436,68 +478,100 @@ def collector_target_outputs(target_id: int, limit: int = 80, _: bool = Depends(
 
 @router.post("/autopilot/run")
 def collector_autopilot_run(payload: schemas.CandidateImportIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
-    marker = _candidate_marker(db)
-    result = collectors.run_collector_autopilot(db, limit=max(1, payload.limit), import_limit=max(1, payload.limit // 2 or 1))
-    if not result.get("enabled", True):
-        return result
-    inputs = {
-        "seeds": result.get("seeds") or result.get("auto_targets", {}).get("keywords") or [],
-        "domains": result.get("domains") or result.get("auto_targets", {}).get("domains") or [],
-        "limit": payload.limit,
-        "import_limit": max(1, payload.limit // 2 or 1),
-    }
-    result.setdefault("candidates", _new_candidates(db, marker, inputs))
-    return _record_source_run(db, "autopilot", "auto", inputs, result)
+    return _execute_collector_model_action(
+        db,
+        "autopilot",
+        "自动运行线索模型库",
+        {"limit": max(1, payload.limit), "import_limit": max(1, payload.limit // 2 or 1)},
+    )
 
 @router.post("/sitemap/run")
 def sitemap_run(payload: schemas.CollectorSitemapIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     domains=[d.strip() for d in payload.domains if d.strip()]
-    inputs = {"domains": domains, "max_urls_per_domain": payload.max_urls_per_domain, "only_new": payload.only_new}
-    return _record_manual_collector_run(db, "sitemap", inputs, lambda: collectors.run_sitemap_watcher(db, domains, payload.max_urls_per_domain, payload.only_new))
+    return _execute_collector_model_action(
+        db,
+        "sitemap",
+        "手动运行 Sitemap 线索模型",
+        {"domains": domains, "max_urls_per_domain": payload.max_urls_per_domain, "only_new": payload.only_new},
+    )
 
 @router.post("/domain-web/run")
 def domain_web_run(payload: schemas.CollectorSitemapIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     domains=[d.strip() for d in payload.domains if d.strip()]
     max_pages = min(12, max(1, payload.max_urls_per_domain // 10))
-    return _record_manual_collector_run(db, "domain_web", {"domains": domains, "max_pages_per_domain": max_pages}, lambda: collectors.run_domain_web_collector(db, domains, max_pages_per_domain=max_pages))
+    return _execute_collector_model_action(
+        db,
+        "domain_web",
+        "手动运行 Domain Web 线索模型",
+        {"domains": domains, "max_pages_per_domain": max_pages},
+    )
 
 @router.post("/alternatives/run")
 def alternatives_run(payload: schemas.CollectorSitemapIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     domains=[d.strip() for d in payload.domains if d.strip()]
-    return _record_manual_collector_run(db, "alternatives", {"domains": domains}, lambda: collectors.run_alternatives_collector(db, domains))
+    return _execute_collector_model_action(db, "alternatives", "手动运行 Alternative 线索模型", {"domains": domains})
 
 @router.post("/suggest/run")
 def suggest_run(payload: schemas.CollectorSuggestIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     seeds=[s.strip() for s in payload.seeds if s.strip()]
-    return _record_manual_collector_run(db, "suggest", {"seeds": seeds}, lambda: collectors.run_suggest_collector(db, seeds))
+    return _execute_collector_model_action(db, "suggest", "手动运行 Suggest 线索模型", {"seeds": seeds})
 
 @router.post("/advanced-search/run")
 def advanced_search_run(payload: schemas.CollectorAdvancedSearchIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     roots=[x.strip() for x in payload.roots if x.strip()]
     domains=[x.strip() for x in payload.domains if x.strip()]
-    inputs = {"roots": roots, "domains": domains, "days": payload.days, "limit_per_query": payload.limit_per_query}
-    return _record_manual_collector_run(db, "advanced_search", inputs, lambda: collectors.run_advanced_search_collector(db, roots, domains, payload.days, payload.limit_per_query))
+    return _execute_collector_model_action(
+        db,
+        "advanced_search",
+        "手动运行 SERP Search 线索模型",
+        {"roots": roots, "domains": domains, "days": payload.days, "limit_per_query": payload.limit_per_query},
+    )
 
 @router.post("/source-radar/run")
 def source_radar_run(payload: schemas.CollectorSourceRadarIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     seeds=[x.strip() for x in payload.seeds if x.strip()]
-    inputs = {"seeds": seeds, "limit_per_seed": payload.limit_per_seed}
-    return _record_manual_collector_run(db, "source_radar", inputs, lambda: collectors.run_source_radar(db, seeds, payload.limit_per_seed))
+    return _execute_collector_model_action(
+        db,
+        "source_radar",
+        "手动运行 Source Radar 线索模型",
+        {"seeds": seeds, "limit_per_seed": payload.limit_per_seed},
+    )
 
 @router.post("/hot-topic/run")
 def hot_topic_run(payload: schemas.CollectorSuggestIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     topics=[x.strip() for x in payload.seeds if x.strip()]
-    return _record_manual_collector_run(db, "hot_topic", {"topics": topics}, lambda: collectors.run_hot_topic_collector(db, topics or None))
+    return _execute_collector_model_action(db, "hot_topic", "手动运行 Hot Topic 线索模型", {"topics": topics})
 
 @router.post("/candidates/clean")
 def candidate_clean(payload: schemas.CandidateImportIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
-    return collectors.clean_candidate_pool(db, max(1, payload.limit))
+    return _execute_simple_action(
+        db,
+        "clue.score",
+        "clue_pool",
+        "all",
+        "清理并评分线索池",
+        {"limit": max(1, payload.limit)},
+    )
 
 @router.post("/candidates/import")
 def candidate_import(payload: schemas.CandidateImportIn, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
-    return collectors.import_candidates_to_keywords(db, payload.limit)
+    return _execute_simple_action(
+        db,
+        "clue.score",
+        "clue_pool",
+        "all",
+        "线索评分并入库关键词",
+        {"limit": max(1, payload.limit)},
+    )
 
 @router.post("/keywords/auto-verify")
 def collector_keywords_auto_verify(payload: dict | None = None, _: bool = Depends(require_auth), db: Session = Depends(get_db)):
     payload=payload or {}
-    return collectors.auto_verify_collector_keywords(db, limit=max(1, int(payload.get('limit') or 8)), min_score=float(payload.get('min_score') or 0.72))
+    return _execute_simple_action(
+        db,
+        "keyword.serp_analysis",
+        "keyword",
+        "all",
+        "自动验证采集器关键词",
+        {"limit": max(1, int(payload.get('limit') or 8)), "min_score": float(payload.get('min_score') or 0.72)},
+    )

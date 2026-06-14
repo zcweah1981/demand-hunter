@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
 
-from . import discovery_entries, models, services
+from . import automation_executors, discovery_entries, models, services
 
 
 def _iso(dt: datetime | None) -> str | None:
@@ -24,6 +24,27 @@ def _action(source: str, action_type: str, target_type: str, target_id: str | in
         "due_at": due_at,
         "payload": payload or {},
     }
+
+
+def _action_key(action: dict[str, Any]) -> str:
+    return ":".join(
+        [
+            str(action.get("source") or ""),
+            str(action.get("action_type") or action.get("action") or ""),
+            str(action.get("target_type") or ""),
+            str(action.get("target_id") or ""),
+        ]
+    )
+
+
+def _has_open_request(db: Session, action_type: str, target_type: str, target_id: str | int) -> bool:
+    return (
+        db.query(models.ActionRequest.id)
+        .filter_by(action_type=action_type, target_type=target_type, target_id=str(target_id))
+        .filter(models.ActionRequest.status.in_(["pending", "running", "needs_confirmation"]))
+        .first()
+        is not None
+    )
 
 
 def collect_due_actions(db: Session, now: datetime | None = None, limit: int = 200) -> list[dict[str, Any]]:
@@ -73,6 +94,30 @@ def collect_due_actions(db: Session, now: datetime | None = None, limit: int = 2
             )
         )
 
+    keywords = (
+        db.query(models.Keyword)
+        .outerjoin(models.SerpResult, models.SerpResult.keyword_id == models.Keyword.id)
+        .filter(models.SerpResult.id == None)  # noqa: E711
+        .filter(models.Keyword.status.in_(["new", "action", "watch"]))
+        .order_by(models.Keyword.score.desc(), models.Keyword.created_at.asc())
+        .limit(limit)
+        .all()
+    )
+    for keyword in keywords:
+        if _has_open_request(db, "keyword.serp_analysis", "keyword", keyword.id):
+            continue
+        actions.append(
+            _action(
+                "keyword",
+                "keyword.serp_analysis",
+                "keyword",
+                keyword.id,
+                max(30.0, float(keyword.score or 0.0)),
+                keyword.created_at,
+                {"query": keyword.query, "source": keyword.source},
+            )
+        )
+
     requests = (
         db.query(models.ActionRequest)
         .filter_by(status="pending")
@@ -82,6 +127,10 @@ def collect_due_actions(db: Session, now: datetime | None = None, limit: int = 2
     )
     for request in requests:
         priority = 60.0 if request.risk_level == "low" else 40.0 if request.risk_level == "medium" else 5.0
+        try:
+            request_payload = json.loads(request.payload_json or "{}") if request.payload_json else {}
+        except Exception:
+            request_payload = {}
         actions.append(
             _action(
                 "action_request",
@@ -90,7 +139,7 @@ def collect_due_actions(db: Session, now: datetime | None = None, limit: int = 2
                 request.target_id,
                 priority,
                 request.created_at,
-                {"request_id": request.id, "risk_level": request.risk_level},
+                {**request_payload, "request_id": request.id, "risk_level": request.risk_level},
             )
         )
 
@@ -98,99 +147,246 @@ def collect_due_actions(db: Session, now: datetime | None = None, limit: int = 2
     return actions[: max(1, min(500, limit))]
 
 
-def execute_action(db: Session, action: dict[str, Any], now: datetime | None = None) -> dict[str, Any]:
-    """Execute a safe placeholder action and schedule the object for the next cycle."""
+def enqueue_next_actions(db: Session, result: dict[str, Any], requested_by: str = "system", run_id: int | None = None) -> int:
+    """Persist executor-declared next actions into the shared ActionRequest queue."""
+    next_actions = result.get("nextActions") if isinstance(result, dict) else []
+    if not isinstance(next_actions, list):
+        return 0
+    created = 0
+    for item in next_actions:
+        if not isinstance(item, dict):
+            continue
+        action_type = str(item.get("action_type") or "").strip()
+        target_type = str(item.get("target_type") or "").strip()
+        target_id = str(item.get("target_id") or "").strip()
+        if not action_type or not target_type or not target_id:
+            continue
+        exists = (
+            db.query(models.ActionRequest)
+            .filter_by(action_type=action_type, target_type=target_type, target_id=target_id)
+            .filter(models.ActionRequest.status.in_(["pending", "running", "needs_confirmation"]))
+            .first()
+        )
+        if exists:
+            continue
+        row = models.ActionRequest(
+            action_type=action_type,
+            target_type=target_type,
+            target_id=target_id,
+            run_id=run_id,
+            risk_level="low",
+            status="pending",
+            requested_by=requested_by,
+            reason=str(item.get("reason") or "system_next_action"),
+            payload_json=json.dumps(item.get("payload") or {}, ensure_ascii=False),
+            result_json=json.dumps({"ok": True, "status": "pending", "source": "nextActions"}, ensure_ascii=False),
+        )
+        db.add(row)
+        created += 1
+    if created:
+        db.commit()
+    return created
+
+
+def _bool_setting(db: Session, key: str, default: bool = False) -> bool:
+    value = (services.setting(db, key) or "").strip().lower()
+    if not value:
+        return default
+    return value in {"1", "true", "yes", "on"}
+
+
+def default_cycle_actions(db: Session, now: datetime) -> list[dict[str, Any]]:
+    """Create the standard executor-driven cycle actions.
+
+    These replace the old daily_run black box as the normal automation path.
+    Existing settings still decide whether collectors are active.
+    """
+    actions: list[dict[str, Any]] = []
+    if _bool_setting(db, "COLLECTOR_AUTO_ENABLED", True):
+        actions.append(
+            _action(
+                "automation_cycle",
+                "clue_model.run",
+                "clue_model",
+                "all",
+                95.0,
+                now,
+                {
+                    "model": "all",
+                    "limit": services.setting(db, "COLLECTOR_AUTO_LIMIT") or "24",
+                    "import_limit": services.setting(db, "COLLECTOR_AUTO_IMPORT_LIMIT") or "12",
+                },
+            )
+        )
+    actions.append(
+        _action(
+            "automation_cycle",
+            "clue.score",
+            "clue_pool",
+            "all",
+            90.0,
+            now,
+            {"limit": services.setting(db, "COLLECTOR_AUTO_IMPORT_LIMIT") or "12"},
+        )
+    )
+    return actions
+
+
+def execute_action(db: Session, action: dict[str, Any], now: datetime | None = None, run_id: int | None = None) -> dict[str, Any]:
+    """Execute one automation action through the shared executor registry."""
     now = now or datetime.utcnow()
     source = action.get("source")
-    target_id = int(action.get("target_id") or 0)
-    if source == "candidate_entry":
-        entry = db.get(models.CandidateEntry, target_id)
-        if entry:
-            entry.next_due_at = now + timedelta(hours=6)
-            entry.updated_at = now
-            db.merge(entry)
-            return {"ok": True, "action": action, "result": "candidate_entry_scheduled"}
-    if source == "watch_target":
-        target = db.get(models.WatchTarget, target_id)
-        if target:
-            target.last_run_at = now
-            target.next_due_at = now + timedelta(hours=6)
-            target.updated_at = now
-            db.merge(target)
-            return {"ok": True, "action": action, "result": "watch_target_scheduled"}
     if source == "action_request":
         request_id = int((action.get("payload") or {}).get("request_id") or 0)
         request = db.get(models.ActionRequest, request_id)
         if request:
-            request.status = "executed"
-            request.executed_at = now
-            request.result_json = json.dumps({"ok": True, "handled_by": "automation_cycle"}, ensure_ascii=False)
+            try:
+                stored_payload = json.loads(request.payload_json or "{}") if request.payload_json else {}
+            except Exception:
+                stored_payload = {}
+            action["payload"] = {
+                **stored_payload,
+                **(action.get("payload") or {}),
+                "request_id": request.id,
+                "risk_level": request.risk_level,
+            }
+            request.run_id = run_id or request.run_id
+            request.status = "running"
+            request.started_at = now
+            request.finished_at = None
+            request.error_json = "{}"
+            request.result_json = json.dumps({"ok": True, "status": "running", "handled_by": "automation_cycle"}, ensure_ascii=False)
             db.merge(request)
-            db.add(
-                models.ActionEvent(
-                    request_id=request.id,
-                    event_type="executed",
-                    target_type=request.target_type,
-                    target_id=request.target_id,
-                    summary=f"Executed {request.action_type}",
-                    payload_json=request.result_json,
-                )
-            )
-            return {"ok": True, "action": action, "result": "action_request_executed"}
-    return {"ok": False, "action": action, "error": "target_not_found"}
+            result = automation_executors.execute_registered_action(db, action, request=request)
+            created = enqueue_next_actions(db, result, requested_by="system", run_id=run_id)
+            return {"ok": bool(result.get("ok")), "action": action, "result": result, "next_actions_created": created}
+    if source in {"candidate_entry", "watch_target"}:
+        target_id = int(action.get("target_id") or 0)
+        if source == "candidate_entry" and not db.get(models.CandidateEntry, target_id):
+            return {"ok": False, "action": action, "error": "target_not_found"}
+        if source == "watch_target" and not db.get(models.WatchTarget, target_id):
+            return {"ok": False, "action": action, "error": "target_not_found"}
+        result = automation_executors.execute_registered_action(db, action)
+        created = enqueue_next_actions(db, result, requested_by="system", run_id=run_id)
+        return {"ok": bool(result.get("ok")), "action": action, "result": result, "next_actions_created": created}
+    result = automation_executors.execute_registered_action(db, action)
+    created = enqueue_next_actions(db, result, requested_by="system", run_id=run_id)
+    return {"ok": bool(result.get("ok")), "action": action, "result": result, "next_actions_created": created}
 
 
-def run_automation_cycle(db: Session, now: datetime | None = None, max_seconds: int = 300, budget: dict[str, int] | None = None, run_legacy_daily: bool = False) -> dict[str, Any]:
+def _serialize_action_result(result: dict[str, Any]) -> dict[str, Any]:
+    item = dict(result)
+    action = dict(item.get("action") or {})
+    if isinstance(action.get("due_at"), datetime):
+        action["due_at"] = _iso(action["due_at"])
+    item["action"] = action
+    return item
+
+
+def _progress_summary(now: datetime, actions_total: int, results: list[dict[str, Any]], stage: str, daily_summary: dict[str, Any] | None = None) -> dict[str, Any]:
+    return {
+        "stage": stage,
+        "actions_collected": actions_total,
+        "processed": len(results),
+        "executed": sum(1 for result in results if result.get("ok")),
+        "failed": sum(1 for result in results if not result.get("ok")),
+        "results": [_serialize_action_result(result) for result in results[-20:]],
+        "started_at": _iso(now),
+        "daily_run": daily_summary,
+    }
+
+
+def run_automation_cycle(
+    db: Session,
+    now: datetime | None = None,
+    max_seconds: int = 300,
+    budget: dict[str, int] | None = None,
+    run_legacy_daily: bool = False,
+    include_default_actions: bool = True,
+    run_id: int | None = None,
+) -> dict[str, Any]:
     """Run one unified automation cycle."""
     now = now or datetime.utcnow()
     started = time.monotonic()
     daily_summary: dict[str, Any] | None = None
-    if run_legacy_daily:
-        try:
-            limit = int(services.setting(db, "AUTO_RUN_LIMIT") or "6")
-        except Exception:
-            limit = 6
-        try:
-            daily = services.daily_run(db, limit=max(1, min(50, limit)), trigger="automation_cycle_manual")
-            try:
-                parsed = json.loads(daily.summary or "{}") if daily.summary and daily.summary.startswith("{") else daily.summary
-            except Exception:
-                parsed = daily.summary
-            daily_summary = {"ok": daily.status == "ok", "id": daily.id, "status": daily.status, "summary": parsed}
-        except Exception as exc:
-            daily_summary = {"ok": False, "error": str(exc)[:300]}
-
-    actions = collect_due_actions(db, now=now, limit=sum((budget or {}).values()) if budget else 200)
-    results = []
-    for action in actions:
-        if time.monotonic() - started > max_seconds:
-            results.append({"ok": False, "action": action, "error": "time_budget_exceeded"})
-            break
-        results.append(execute_action(db, action, now=now))
+    results: list[dict[str, Any]] = []
+    attempted: set[str] = set()
+    row = db.get(models.RunHistory, run_id) if run_id else None
+    if not row:
+        row = models.RunHistory(kind="automation_cycle")
+        db.add(row)
+    row.kind = "automation_cycle"
+    row.status = "running"
+    row.summary = json.dumps(_progress_summary(now, 0, results, "starting"), ensure_ascii=False)
+    row.started_at = now
+    row.finished_at = None
     db.commit()
-    serialized_results = []
-    for result in results[:50]:
-        item = dict(result)
-        action = dict(item.get("action") or {})
-        if isinstance(action.get("due_at"), datetime):
-            action["due_at"] = _iso(action["due_at"])
-        item["action"] = action
-        serialized_results.append(item)
+    db.refresh(row)
+
+    if run_legacy_daily:
+        action = _action(
+            "legacy_daily",
+            "legacy.daily_run",
+            "system",
+            "daily_run",
+            100.0,
+            now,
+            {"trigger": "automation_cycle", "limit": services.setting(db, "AUTO_RUN_LIMIT") or "6"},
+        )
+        attempted.add(_action_key(action))
+        legacy_result = execute_action(db, action, now=now, run_id=row.id)
+        daily_summary = legacy_result.get("result") if isinstance(legacy_result, dict) else legacy_result
+        results.append(legacy_result)
+        row.summary = json.dumps(_progress_summary(now, 0, results, "legacy_daily", daily_summary), ensure_ascii=False)
+        db.merge(row)
+        db.commit()
+
+    limit = sum((budget or {}).values()) if budget else 200
+    actions: list[dict[str, Any]] = []
+    if include_default_actions and not run_legacy_daily:
+        default_actions = default_cycle_actions(db, now)
+        actions.extend(default_actions)
+        for action in default_actions:
+            attempted.add(_action_key(action))
+            if time.monotonic() - started > max_seconds:
+                results.append({"ok": False, "action": action, "error": "time_budget_exceeded"})
+                break
+            results.append(execute_action(db, action, now=now, run_id=row.id))
+            row.summary = json.dumps(_progress_summary(now, len(actions), results, "running", daily_summary), ensure_ascii=False)
+            db.merge(row)
+            db.commit()
+
+    for _ in range(10):
+        due_actions = [action for action in collect_due_actions(db, now=now, limit=limit) if _action_key(action) not in attempted]
+        if not due_actions:
+            break
+        actions.extend(due_actions)
+        for action in due_actions:
+            attempted.add(_action_key(action))
+            if time.monotonic() - started > max_seconds:
+                results.append({"ok": False, "action": action, "error": "time_budget_exceeded"})
+                break
+            results.append(execute_action(db, action, now=now, run_id=row.id))
+            row.summary = json.dumps(_progress_summary(now, len(actions), results, "running", daily_summary), ensure_ascii=False)
+            db.merge(row)
+            db.commit()
+        if time.monotonic() - started > max_seconds:
+            break
+    db.commit()
     summary = {
         "actions_collected": len(actions),
         "executed": sum(1 for result in results if result.get("ok")),
         "failed": sum(1 for result in results if not result.get("ok")),
-        "results": serialized_results,
+        "processed": len(results),
+        "results": [_serialize_action_result(result) for result in results[:50]],
         "started_at": _iso(now),
+        "finished_at": _iso(datetime.utcnow()),
         "daily_run": daily_summary,
+        "stage": "finished",
     }
-    row = models.RunHistory(
-        kind="automation_cycle",
-        status="ok" if summary["failed"] == 0 and (not daily_summary or daily_summary.get("ok")) else "partial",
-        summary=json.dumps(summary, ensure_ascii=False),
-        started_at=now,
-        finished_at=datetime.utcnow(),
-    )
-    db.add(row)
+    row.status = "ok" if summary["failed"] == 0 and (not daily_summary or daily_summary.get("ok")) else "partial"
+    row.summary = json.dumps(summary, ensure_ascii=False)
+    row.finished_at = datetime.utcnow()
+    db.merge(row)
     db.commit()
     return {"ok": True, **summary}

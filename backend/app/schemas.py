@@ -1,5 +1,5 @@
 from __future__ import annotations
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Any
 
 class SettingIn(BaseModel):
@@ -193,6 +193,7 @@ class ActionRequestIn(BaseModel):
     requested_by: str = "user"
     reason: str = ""
     confirm: bool = False
+    payload: dict = Field(default_factory=dict)
 
 
 class ActionExecuteIn(BaseModel):

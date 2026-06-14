@@ -8,5 +8,5 @@ export type CandidateEntry = {id:number; entry_type:string; name:string; source:
 export type EvidenceItem = {id:number; source_type:string; source_name:string; url:string; title:string; summary:string; raw_excerpt:string; confidence:number; captured_at:string; created_at?:string}
 export type EvidenceLink = {id:number; evidence_id:number; target_type:string; target_id:string; relation_type:string; relation_reason:string; created_by:string; created_at:string}
 export type EvidenceTimelineItem = {evidence:EvidenceItem|null; link:EvidenceLink}
-export type AutomationDueAction = {kind:string; target_type:string; target_id:string|number; action:string; due_at?:string|null; reason?:string}
-export type ActionRequest = {id:number; action_type:string; target_type:string; target_id:string; requested_by:string; reason:string; status:string; confirm:boolean; result_json?:unknown; created_at:string; executed_at?:string|null}
+export type AutomationDueAction = {source?:string; kind?:string; target_type:string; target_id:string|number; action?:string; action_type?:string; due_at?:string|null; reason?:string; priority?:number; payload?:Record<string,unknown>}
+export type ActionRequest = {id:number; action_type:string; target_type:string; target_id:string; requested_by:string; reason:string; status:string; confirm:boolean; run_id?:number|null; payload_json?:unknown; result_json?:unknown; error_json?:unknown; retry_count?:number; max_retries?:number; created_at:string; started_at?:string|null; finished_at?:string|null; executed_at?:string|null}
