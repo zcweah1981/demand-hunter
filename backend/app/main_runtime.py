@@ -18,7 +18,7 @@ def run_daily_background(force: bool = False):
                     max_seconds = int(services.setting(db, "AUTOMATION_CYCLE_MAX_SECONDS") or "300")
                 except Exception:
                     max_seconds = 300
-                result = automation_cycle.run_automation_cycle(db, max_seconds=max_seconds)
+                result = automation_cycle.run_automation_cycle(db, max_seconds=max_seconds, run_legacy_daily=False)
                 services.export_latest_markdown(db)
                 return {"started": True, "status": "ok" if result.get("ok") else "error", "summary": result}
             return {"started": False, "reason": "not_due"}

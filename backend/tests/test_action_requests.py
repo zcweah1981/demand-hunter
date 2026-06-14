@@ -40,8 +40,29 @@ class ActionRequestTests(unittest.TestCase):
 
             self.assertTrue(result["ok"])
             db.refresh(request)
-            self.assertEqual(request.status, "executed")
-            self.assertEqual(db.query(models.ActionEvent).count(), 1)
+            self.assertEqual(request.status, "success")
+            self.assertIsNotNone(request.run_id)
+            self.assertEqual(result["run_id"], request.run_id)
+            run = db.get(models.RunHistory, request.run_id)
+            self.assertIsNotNone(run)
+            self.assertEqual(run.kind, "manual_action")
+            self.assertEqual(run.status, "ok")
+            self.assertGreaterEqual(db.query(models.ActionEvent).count(), 2)
+
+    def test_evidence_backfill_creates_traceable_evidence(self):
+        with self.Session() as db:
+            keyword = models.Keyword(query="vendor compliance tracker", source="test", status="new")
+            db.add(keyword)
+            db.commit()
+            db.refresh(keyword)
+            request = create_action_request(db, "keyword.collect_evidence", "keyword", keyword.id)
+
+            result = execute_action_request(db, request.id)
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(db.query(models.EvidenceItem).count(), 1)
+            self.assertEqual(db.query(models.EvidenceLink).filter_by(target_type="keyword", target_id=str(keyword.id)).count(), 1)
+            self.assertEqual(db.query(models.SourceRun).filter_by(run_kind="evidence.backfill").count(), 1)
 
 
 if __name__ == "__main__":

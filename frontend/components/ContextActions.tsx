@@ -1,7 +1,7 @@
 'use client'
 
 import {useState} from 'react'
-import {actionsApi, automationCycleApi, discoveryApi} from '../lib/api'
+import {actionsApi, automationCycleApi} from '../lib/api'
 
 type ContextAction = {
   label: '手动抓取'|'推送到候选词'|'重新计算'|'补证据'|'推送到关键词库'|'重新验证'|'修正关联'|'推送到机会推进'|'上传 / 更新 PRD'|'运行一轮'|'修复异常'
@@ -18,7 +18,7 @@ type Props = {
 
 function submittedMessage(action: ContextAction) {
   if (action.label === '补证据') return '补证据请求已提交，会进入动作队列；需要自动任务执行后才会产生新证据。'
-  if (action.label === '运行一轮') return '运行请求已提交，完成后请刷新查看新结果。'
+  if (action.label === '运行一轮') return '自动化周期已启动，顶部状态栏会继续显示进度。'
   return `${action.label} 已提交`
 }
 
@@ -31,9 +31,7 @@ export function ContextActions({actions}: Props) {
     setPending(key)
     setMessage('')
     try {
-      if (action.actionType === 'entry.push') {
-        await discoveryApi.pushEntry(action.targetId)
-      } else if (action.actionType === 'automation.run') {
+      if (action.actionType === 'automation.run') {
         await automationCycleApi.run({})
       } else {
         const request = await actionsApi.create({

@@ -26,8 +26,8 @@ export default async function Page() {
         <h2 className="mb-4 text-xl font-bold">到期动作</h2>
         <div className="space-y-3">
           {due.map((item, index) => (
-            <div key={`${item.action}-${index}`} className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-              <div className="font-semibold text-slate-100">{item.action}</div>
+            <div key={`${item.action_type || item.action}-${index}`} className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+              <div className="font-semibold text-slate-100">{item.action_type || item.action}</div>
               <div className="mt-1 text-xs text-slate-500">{item.target_type} #{item.target_id}</div>
             </div>
           ))}

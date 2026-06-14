@@ -2,7 +2,7 @@
 
 import {useState, useTransition} from 'react'
 import {useRouter} from 'next/navigation'
-import {api} from '../lib/api'
+import {api, automationCycleApi} from '../lib/api'
 import {useLang} from '../lib/i18n'
 import {ExperimentRepairButton, RecommendedExperimentButton, RepairActionButton, RollbackRepairButton} from './Actions'
 
@@ -49,7 +49,11 @@ export function AutopilotPanel({status}:{status:AutopilotStatus}){
     setError('')
     startTransition(async()=>{
       try{
-        await api(path,{method:'POST',body:JSON.stringify(path.includes('autopilot')?{}:{force:true})})
+        if(path==='automation_cycle'){
+          await automationCycleApi.run({force:true})
+        }else{
+          await api(path,{method:'POST',body:JSON.stringify(path.includes('autopilot')?{}:{force:true})})
+        }
         router.refresh()
       }catch(e:any){setError(e.message||'failed')}
     })
@@ -69,7 +73,7 @@ export function AutopilotPanel({status}:{status:AutopilotStatus}){
       </div>
       <div className="flex flex-wrap gap-2">
         {!status.ready&&<button className="btn" disabled={pending} onClick={()=>call('/api/autopilot/start')}>{pending?(lang==='en'?'Starting...':'启动中...'):(lang==='en'?'Start':'开启')}</button>}
-        {status.ready&&<button className="btn" disabled={pending||running} onClick={()=>call('/api/auto/tick')}>{pending?(lang==='en'?'Starting...':'启动中...'):(lang==='en'?'Run now':'现在跑一轮')}</button>}
+        {status.ready&&<button className="btn" disabled={pending||running} onClick={()=>call('automation_cycle')}>{pending?(lang==='en'?'Starting...':'启动中...'):(lang==='en'?'Run now':'现在跑一轮')}</button>}
         <a className="btn-secondary" href="/hunter/opportunities">机会列表</a>
       </div>
     </div>

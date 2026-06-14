@@ -120,10 +120,14 @@ export type ClueLlmAnalysis={
     provider?:string
   }|null
 }
-export type AutomationDueAction={kind:string;target_type:string;target_id:string|number;action:string;due_at?:string|null;reason?:string}
-export type ActionRequest={id:number;action_type:string;target_type:string;target_id:string;requested_by:string;reason:string;status:string;confirm:boolean;result_json?:unknown;created_at:string;executed_at?:string|null}
+export type AutomationDueAction={source?:string;kind?:string;target_type:string;target_id:string|number;action?:string;action_type?:string;due_at?:string|null;reason?:string;priority?:number;payload?:Record<string,unknown>}
+export type ActionRequest={id:number;action_type:string;target_type:string;target_id:string;requested_by:string;reason:string;status:string;confirm:boolean;run_id?:number|null;payload_json?:unknown;result_json?:unknown;error_json?:unknown;retry_count?:number;max_retries?:number;created_at:string;started_at?:string|null;finished_at?:string|null;executed_at?:string|null}
 
 const json = (body:unknown) => ({method:'POST', body:JSON.stringify(body)})
+
+function notifyAutomationStatus() {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('automation-status-refresh'))
+}
 
 export const discoveryApi = {
   entries: (params = '') => api<CandidateEntry[]>(`/api/entries${params}`),
@@ -144,14 +148,46 @@ export const evidenceApi = {
 
 export const automationCycleApi = {
   due: () => api<AutomationDueAction[]>('/api/automation-cycle/due'),
-  run: (payload:Record<string,unknown> = {}) => api<Record<string,unknown>>('/api/automation-cycle/run', json(payload)),
+  run: async (payload:Record<string,unknown> = {}) => {
+    notifyAutomationStatus()
+    const result = await api<Record<string,unknown>>('/api/automation-cycle/run', json(payload))
+    notifyAutomationStatus()
+    return result
+  },
   runs: () => api<any[]>('/api/automation-cycle/runs'),
+  runDetail: (id:number|string) => api<any>(`/api/automation-cycle/runs/${id}`),
 }
 
 export const actionsApi = {
   list: (params = '') => api<ActionRequest[]>(`/api/actions${params}`),
-  create: (payload:{action_type:string; target_type:string; target_id:string; requested_by?:string; reason?:string; confirm?:boolean}) => api<ActionRequest>('/api/actions', json(payload)),
-  execute: (id:number|string, confirm = false) => api<Record<string,unknown>>(`/api/actions/${id}/execute`, json({confirm})),
+  get: (id:number|string) => api<ActionRequest>(`/api/actions/${id}`),
+  create: async (payload:{action_type:string; target_type:string; target_id:string; requested_by?:string; reason?:string; confirm?:boolean; payload?:Record<string,unknown>}) => {
+    const result = await api<ActionRequest>('/api/actions', json(payload))
+    notifyAutomationStatus()
+    return result
+  },
+  execute: async (id:number|string, confirm = false) => {
+    notifyAutomationStatus()
+    const result = await api<Record<string,unknown>>(`/api/actions/${id}/execute`, json({confirm}))
+    notifyAutomationStatus()
+    return result
+  },
+  retry: async (id:number|string) => {
+    const result = await api<Record<string,unknown>>(`/api/actions/${id}/retry`, json({}))
+    notifyAutomationStatus()
+    return result
+  },
+  cancel: async (id:number|string) => {
+    const result = await api<Record<string,unknown>>(`/api/actions/${id}/cancel`, json({}))
+    notifyAutomationStatus()
+    return result
+  },
+}
+
+export async function submitAction(payload:{action_type:string; target_type:string; target_id:string|number; requested_by?:string; reason?:string; confirm?:boolean; payload?:Record<string,unknown>}, executeNow = true) {
+  const request = await actionsApi.create({...payload, target_id: String(payload.target_id)})
+  if (executeNow && !payload.confirm) await actionsApi.execute(request.id, false)
+  return request
 }
 
 export const keywordApi = {

@@ -2391,27 +2391,25 @@ def apply_feedback(db: Session, card: models.OpportunityCard, label: str, note: 
     db.commit(); db.refresh(card); return card
 
 def auto_status(db: Session) -> dict:
-    # Next automatic time is based ONLY on the last scheduled full daily fetch.
-    # Manual daily runs, force ticks, collector/repair/experiment rows must not
-    # move the next scheduled auto time.
     def _summary(row):
         try: return json.loads(row.summary or "{}") if row.summary and row.summary.startswith("{") else {}
         except Exception: return {}
-    daily_rows = db.query(models.RunHistory).filter_by(kind="daily").order_by(models.RunHistory.started_at.desc()).limit(50).all()
-    last = None
-    for row in daily_rows:
-        s=_summary(row)
-        trigger=s.get("trigger")
-        if trigger == "auto_scheduled":
-            last=row; break
-    # Legacy compatibility: runs before trigger tracking cannot reliably be
-    # separated into manual vs scheduled. Keep the known scheduled baseline
-    # from 2026-06-10 06:54/06:58 BJ (#81) until a new auto_scheduled daily
-    # replaces it. Do not let newer legacy/manual daily rows move the schedule.
+    last = db.query(models.RunHistory).filter_by(kind="automation_cycle").order_by(models.RunHistory.started_at.desc()).first()
     if not last:
-        legacy = db.get(models.RunHistory, 81)
-        if legacy and legacy.kind == "daily" and legacy.finished_at:
-            last = legacy
+        daily_rows = db.query(models.RunHistory).filter_by(kind="daily").order_by(models.RunHistory.started_at.desc()).limit(50).all()
+        for row in daily_rows:
+            s=_summary(row)
+            trigger=s.get("trigger")
+            if trigger == "auto_scheduled":
+                last=row; break
+        # Legacy compatibility: runs before trigger tracking cannot reliably be
+        # separated into manual vs scheduled. Keep the known scheduled baseline
+        # from 2026-06-10 06:54/06:58 BJ (#81) until a new automation cycle
+        # replaces it.
+        if not last:
+            legacy = db.get(models.RunHistory, 81)
+            if legacy and legacy.kind == "daily" and legacy.finished_at:
+                last = legacy
     if not last:
         last = db.query(models.RunHistory).order_by(models.RunHistory.started_at.desc()).first()
     enabled = (setting(db, "AUTO_RUN_ENABLED") or "false").lower() in {"1","true","yes","on"}
@@ -2421,34 +2419,36 @@ def auto_status(db: Session) -> dict:
         return (dt + timedelta(hours=8)).isoformat() + "+08:00" if dt else None
     next_run_at = iso_bj(last.finished_at + timedelta(minutes=interval)) if last and last.finished_at and enabled else None
     last_summary=_summary(last) if last else None
-    return {"enabled": enabled, "interval_minutes": interval, "timezone": "Asia/Shanghai", "schedule_basis": "last_auto_scheduled_daily", "next_run_at": next_run_at, "last_run": None if not last else {"id": last.id, "status": last.status, "kind": last.kind, "trigger": last_summary.get("trigger") if isinstance(last_summary,dict) else None, "summary": last_summary if last_summary else (last.summary or ""), "started_at": iso_bj(last.started_at), "finished_at": iso_bj(last.finished_at)}}
+    return {"enabled": enabled, "interval_minutes": interval, "timezone": "Asia/Shanghai", "schedule_basis": "last_automation_cycle", "next_run_at": next_run_at, "last_run": None if not last else {"id": last.id, "status": last.status, "kind": last.kind, "trigger": last_summary.get("trigger") if isinstance(last_summary,dict) else None, "summary": last_summary if last_summary else (last.summary or ""), "started_at": iso_bj(last.started_at), "finished_at": iso_bj(last.finished_at)}}
 
 def auto_due(db: Session) -> bool:
     st = auto_status(db)
     if not st["enabled"]: return False
-    last = None
-    daily_rows = db.query(models.RunHistory).filter_by(kind="daily").order_by(models.RunHistory.started_at.desc()).limit(50).all()
-    for row in daily_rows:
-        try: s=json.loads(row.summary or "{}") if row.summary and row.summary.startswith("{") else {}
-        except Exception: s={}
-        trigger=s.get("trigger")
-        if trigger == "auto_scheduled":
-            last=row; break
+    last = db.query(models.RunHistory).filter_by(kind="automation_cycle").order_by(models.RunHistory.started_at.desc()).first()
     if not last:
-        legacy = db.get(models.RunHistory, 81)
-        if legacy and legacy.kind == "daily" and legacy.finished_at:
-            last = legacy
+        daily_rows = db.query(models.RunHistory).filter_by(kind="daily").order_by(models.RunHistory.started_at.desc()).limit(50).all()
+        for row in daily_rows:
+            try: s=json.loads(row.summary or "{}") if row.summary and row.summary.startswith("{") else {}
+            except Exception: s={}
+            trigger=s.get("trigger")
+            if trigger == "auto_scheduled":
+                last=row; break
+        if not last:
+            legacy = db.get(models.RunHistory, 81)
+            if legacy and legacy.kind == "daily" and legacy.finished_at:
+                last = legacy
     if not last or not last.finished_at: return True
     return (datetime.utcnow() - last.finished_at).total_seconds() >= st["interval_minutes"] * 60
 
 def auto_tick(db: Session) -> dict:
     if not auto_due(db):
         return {"ran": False, "status": auto_status(db)}
-    try: limit = int(setting(db, "AUTO_RUN_LIMIT") or "24")
-    except Exception: limit = 24
-    run = daily_run(db, limit=limit)
+    try: max_seconds = int(setting(db, "AUTOMATION_CYCLE_MAX_SECONDS") or "300")
+    except Exception: max_seconds = 300
+    from . import automation_cycle
+    run = automation_cycle.run_automation_cycle(db, max_seconds=max_seconds, run_legacy_daily=False)
     export_latest_markdown(db)
-    return {"ran": True, "run": {"id": run.id, "status": run.status, "summary": json.loads(run.summary or "{}") if run.summary and run.summary.startswith("{") else run.summary}}
+    return {"ran": True, "run": run}
 
 def export_latest_markdown(db: Session) -> str:
     from pathlib import Path
